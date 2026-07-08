@@ -1,0 +1,23 @@
+root = "."
+testdata_dir = "testdata"
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ./cmd/api"
+  bin = "./tmp/main"
+  include_ext = ["go", "yaml", "yml", "toml"]
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "logs", "docker", ".git", ".idea"]
+  delay = 1000
+  stop_on_error = true
+
+[log]
+  time = true
+
+[color]
+  app = ""
+
+[misc]
+  clean_on_exit = true
+
+[screen]
+  clear_on_rebuild = true
