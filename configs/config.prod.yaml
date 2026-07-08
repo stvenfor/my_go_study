@@ -1,0 +1,10 @@
+# config.prod.yaml 生产环境覆盖项。
+
+server:
+  mode: release
+
+log:
+  level: info
+
+database:
+  sslmode: require

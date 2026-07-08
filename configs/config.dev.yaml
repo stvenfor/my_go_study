@@ -1,0 +1,13 @@
+# config.dev.yaml 开发环境覆盖项。
+
+server:
+  mode: debug
+
+log:
+  level: debug
+
+database:
+  host: postgres
+
+redis:
+  addr: redis:6379

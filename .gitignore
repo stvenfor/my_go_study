@@ -1,25 +1,25 @@
 # Binaries
 bin/
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
+tmp/
 
-# Go workspace
-go.work
-go.work.sum
+# Logs
+logs/
+*.log
 
 # Environment
 .env
 
 # Editor
 .idea/
-tmp.txt
+.vscode/
+
+# OS
+.DS_Store
 
 # Coverage
 coverage.*
-*.coverprofile
-profile.cov
+*.out
+
+# Go workspace
+go.work
+go.work.sum
