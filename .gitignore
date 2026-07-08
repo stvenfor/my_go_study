@@ -6,9 +6,6 @@ tmp/
 logs/
 *.log
 
-# Environment
-.env
-
 # Editor
 .idea/
 .vscode/
