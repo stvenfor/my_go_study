@@ -1,4 +1,11 @@
-// transaction_controller.go Transaction 交易管理控制器（Supabase JWT 鉴权）。
+// =============================================================================
+// 文件：transaction_controller.go
+// 层级：Delivery/HTTP —— transactions REST API
+//
+// 两套风格：
+//   listLegacy  → GET /api/v1/transactions        → { items: [] }
+//   ListPage    → GET /api/v1/transactions/manage → ResultModel 分页
+// =============================================================================
 package controller
 
 import (
@@ -22,6 +29,7 @@ func NewTransactionController(transactionUC *usecase.TransactionUsecase) *Transa
 	return &TransactionController{transactionUC: transactionUC}
 }
 
+// authContext 从 SupabaseAuth 中间件注入的 Context 取 token 与 userID。
 func (ctrl *TransactionController) authContext(c *gin.Context) (accessToken, userID string, ok bool) {
 	user, token, ok := supabaseAuthContext(c)
 	if !ok {
@@ -30,8 +38,7 @@ func (ctrl *TransactionController) authContext(c *gin.Context) (accessToken, use
 	return token, user.ID, true
 }
 
-// List 列表查询：带 page 参数走统一分页，否则走 Flutter limit/offset。
-// GET /api/v1/transactions
+// List 若带 page 参数走 manage 分页，否则走 Flutter legacy limit/offset。
 func (ctrl *TransactionController) List(c *gin.Context) {
 	if c.Query("page") != "" {
 		ctrl.ListPage(c)
@@ -65,7 +72,7 @@ func (ctrl *TransactionController) ListPage(c *gin.Context) {
 	response.SuccessList(c, response.FromTransactions(items), page.Page, page.Size, total)
 }
 
-// listLegacy Flutter 兼容列表（limit/offset，返回 { items: [...] }）。
+// listLegacy Flutter 二手车列表实际使用的接口。
 func (ctrl *TransactionController) listLegacy(c *gin.Context) {
 	accessToken, userID, ok := ctrl.authContext(c)
 	if !ok {

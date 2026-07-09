@@ -1,4 +1,11 @@
-// supabase_auth.go Supabase JWT 鉴权中间件。
+// =============================================================================
+// 文件：supabase_auth.go
+// 层级：Delivery/Middleware —— Gin 请求管道中的「门禁」
+//
+// 【初学者】中间件执行顺序：
+//   请求 → Logger → CORS → SupabaseAuth → Controller
+//   SupabaseAuth 失败则 Abort，不会进入 Controller。
+// =============================================================================
 package middleware
 
 import (
@@ -11,13 +18,11 @@ import (
 )
 
 const (
-	// ContextSupabaseUserKey 上下文中 Supabase 用户的键。
-	ContextSupabaseUserKey = "supabaseUser"
-	// ContextAccessTokenKey 上下文中 access token 的键。
-	ContextAccessTokenKey = "accessToken"
+	ContextSupabaseUserKey = "supabaseUser"  // c.Get 取用户
+	ContextAccessTokenKey  = "accessToken"   // 转发 PostgREST 时需要原 token
 )
 
-// SupabaseAuth 校验 Supabase access token 并注入用户信息。
+// SupabaseAuth 返回 Gin 中间件函数；挂在本需要登录的路由组上。
 func SupabaseAuth(cfg config.SupabaseConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))
@@ -34,13 +39,13 @@ func SupabaseAuth(cfg config.SupabaseConfig) gin.HandlerFunc {
 			return
 		}
 
+		// 存入 Context，Controller 通过 GetSupabaseUser 读取
 		c.Set(ContextSupabaseUserKey, user)
 		c.Set(ContextAccessTokenKey, token)
-		c.Next()
+		c.Next() // 放行到下一个 handler
 	}
 }
 
-// GetSupabaseUser 从上下文读取 Supabase 用户。
 func GetSupabaseUser(c *gin.Context) (pkgauth.SupabaseUser, bool) {
 	value, ok := c.Get(ContextSupabaseUserKey)
 	if !ok {
@@ -50,7 +55,6 @@ func GetSupabaseUser(c *gin.Context) (pkgauth.SupabaseUser, bool) {
 	return user, ok
 }
 
-// GetAccessToken 从上下文读取 access token。
 func GetAccessToken(c *gin.Context) (string, bool) {
 	value, ok := c.Get(ContextAccessTokenKey)
 	if !ok {
@@ -60,6 +64,7 @@ func GetAccessToken(c *gin.Context) (string, bool) {
 	return token, ok
 }
 
+// bearerToken 解析 "Bearer eyJ..." → "eyJ..."
 func bearerToken(header string) string {
 	const prefix = "Bearer "
 	if strings.HasPrefix(header, prefix) {

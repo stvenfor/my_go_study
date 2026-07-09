@@ -1,3 +1,11 @@
+// =============================================================================
+// 文件：realtime_presence_usecase.go
+// 作用：Flutter → Go → 其他 Flutter（presence.report → presence.update）
+//
+// 【为什么不给 presence 也写 seq？】
+//   在线状态是瞬时信息，断线重连后 sync 历史 presence 意义不大；
+//   省略 seq 简化实现，Flutter acceptSeq(null) 会直接通过。
+// =============================================================================
 package usecase
 
 import (
@@ -9,25 +17,21 @@ import (
 	"github.com/stvenfor/my_go_study/internal/domain/repository"
 )
 
-// RealtimePresenceInput 客户端 presence.report 输入。
 type RealtimePresenceInput struct {
 	UserID string
 	Online bool
 	Device string
 }
 
-// RealtimePresenceBroadcaster 向 topic 广播（排除发送者）。
 type RealtimePresenceBroadcaster interface {
 	BroadcastToTopicExcept(excludeUserID, topic string, envelope entity.RealtimeEnvelope) int
 }
 
-// RealtimePresenceUsecase 处理 presence.report 并广播 presence.update。
 type RealtimePresenceUsecase struct {
-	presence repository.PresenceRepository
+	presence    repository.PresenceRepository
 	broadcaster RealtimePresenceBroadcaster
 }
 
-// NewRealtimePresenceUsecase 创建 presence 用例。
 func NewRealtimePresenceUsecase(
 	presence repository.PresenceRepository,
 	broadcaster RealtimePresenceBroadcaster,
@@ -38,7 +42,6 @@ func NewRealtimePresenceUsecase(
 	}
 }
 
-// Report 处理客户端上报并向其他订阅者广播 presence.update。
 func (u *RealtimePresenceUsecase) Report(ctx context.Context, input RealtimePresenceInput) (entity.RealtimeEnvelope, int, error) {
 	if input.UserID == "" {
 		return entity.RealtimeEnvelope{}, 0, fmt.Errorf("userId 不能为空")
@@ -51,6 +54,7 @@ func (u *RealtimePresenceUsecase) Report(ctx context.Context, input RealtimePres
 	} else {
 		onlineCount, err = u.presence.SetOffline(ctx, input.UserID)
 	}
+
 	if err != nil {
 		return entity.RealtimeEnvelope{}, 0, err
 	}
@@ -71,6 +75,7 @@ func (u *RealtimePresenceUsecase) Report(ctx context.Context, input RealtimePres
 		envelope.Payload["device"] = input.Device
 	}
 
+	// 广播给除上报者外的所有订阅 presence.bulk 的连接
 	delivered := u.broadcaster.BroadcastToTopicExcept(
 		input.UserID,
 		entity.TopicPresenceBulk,

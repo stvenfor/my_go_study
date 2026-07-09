@@ -1,3 +1,10 @@
+// =============================================================================
+// 文件：ws_ticket_repo.go
+// 层级：Repository —— 只负责 Redis 读写，不含业务判断
+//
+// 【为什么 Consume 用 GetDel 而不是 Get + Del？】
+//   GetDel 是原子操作，避免两个 WS 同时用同一 ticket auth 的竞态。
+// =============================================================================
 package redis
 
 import (
@@ -12,12 +19,10 @@ import (
 
 const wsTicketKeyPrefix = "ws:ticket:"
 
-// WSTicketRepository Redis ticket 实现。
 type WSTicketRepository struct {
 	client *redis.Client
 }
 
-// NewWSTicketRepository 创建 ticket 仓储。
 func NewWSTicketRepository(client *redis.Client) *WSTicketRepository {
 	return &WSTicketRepository{client: client}
 }
@@ -27,6 +32,7 @@ func (r *WSTicketRepository) Save(ctx context.Context, ticket string, data repos
 	if err != nil {
 		return err
 	}
+	// SET key value EX ttl
 	return r.client.Set(ctx, wsTicketKeyPrefix+ticket, raw, ttl).Err()
 }
 
