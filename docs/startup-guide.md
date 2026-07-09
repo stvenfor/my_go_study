@@ -50,8 +50,14 @@ my_go_study/
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml   # postgres + redis + app
-├── .env                     # 环境变量（须入库，团队共用）
-├── .env.example             # 环境变量模板（新成员可复制）
+├── configs/
+│   ├── config.yaml
+│   ├── config.dev.yaml
+│   ├── supabase.env          # Supabase URL / anon key（团队常量，入库）
+│   └── supabase.env.example
+├── .env                     # 应用运行时配置（入库）
+├── .env.example
+├── .env.local               # service_role 等私密密钥（不入库）
 ├── Makefile                 # 常用命令
 ├── .air.toml                # 热加载配置
 └── docs/                    # 文档
@@ -88,15 +94,16 @@ cd /path/to/my_go_study   # 进入项目根目录
 | `DATABASE_DBNAME` | `my_go_study` | 数据库名 |
 | `REDIS_ADDR` | `localhost:6379` | Redis 地址 |
 | `JWT_SECRET` | （必填） | JWT 签名密钥，生产环境务必修改 |
-| `SUPABASE_URL` | （可选） | Supabase Project URL，与 Flutter 一致 |
-| `SUPABASE_ANON_KEY` | （可选） | Supabase anon / publishable key |
-| `SUPABASE_SERVICE_ROLE_KEY` | 否（仅 `.env.local`） | service_role；**勿写入入库的 `.env`**（GitHub 推送保护会拦截） |
+| `SUPABASE_URL` | `configs/supabase.env` | Supabase Project URL |
+| `SUPABASE_ANON_KEY` | `configs/supabase.env` | anon / publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | `.env.local` | service_role；勿写入入库文件 |
 
-本地开发可复制模板：
+本地开发：
 
 ```bash
 cp .env.example .env
-# 按需修改 .env
+cp .env.local.example .env.local   # 填写 service_role
+# configs/supabase.env 通常已入库，无需复制
 ```
 
 ### 3.3 启动时自动完成的操作

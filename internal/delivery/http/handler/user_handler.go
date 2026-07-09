@@ -38,7 +38,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	if h.supabaseAuthUC == nil {
-		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "Supabase 未配置，无法注册")
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
 		return
 	}
 
@@ -72,7 +72,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 	}
 
 	if h.supabaseAuthUC == nil {
-		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "Supabase 未配置，无法登录")
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
 		return
 	}
 
@@ -141,7 +141,7 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 	case errors.Is(err, usecase.ErrEmailConfirmationRequired):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "注册成功，请查收验证邮件后再登录")
 	case errors.Is(err, usecase.ErrSupabaseUnavailable):
-		response.Error(c, http.StatusBadGateway, response.CodeInternalError, "无法连接 Supabase，请检查网络或 API Key 配置")
+		response.Error(c, http.StatusBadGateway, response.CodeInternalError, "认证服务暂时不可用，请检查后端网络或配置")
 	default:
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}

@@ -3,6 +3,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -122,6 +124,14 @@ func Load(configPath, env string) (*Config, error) {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
+	// supabase.env / .env / .env.local 作为团队常量与本地覆盖默认值
+	if err := applySupabaseDefaults(configPath, &cfg); err != nil {
+		return nil, err
+	}
+	if err := applyLocalEnvDefaults(configPath, &cfg); err != nil {
+		return nil, err
+	}
+
 	if cfg.JWT.Secret == "" {
 		return nil, fmt.Errorf("jwt.secret 不能为空")
 	}
@@ -130,6 +140,69 @@ func Load(configPath, env string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// ResolveConfigDir 定位 configs 目录（支持从子目录或 IDE 非根目录启动）。
+func ResolveConfigDir() string {
+	const name = "configs"
+	if wd, err := os.Getwd(); err == nil {
+		dir := wd
+		for {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+				return candidate
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return name
+}
+
+// applySupabaseDefaults 从 configs/supabase.env 填充仍为空的 Supabase 配置。
+func applySupabaseDefaults(configPath string, cfg *Config) error {
+	path := filepath.Join(configPath, "supabase.env")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+
+	sv := viper.New()
+	sv.SetConfigFile(path)
+	sv.SetConfigType("env")
+	if err := sv.ReadInConfig(); err != nil {
+		return fmt.Errorf("读取 supabase.env 失败: %w", err)
+	}
+	if cfg.Supabase.URL == "" {
+		cfg.Supabase.URL = sv.GetString("SUPABASE_URL")
+	}
+	if cfg.Supabase.AnonKey == "" {
+		cfg.Supabase.AnonKey = sv.GetString("SUPABASE_ANON_KEY")
+	}
+	return nil
+}
+
+// applyLocalEnvDefaults 从项目根 .env / .env.local 填充仍为空的 Supabase service_role 等。
+func applyLocalEnvDefaults(configPath string, cfg *Config) error {
+	root := filepath.Dir(configPath)
+	for _, name := range []string{".env", ".env.local"} {
+		path := filepath.Join(root, name)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		}
+		sv := viper.New()
+		sv.SetConfigFile(path)
+		sv.SetConfigType("env")
+		if err := sv.ReadInConfig(); err != nil {
+			return fmt.Errorf("读取 %s 失败: %w", name, err)
+		}
+		if cfg.Supabase.ServiceRoleKey == "" {
+			cfg.Supabase.ServiceRoleKey = sv.GetString("SUPABASE_SERVICE_ROLE_KEY")
+		}
+	}
+	return nil
 }
 
 // DSN 生成 PostgreSQL 连接字符串。

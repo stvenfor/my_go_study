@@ -15,8 +15,8 @@ set -euo pipefail
 source "$(dirname "$0")/source-env.sh"
 
 BASE_URL="${BASE_URL:-http://localhost:8080}"
-SUPABASE_URL="${SUPABASE_URL:-https://uqznnzkugvhsrlcudrbj.supabase.co}"
-ANON_KEY="${SUPABASE_ANON_KEY:-sb_publishable_b6_-AnEAi19hTurNNu7ojA_sL4oHgf5}"
+SUPABASE_URL="${SUPABASE_URL:?请在 configs/supabase.env 配置 SUPABASE_URL}"
+ANON_KEY="${SUPABASE_ANON_KEY:?请在 configs/supabase.env 配置 SUPABASE_ANON_KEY}"
 TOKEN="${SUPABASE_ACCESS_TOKEN:-}"
 SERVICE_ROLE="${SUPABASE_SERVICE_ROLE_KEY:-}"
 

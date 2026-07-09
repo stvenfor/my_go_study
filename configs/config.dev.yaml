@@ -13,8 +13,4 @@ database:
 redis:
   addr: localhost:6379
 
-supabase:
-  url: https://uqznnzkugvhsrlcudrbj.supabase.co
-  anon_key: sb_publishable_b6_-AnEAi19hTurNNu7ojA_sL4oHgf5
-  # 可选：配置 SUPABASE_SERVICE_ROLE_KEY 环境变量以区分「未注册」与「密码错误」
-  service_role_key: ""
+# Supabase 常量见 configs/supabase.env（入库）；service_role 见 .env.local

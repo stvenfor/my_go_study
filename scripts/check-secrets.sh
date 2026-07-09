@@ -29,21 +29,18 @@ check_tracked() {
 }
 
 # 已入库的 env 类文件
-for f in .env .env.example configs/config.dev.yaml configs/config.yaml configs/config.prod.yaml; do
+for f in configs/supabase.env configs/supabase.env.example .env .env.example configs/config.dev.yaml configs/config.yaml configs/config.prod.yaml; do
   [[ -f "$f" ]] && check_tracked "$f"
 done
 
 # 暂存区中的新增/修改
-while IFS= read -r -d '' path; do
+while IFS= read -r path; do
   case "$path" in
     *.env|*.env.*|configs/*.yaml)
-      if grep -qE "$PATTERN" "$path" 2>/dev/null; then
-        echo "❌ 暂存区 $path 含 service_role 密钥"
-        FAILED=1
-      fi
+      [[ -f "$path" ]] && check_file_content "$path"
       ;;
   esac
-done < <(git diff --cached --name-only -z 2>/dev/null || true)
+done < <(git diff --cached --name-only 2>/dev/null || true)
 
 if [[ "$FAILED" -ne 0 ]]; then
   echo ""

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/supabase-community/gotrue-go/types"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
 )
+
+const supabaseAuthTimeout = 20 * time.Second
 
 var (
 	// ErrEmailConfirmationRequired 注册成功但需邮箱验证后才能登录。
@@ -40,7 +43,6 @@ func NewSupabaseAuthUsecase(sb *pkgsb.Client) *SupabaseAuthUsecase {
 
 // Register 使用邮箱密码在 Supabase 注册。
 func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput) (*SupabaseAuthOutput, error) {
-	_ = ctx
 	email := strings.TrimSpace(input.Email)
 	if email == "" || input.Password == "" {
 		return nil, ErrInvalidParams
@@ -54,13 +56,21 @@ func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput)
 		metadata["display_name"] = name
 	}
 
-	resp, err := u.sb.Anon.Auth.Signup(types.SignupRequest{
-		Email:    email,
-		Password: input.Password,
-		Data:     metadata,
+	var resp *types.SignupResponse
+	err := u.withAuthTimeout(ctx, func(ctx context.Context) error {
+		var callErr error
+		resp, callErr = u.sb.Anon.Auth.Signup(types.SignupRequest{
+			Email:    email,
+			Password: input.Password,
+			Data:     metadata,
+		})
+		return callErr
 	})
 	if err != nil {
 		return nil, mapSupabaseAuthError(err)
+	}
+	if resp == nil {
+		return nil, ErrSupabaseUnavailable
 	}
 
 	user := resp.User
@@ -84,7 +94,6 @@ func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput)
 
 // Login 使用邮箱密码登录 Supabase 并返回 access token。
 func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*SupabaseAuthOutput, error) {
-	_ = ctx
 	email := strings.TrimSpace(input.Username)
 	if email == "" || input.Password == "" {
 		return nil, ErrInvalidParams
@@ -93,7 +102,12 @@ func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*Sup
 		return nil, ErrInvalidCredentials
 	}
 
-	token, err := u.sb.Anon.Auth.SignInWithEmailPassword(email, input.Password)
+	var token *types.TokenResponse
+	err := u.withAuthTimeout(ctx, func(ctx context.Context) error {
+		var callErr error
+		token, callErr = u.sb.Anon.Auth.SignInWithEmailPassword(email, input.Password)
+		return callErr
+	})
 	if err != nil {
 		mapped := mapSupabaseAuthError(err)
 		if errors.Is(mapped, ErrInvalidCredentials) {
@@ -102,6 +116,29 @@ func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*Sup
 		return nil, mapped
 	}
 	return supabaseAuthOutputFromToken(token, email), nil
+}
+
+func (u *SupabaseAuthUsecase) withAuthTimeout(ctx context.Context, fn func(context.Context) error) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, supabaseAuthTimeout)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- fn(ctx)
+	}()
+
+	select {
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return ErrSupabaseUnavailable
+		}
+		return ctx.Err()
+	case err := <-errCh:
+		return err
+	}
 }
 
 func (u *SupabaseAuthUsecase) refineInvalidCredentials(email string, fallback error) error {
@@ -169,7 +206,8 @@ func mapSupabaseAuthError(err error) error {
 		return ErrInvalidParams
 	case strings.Contains(msg, "invalid api key"),
 		strings.Contains(msg, "no api key"),
-		strings.Contains(msg, "jwt"):
+		strings.Contains(msg, "invalid jwt"),
+		strings.Contains(msg, "jwt signature"):
 		return ErrInvalidCredentials
 	case strings.Contains(msg, "timeout"),
 		strings.Contains(msg, "deadline exceeded"),
