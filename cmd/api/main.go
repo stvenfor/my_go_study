@@ -40,7 +40,7 @@ func run() error {
 		env = "dev"
 	}
 
-	cfg, err := config.Load("configs", env)
+	cfg, err := config.Load(config.ResolveConfigDir(), env)
 	if err != nil {
 		return err
 	}
@@ -50,6 +50,10 @@ func run() error {
 		return err
 	}
 	defer logger.Sync()
+
+	if !cfg.Supabase.Enabled() {
+		log.Warn("Supabase 未启用：请检查 configs/supabase.env 或 SUPABASE_URL / SUPABASE_ANON_KEY 环境变量")
+	}
 
 	db, err := database.NewPostgres(cfg.Database)
 	if err != nil {

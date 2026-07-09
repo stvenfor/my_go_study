@@ -9,7 +9,7 @@
 | Go 后端 | `my_go_study` | Gin + Clean Architecture，Supabase 认证与数据代理 |
 | Flutter 客户端 | `my_ai_project` | 邮箱密码登录走 Go 后端，业务数据走 Go 代理 Supabase |
 
-**共用 Supabase Project**：Flutter `.env` 与 Go `.env` 中的 `SUPABASE_URL`、`SUPABASE_ANON_KEY` 必须一致。
+**共用 Supabase Project**：Go 侧见 `configs/supabase.env`，Flutter 侧见 `.env`，两者 `URL` / `ANON_KEY` 须一致。
 
 ---
 
@@ -84,18 +84,18 @@ flowchart TB
 
 ### 2.1 环境变量
 
-复制模板后填写（**`.env` 须入库**，与团队保持同步）：
+团队共用常量写入 **`configs/supabase.env`**（入库）；`service_role` 仅 **`.env.local`**。
 
 ```bash
 cp .env.example .env
+cp .env.local.example .env.local
 ```
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `SUPABASE_URL` | 是 | Project URL，如 `https://xxx.supabase.co` |
-| `SUPABASE_ANON_KEY` | 是 | Dashboard → Settings → API → anon / publishable key |
-| `SUPABASE_SERVICE_ROLE_KEY` | 推荐 | **仅 `.env.local`**；勿写入入库 `.env`（GitHub 推送保护拦截 `sb_secret_`） |
-| `JWT_SECRET` | 是 | 自建 JWT 中间件仍需要（`/api/v1/user/list` 等遗留路由） |
+| 变量 | 文件 |
+|------|------|
+| `SUPABASE_URL` | `configs/supabase.env` |
+| `SUPABASE_ANON_KEY` | `configs/supabase.env` |
+| `SUPABASE_SERVICE_ROLE_KEY` | `.env.local`（推荐） |
 
 `config.SupabaseConfig.Enabled()` 在 `URL` 与 `AnonKey` 均非空时返回 `true`，此时 `main.go` 会初始化全部 Supabase 组件。
 

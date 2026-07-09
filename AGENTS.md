@@ -57,17 +57,16 @@ pkg/
 ## 配置与环境变量
 
 ```bash
-cp .env.example .env   # .env 须入库
+cp .env.example .env
+cp configs/supabase.env.example configs/supabase.env   # 团队 Supabase 常量（通常已入库）
+cp .env.local.example .env.local                       # 本地 service_role
 ```
 
-| 变量 | 说明 |
-|------|------|
-| `SUPABASE_URL` | 必填，与 Flutter 一致 |
-| `SUPABASE_ANON_KEY` | 必填 |
-| `SUPABASE_SERVICE_ROLE_KEY` | **仅 `.env.local`**（私密，GitHub 会拦截入库的 `sb_secret_`） |
-| `JWT_SECRET` | 自建 JWT 路由仍需 |
-
-`.env` 须入库（团队共用 URL、anon key 等）；`service_role` 写入 `.env.local`（复制 `.env.local.example`）。`make run` 与联调脚本会自动加载两者。
+| 文件 | 入库 | 说明 |
+|------|------|------|
+| `configs/supabase.env` | 是 | `SUPABASE_URL`、`SUPABASE_ANON_KEY` 团队常量 |
+| `.env` | 是 | 应用运行时（DB、Redis、JWT 等） |
+| `.env.local` | 否 | `SUPABASE_SERVICE_ROLE_KEY` 私密密钥 |
 
 推送前执行 `make check-secrets`，或启用 Git 钩子：
 
@@ -92,7 +91,7 @@ make test-transactions    # transactions 联调
 4. PostgREST 请求必须用 `client.WithUserToken(accessToken)`，不可仅用 Admin 客户端绕过 RLS
 5. `transactions` 查询必须带 `.Eq("user_id", userID)`，并确保 Supabase RLS 已迁移
 6. 响应 DTO 放 `internal/delivery/http/dto/response/`，Flutter 兼容接口注意 snake_case
-7. **`.env` 须入库**；`SUPABASE_SERVICE_ROLE_KEY` 仅放 **`.env.local`**；推送前 `make check-secrets`
+7. **Supabase 常量**放 `configs/supabase.env`（入库）；**`.env`** 放应用配置；**service_role** 仅 `.env.local`；推送前 `make check-secrets`
 
 ## 相关文档
 
