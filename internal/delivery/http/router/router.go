@@ -6,6 +6,7 @@ import (
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/middleware"
+	wshandler "github.com/stvenfor/my_go_study/internal/delivery/ws"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 	"go.uber.org/zap"
@@ -13,13 +14,16 @@ import (
 
 // Options 路由依赖。
 type Options struct {
-	Log                  *zap.Logger
-	Mode                 string
-	JWTManager           *jwtmanager.Manager
-	UserHandler          *handler.UserHandler
-	ProfileController    *controller.ProfileController
+	Log                   *zap.Logger
+	Mode                  string
+	JWTManager            *jwtmanager.Manager
+	UserHandler           *handler.UserHandler
+	ProfileController     *controller.ProfileController
 	TransactionController *controller.TransactionController
-	Supabase             config.SupabaseConfig
+	RealtimeController    *controller.RealtimeController
+	WSHandler             *wshandler.Handler
+	Config                config.Config
+	Supabase              config.SupabaseConfig
 }
 
 // Setup 构建 Gin 路由引擎。
@@ -45,6 +49,19 @@ func Setup(opts Options) *gin.Engine {
 	if opts.Supabase.Enabled() && opts.ProfileController != nil {
 		sbAuth := middleware.SupabaseAuth(opts.Supabase)
 		registerProfileRoutes(v1, sbAuth, opts.ProfileController)
+	}
+
+	if opts.Supabase.Enabled() && opts.RealtimeController != nil {
+		sbAuth := middleware.SupabaseAuth(opts.Supabase)
+		registerRealtimeRoutes(v1, sbAuth, opts.RealtimeController)
+	}
+
+	if opts.WSHandler != nil {
+		wsPath := opts.Config.Realtime.WsPath
+		if wsPath == "" {
+			wsPath = "/realtime/v1/connect"
+		}
+		r.GET(wsPath, opts.WSHandler.ServeWS)
 	}
 
 	return r

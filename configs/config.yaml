@@ -36,3 +36,11 @@ log:
   max_backups: 7
   max_age: 30
   compress: true
+
+realtime:
+  ws_path: /realtime/v1/connect
+  ticket_ttl_seconds: 120
+  heartbeat_interval_seconds: 25
+  max_connections_per_user: 3
+  event_retention: 200
+  public_ws_host: "127.0.0.1"

@@ -429,6 +429,7 @@ make run
 ## 11. 相关文档
 
 - [启动指南](./startup-guide.md) — 环境、Makefile、Docker
+- [Realtime WebSocket 协议与联调指南](./realtime-websocket.md) — 收发消息、心跳、订阅、重连 sync
 - Flutter [AGENTS.md](../../../my_ai_project/AGENTS.md) — Agent 开发约定与认证分层
 - [Supabase Auth 文档](https://supabase.com/docs/guides/auth)
 - [Supabase RLS 文档](https://supabase.com/docs/guides/auth/row-level-security)
