@@ -16,6 +16,7 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Log      LogConfig      `mapstructure:"log"`
+	Supabase SupabaseConfig `mapstructure:"supabase"`
 }
 
 // ServerConfig HTTP 服务配置。
@@ -48,6 +49,26 @@ type RedisConfig struct {
 type JWTConfig struct {
 	Secret      string `mapstructure:"secret"`
 	ExpireHours int    `mapstructure:"expire_hours"`
+}
+
+// SupabaseConfig Supabase 连接配置（与 Flutter my_ai_project 共用同一 Project）。
+type SupabaseConfig struct {
+	URL            string `mapstructure:"url"`
+	AnonKey        string `mapstructure:"anon_key"`
+	ServiceRoleKey string `mapstructure:"service_role_key"`
+}
+
+// Enabled 是否已配置 Supabase（用于启用 profile / transactions 路由）。
+func (s SupabaseConfig) Enabled() bool {
+	return s.URL != "" && s.AnonKey != ""
+}
+
+// DBKey 返回访问 PostgREST 的 API Key（优先 service_role）。
+func (s SupabaseConfig) DBKey() string {
+	if s.ServiceRoleKey != "" {
+		return s.ServiceRoleKey
+	}
+	return s.AnonKey
 }
 
 // LogConfig 日志输出配置。
@@ -92,6 +113,9 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
 	_ = v.BindEnv("redis.password", "REDIS_PASSWORD")
 	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
+	_ = v.BindEnv("supabase.url", "SUPABASE_URL")
+	_ = v.BindEnv("supabase.anon_key", "SUPABASE_ANON_KEY", "SUPABASE_KEY")
+	_ = v.BindEnv("supabase.service_role_key", "SUPABASE_SERVICE_ROLE_KEY")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {

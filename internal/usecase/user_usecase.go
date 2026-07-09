@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
 	domainrepo "github.com/stvenfor/my_go_study/internal/domain/repository"
@@ -104,6 +105,12 @@ func (u *UserUsecase) Login(ctx context.Context, input LoginInput) (*AuthOutput,
 	if err != nil {
 		return nil, fmt.Errorf("查询用户失败: %w", err)
 	}
+	if user == nil && strings.Contains(input.Username, "@") {
+		user, err = u.repo.FindByEmail(ctx, strings.TrimSpace(input.Username))
+		if err != nil {
+			return nil, fmt.Errorf("查询用户失败: %w", err)
+		}
+	}
 	if user == nil {
 		return nil, ErrInvalidCredentials
 	}
@@ -130,4 +137,16 @@ func (u *UserUsecase) GetProfile(ctx context.Context, userID uint) (*entity.User
 		return nil, ErrUserNotFound
 	}
 	return user, nil
+}
+
+// ListUsers 分页获取用户列表。
+func (u *UserUsecase) ListUsers(ctx context.Context, page, size int) ([]entity.User, int64, error) {
+	if page <= 0 || size <= 0 {
+		return nil, 0, ErrInvalidParams
+	}
+	users, total, err := u.repo.List(ctx, (page-1)*size, size)
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询用户列表失败: %w", err)
+	}
+	return users, total, nil
 }

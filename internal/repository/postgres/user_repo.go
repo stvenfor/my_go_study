@@ -67,3 +67,22 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*entity
 	}
 	return &user, nil
 }
+
+// List 分页查询用户列表，按 id 倒序。
+func (r *userRepository) List(ctx context.Context, offset, limit int) ([]entity.User, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&entity.User{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("统计用户数量失败: %w", err)
+	}
+
+	var users []entity.User
+	err := r.db.WithContext(ctx).
+		Order("id DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&users).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("分页查询用户失败: %w", err)
+	}
+	return users, total, nil
+}

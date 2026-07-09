@@ -2,13 +2,18 @@
 bin/
 tmp/
 
+# 本地覆盖（不入库；主配置 .env 须入库）
+.env.local
+.env.*.local
+
 # Logs
 logs/
 *.log
 
-# Editor
+# Editor / local tooling
 .idea/
 .vscode/
+.codegraph/
 
 # OS
 .DS_Store
