@@ -17,8 +17,9 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
-	Log      LogConfig      `mapstructure:"log"`
-	Supabase SupabaseConfig `mapstructure:"supabase"`
+	Log       LogConfig      `mapstructure:"log"`
+	Supabase  SupabaseConfig `mapstructure:"supabase"`
+	Realtime  RealtimeConfig `mapstructure:"realtime"`
 }
 
 // ServerConfig HTTP 服务配置。
@@ -83,6 +84,37 @@ type LogConfig struct {
 	Compress   bool   `mapstructure:"compress"`
 }
 
+// RealtimeConfig WebSocket Realtime 网关配置。
+type RealtimeConfig struct {
+	WsPath                 string `mapstructure:"ws_path"`
+	TicketTTLSeconds       int    `mapstructure:"ticket_ttl_seconds"`
+	HeartbeatIntervalSec   int    `mapstructure:"heartbeat_interval_seconds"`
+	MaxConnectionsPerUser  int    `mapstructure:"max_connections_per_user"`
+	EventRetention         int    `mapstructure:"event_retention"`
+	PublicWSHost           string `mapstructure:"public_ws_host"`
+}
+
+// TicketTTL 返回 ticket 有效期。
+func (r RealtimeConfig) TicketTTL() time.Duration {
+	if r.TicketTTLSeconds <= 0 {
+		return 120 * time.Second
+	}
+	return time.Duration(r.TicketTTLSeconds) * time.Second
+}
+
+// WSURL 构建 WebSocket 连接地址（供 ticket 接口返回）。
+func (r RealtimeConfig) WSURL(httpPort int) string {
+	path := r.WsPath
+	if path == "" {
+		path = "/realtime/v1/connect"
+	}
+	host := r.PublicWSHost
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return fmt.Sprintf("ws://%s:%d%s", host, httpPort, path)
+}
+
 // Load 读取配置文件并解析为 Config。
 // configPath 传 configs 目录路径，env 传 dev/prod 等环境名。
 func Load(configPath, env string) (*Config, error) {
@@ -137,6 +169,18 @@ func Load(configPath, env string) (*Config, error) {
 	}
 	if cfg.Database.ConnMaxLifetimeMinutes <= 0 {
 		cfg.Database.ConnMaxLifetimeMinutes = 30
+	}
+	if cfg.Realtime.WsPath == "" {
+		cfg.Realtime.WsPath = "/realtime/v1/connect"
+	}
+	if cfg.Realtime.TicketTTLSeconds <= 0 {
+		cfg.Realtime.TicketTTLSeconds = 120
+	}
+	if cfg.Realtime.MaxConnectionsPerUser <= 0 {
+		cfg.Realtime.MaxConnectionsPerUser = 3
+	}
+	if cfg.Realtime.EventRetention <= 0 {
+		cfg.Realtime.EventRetention = 200
 	}
 
 	return &cfg, nil

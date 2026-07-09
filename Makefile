@@ -3,7 +3,7 @@ MAIN_PATH := ./cmd/api
 BIN_DIR := ./bin
 DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
-.PHONY: run build test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets
+.PHONY: run build test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets test-realtime
 
 run:
 	./scripts/load-env.sh go run $(MAIN_PATH)
@@ -64,6 +64,10 @@ test-transactions:
 # 检查 Supabase transactions RLS 是否在数据库层生效
 check-rls:
 	./scripts/check_transactions_rls.sh
+
+# Realtime WebSocket 联调（需 Go 后端 + Redis + 有效 Supabase 登录或 SUPABASE_ACCESS_TOKEN）
+test-realtime:
+	./scripts/test_realtime_ws.sh
 
 # 推送前检查：入库文件不得含 Supabase service_role（GitHub 推送保护）
 check-secrets:

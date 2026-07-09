@@ -42,8 +42,9 @@ pkg/
 | Token 校验 | `middleware.SupabaseAuth` | HTTP `GET /auth/v1/user` |
 | Profile CRUD | `ProfileController` → `profile_repo` | PostgREST + `WithUserToken` |
 | Transactions CRUD | `TransactionController` → `transaction_repo` | PostgREST + `user_id` 过滤 + RLS |
+| Realtime WS | `RealtimeController` + `ws.Handler` | Ticket(Redis) → WS auth → Hub 广播 + Sync |
 
-**启用条件**：`SUPABASE_URL` + `SUPABASE_ANON_KEY` 非空（`config.SupabaseConfig.Enabled()`）。
+**启用条件**：`SUPABASE_URL` + `SUPABASE_ANON_KEY` 非空（`config.SupabaseConfig.Enabled()`）。Realtime 路由与 WS 网关随 Supabase 启用一并注册。
 
 ## 两套认证（勿混淆）
 
@@ -80,6 +81,7 @@ git config core.hooksPath .githooks   # 可选，本地一次配置
 make run                  # 启动 API
 make test                 # 单元测试
 make test-transactions    # transactions 联调
+make test-realtime        # WebSocket 联调（ws-ticket/sync/push + WS auth）
 ./scripts/check_transactions_rls.sh
 ```
 
@@ -97,4 +99,5 @@ make test-transactions    # transactions 联调
 
 - [启动指南](./docs/startup-guide.md)
 - [Supabase 集成说明](./docs/supabase-integration.md)
+- [Realtime WebSocket 协议与联调指南](./docs/realtime-websocket.md)
 - Flutter [AGENTS.md](../../my_ai_project/AGENTS.md)

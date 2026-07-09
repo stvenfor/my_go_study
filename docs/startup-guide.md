@@ -336,6 +336,23 @@ make test-transactions          # 完整 CRUD 测试
 ./scripts/check_transactions_rls.sh  # 检查 RLS 是否已在 Supabase 启用
 ```
 
+#### Realtime WebSocket（需 Supabase JWT）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/realtime/ws-ticket` | 签发 WS 一次性 ticket |
+| POST | `/api/v1/realtime/sync` | 重连后按 `sinceSeq` 增量同步 |
+| POST | `/api/v1/realtime/push` | 开发环境推送 `sys.notify` |
+| GET | `/realtime/v1/connect` | WebSocket 升级（无 HTTP 鉴权，首帧 `auth` 换票） |
+
+响应为 **直出 JSON**（非 `ResultModel` 信封）。协议、心跳、消息示例见 [Realtime WebSocket 协议与联调指南](./realtime-websocket.md)。
+
+```bash
+make test-realtime   # 一键联调（需 Redis + make run）
+```
+
+控制器与路由：`controller/realtime_controller.go`、`router/realtime_routes.go`、`delivery/ws/`。
+
 ### 6.2 自建用户接口响应格式
 
 非列表：
@@ -383,6 +400,7 @@ make test-transactions          # 完整 CRUD 测试
 | `make docker-down` | 停止并移除容器 |
 | `make clean` | 删除 `bin/`、`tmp/`、日志 |
 | `make test-transactions` | transactions CRUD 联调（`SUPABASE_SERVICE_ROLE_KEY` 放 `.env.local`） |
+| `make test-realtime` | WebSocket 联调（ws-ticket / sync / push + WS auth） |
 | `make check-secrets` | 推送前检查入库文件是否含 service_role 密钥 |
 
 ---
@@ -404,6 +422,27 @@ http://10.0.2.2:8080    # Android 模拟器（需在 EnvConfig 中修改）
 4. `AuthHeaderProvider` 自动在业务请求头附带 `Authorization: Bearer <token>`
 5. **业务数据**（profile / transactions）走 `/api/v1/me/*`、`/api/v1/transactions`
 6. 详细架构见 [Supabase 集成说明](./supabase-integration.md)
+
+### 8.1 Realtime WebSocket
+
+登录后 Flutter `module_realtime` 自动连接 Go WS 网关：
+
+```text
+POST /api/v1/realtime/ws-ticket  → 换票
+GET  /realtime/v1/connect        → WebSocket 升级 + auth
+POST /api/v1/realtime/sync       → 重连增量同步
+POST /api/v1/realtime/push       → 开发推送 sys.notify
+```
+
+联调：
+
+```bash
+make test-realtime   # 需 make run + Redis；.env.local 配 service_role 可自动建测试用户
+```
+
+协议、心跳、收发消息示例见 [Realtime WebSocket 协议与联调指南](./realtime-websocket.md)。
+
+Flutter 调试：设置 → **Realtime / WebSocket 调试**（Debug 模式）。
 
 ---
 

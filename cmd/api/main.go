@@ -14,7 +14,9 @@ import (
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/router"
+	wshandler "github.com/stvenfor/my_go_study/internal/delivery/ws"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
+	redisrepo "github.com/stvenfor/my_go_study/internal/repository/redis"
 	sbrepo "github.com/stvenfor/my_go_study/internal/repository/supabase"
 	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	"github.com/stvenfor/my_go_study/internal/usecase"
@@ -87,6 +89,8 @@ func run() error {
 	var profileController *controller.ProfileController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
+	var realtimeController *controller.RealtimeController
+	var wsGateway *wshandler.Handler
 	if cfg.Supabase.Enabled() {
 		var err error
 		sbClient, err = pkgsb.New(cfg.Supabase)
@@ -101,6 +105,19 @@ func run() error {
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
 		log.Info("Supabase 已启用（认证 + profile + transactions）", zap.String("url", cfg.Supabase.URL))
+
+		hub := wshandler.NewHub()
+		ticketRepo := redisrepo.NewWSTicketRepository(redisClient)
+		eventRepo := redisrepo.NewRealtimeEventRepository(redisClient)
+		ticketUC := usecase.NewRealtimeTicketUsecase(ticketRepo, *cfg)
+		syncUC := usecase.NewRealtimeSyncUsecase(eventRepo, *cfg)
+		wsGateway = wshandler.NewHandler(hub, ticketUC, log)
+		pushUC := usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub)
+		realtimeController = controller.NewRealtimeController(ticketUC, syncUC, pushUC)
+		log.Info("Realtime WebSocket 已启用",
+			zap.String("ws_path", cfg.Realtime.WsPath),
+			zap.String("ws_url", cfg.Realtime.WSURL(cfg.Server.Port)),
+		)
 	}
 
 	userHandler := handler.NewUserHandler(userUC, supabaseAuthUC)
@@ -112,6 +129,9 @@ func run() error {
 		UserHandler:           userHandler,
 		ProfileController:     profileController,
 		TransactionController: transactionController,
+		RealtimeController:    realtimeController,
+		WSHandler:             wsGateway,
+		Config:                *cfg,
 		Supabase:              cfg.Supabase,
 	})
 	server := &http.Server{
