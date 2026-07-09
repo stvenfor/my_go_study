@@ -473,7 +473,7 @@ Flutter 客户端主动发送，Go 服务端立即响应。
 
 ### 4.5 `event` — 业务事件
 
-服务端推送（或客户端上行，MVP 阶段客户端 event 仅回 `ack`）。
+服务端推送，或客户端上行 `presence.report`（Go 处理后广播 `presence.update`）。
 
 **服务端 → 客户端（sys.notify 示例）**
 
@@ -500,7 +500,7 @@ Flutter 客户端主动发送，Go 服务端立即响应。
 | `title` / `body` | 通知展示文案 |
 | 其他 | 通过 `push.extra` 或业务扩展 |
 
-**客户端 → 服务端（上行 event，MVP）**
+**客户端 → 服务端（presence.report，Flutter 上报在线状态）**
 
 ```json
 {
@@ -510,7 +510,8 @@ Flutter 客户端主动发送，Go 服务端立即响应。
   "ts": 1739000005000,
   "payload": {
     "name": "presence.report",
-    "status": "online"
+    "online": true,
+    "device": "ios"
   }
 }
 ```
@@ -529,7 +530,58 @@ Flutter 客户端主动发送，Go 服务端立即响应。
 }
 ```
 
-> MVP 阶段客户端上行的 `event` **不会** 广播给其他用户，仅确认收到。跨用户广播需后续业务 usecase 扩展。
+**服务端 → 其他客户端（presence.update 广播，排除发送者）**
+
+Go `RealtimePresenceUsecase` 收到 `presence.report` 后：
+1. 更新 Redis 在线集合 `presence:online`
+2. 向所有订阅 `presence.bulk` 的连接广播（不含上报者）
+
+```json
+{
+  "id": "evt_presence_1739000005100",
+  "type": "event",
+  "topic": "presence.bulk",
+  "ts": 1739000005100,
+  "payload": {
+    "name": "presence.update",
+    "userId": "275d3060-849b-4ff6-a67d-b9dd3c5c9524",
+    "online": true,
+    "onlineCount": 3,
+    "device": "ios"
+  }
+}
+```
+
+```mermaid
+sequenceDiagram
+    participant A as Flutter A
+    participant Go as Go WS Hub
+    participant B as Flutter B
+
+    A->>Go: event presence.report (online=true)
+    Go->>Go: Redis SetOnline + 统计 onlineCount
+    Go-->>A: ack { accepted: true }
+    Go-->>B: event presence.update (userId=A)
+    B->>B: watchEvents(presence.update)
+```
+
+**Flutter 发送示例**
+
+```dart
+await client.sendEvent(
+  topic: RealtimeTopics.presenceBulk,
+  eventName: 'presence.report',
+  payload: {'online': true, 'device': 'ios'},
+);
+
+client.watchEvents(eventName: 'presence.update').listen((e) {
+  print('${e.payload['userId']} online=${e.payload['online']}');
+});
+```
+
+调试页：**设置 → Realtime 调试 → 上报 presence.report**，底部会显示收到的 `presence.update`。
+
+> 其他 topic 的上行 `event` 仍仅回 `ack`，不广播。扩展方式：在 `handler.go` 的 `handleEvent` 增加分支或注入新 usecase。
 
 #### Flutter 事件处理 — `sys.notify.show`
 
@@ -841,7 +893,8 @@ curl -X POST http://127.0.0.1:8080/api/v1/realtime/push \
 | `internal/delivery/ws/handler.go` | WS 消息分发（auth/sub/ping） |
 | `internal/delivery/ws/client.go` | 心跳、读写 pump |
 | `internal/delivery/ws/hub.go` | 用户级广播 |
-| `internal/usecase/realtime_*_usecase.go` | Ticket / Sync / Push 业务 |
+| `internal/usecase/realtime_presence_usecase.go` | presence.report → presence.update |
+| `internal/repository/redis/presence_repo.go` | 在线状态 Redis |
 | `internal/repository/redis/ws_ticket_repo.go` | Ticket Redis 仓储 |
 | `internal/repository/redis/realtime_event_repo.go` | 事件 Redis 仓储 |
 | `scripts/test_realtime_ws.sh` | 联调脚本 |
@@ -868,5 +921,5 @@ curl -X POST http://127.0.0.1:8080/api/v1/realtime/push \
 | `max_connections_per_user: 3` | 配置存在，**未强制** |
 | `WSCloseKicked (4002)` | 常量已定义，**未实现**踢人逻辑 |
 | `heartbeat_interval_seconds` (YAML) | **未接入** Go 运行时，实际用 `client.go` 硬编码 |
-| 客户端上行 `event` 广播 | MVP 仅 `ack`，不转发给其他用户 |
+| 客户端上行 `event` 广播 | ✅ `presence.report`；其他 topic 仅 `ack` |
 | 生产 `wss://` | 需反向代理（Nginx/Caddy）终止 TLS |

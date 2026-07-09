@@ -16,6 +16,15 @@ PASSWORD="${TEST_PASSWORD:-123456}"
 TOKEN="${SUPABASE_ACCESS_TOKEN:-}"
 SERVICE_ROLE="${SUPABASE_SERVICE_ROLE_KEY:-}"
 
+check_server() {
+  if ! curl -sf --connect-timeout 3 "$BASE_URL/health" >/dev/null; then
+    echo "错误: $BASE_URL/health 不可达（curl 退出码 7 通常表示服务未启动）"
+    echo "  请先在另一终端执行: cd my_go_study && make run"
+    echo "  并确认 Redis 已运行: redis-cli ping"
+    exit 1
+  fi
+}
+
 ensure_token() {
   if [[ -n "$TOKEN" ]]; then
     return 0
@@ -62,6 +71,7 @@ ensure_token() {
 }
 
 echo ">>> 1. health"
+check_server
 curl -sf "$BASE_URL/health" | grep -q ok && echo "OK"
 
 if [[ -n "$TOKEN" ]]; then
