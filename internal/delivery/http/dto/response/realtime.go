@@ -18,6 +18,8 @@ type RealtimeSyncData struct {
 
 // RealtimePushData 推送调试响应。
 type RealtimePushData struct {
-	Envelope  entity.RealtimeEnvelope `json:"envelope"`
+	Envelope  entity.RealtimeEnvelope `json:"envelope,omitempty"`
 	Delivered int                     `json:"delivered"`
+	Queued    bool                    `json:"queued,omitempty"`
+	TaskID    string                  `json:"taskId,omitempty"`
 }

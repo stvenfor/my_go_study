@@ -15,6 +15,8 @@ EMAIL="${TEST_EMAIL:-demo@example.com}"
 PASSWORD="${TEST_PASSWORD:-123456}"
 TOKEN="${SUPABASE_ACCESS_TOKEN:-}"
 SERVICE_ROLE="${SUPABASE_SERVICE_ROLE_KEY:-}"
+DEVICE_ID="${TEST_DEVICE_ID:-rt-test-device-$(date +%s)}"
+SESSION_ID=""
 
 check_server() {
   if ! curl -sf --connect-timeout 3 "$BASE_URL/health" >/dev/null; then
@@ -26,15 +28,16 @@ check_server() {
 }
 
 ensure_token() {
-  if [[ -n "$TOKEN" ]]; then
+  if [[ -n "$TOKEN" && -n "$SESSION_ID" ]]; then
     return 0
   fi
 
   echo ">>> 2. login via BFF ($EMAIL)"
   if LOGIN_RESP=$(curl -sf -X POST "$BASE_URL/api/v1/user/login" \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" 2>/dev/null); then
+    -d "{\"username\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"device_id\":\"$DEVICE_ID\",\"platform\":\"ios\"}" 2>/dev/null); then
     TOKEN=$(python3 -c "import json,sys; print(json.load(sys.stdin)['data']['token'])" <<<"$LOGIN_RESP")
+    SESSION_ID=$(python3 -c "import json,sys; print(json.load(sys.stdin)['data']['session_id'])" <<<"$LOGIN_RESP")
     USER_ID=$(python3 -c "import json,sys; print(json.load(sys.stdin)['data']['user']['id'])" <<<"$LOGIN_RESP")
     return 0
   fi
@@ -74,17 +77,27 @@ echo ">>> 1. health"
 check_server
 curl -sf "$BASE_URL/health" | grep -q ok && echo "OK"
 
-if [[ -n "$TOKEN" ]]; then
-  echo ">>> 2. 使用 SUPABASE_ACCESS_TOKEN"
+if [[ -n "$TOKEN" && -z "$SESSION_ID" ]]; then
+  echo ">>> 2. 使用 SUPABASE_ACCESS_TOKEN（需 BFF 登录获取 session，改为走 ensure_token）"
+  TOKEN=""
+fi
+if [[ -n "$TOKEN" && -n "$SESSION_ID" ]]; then
+  echo ">>> 2. 使用已有 token + session"
   USER_ID="${TEST_USER_ID:-}"
 else
   ensure_token
 fi
-echo "userId=${USER_ID:-<from token>} token_len=${#TOKEN}"
+echo "userId=${USER_ID:-<from token>} token_len=${#TOKEN} session_id=${SESSION_ID:-<none>}"
+
+auth_headers=(
+  -H "Authorization: Bearer $TOKEN"
+  -H "X-Session-ID: $SESSION_ID"
+  -H "X-Device-ID: $DEVICE_ID"
+)
 
 echo ">>> 3. ws-ticket"
 TICKET_RESP=$(curl -sf -X POST "$BASE_URL/api/v1/realtime/ws-ticket" \
-  -H "Authorization: Bearer $TOKEN" \
+  "${auth_headers[@]}" \
   -H "Content-Type: application/json" \
   -d '{"platform":"mobile"}')
 echo "$TICKET_RESP"
@@ -94,14 +107,14 @@ CONN_ID=$(python3 -c "import json,sys; print(json.load(sys.stdin)['connId'])" <<
 
 echo ">>> 4. push notify"
 PUSH_RESP=$(curl -sf -X POST "$BASE_URL/api/v1/realtime/push" \
-  -H "Authorization: Bearer $TOKEN" \
+  "${auth_headers[@]}" \
   -H "Content-Type: application/json" \
   -d '{"title":"联调通知","body":"来自 scripts/test_realtime_ws.sh"}')
 echo "$PUSH_RESP"
 
 echo ">>> 5. sync"
 SYNC_RESP=$(curl -sf -X POST "$BASE_URL/api/v1/realtime/sync" \
-  -H "Authorization: Bearer $TOKEN" \
+  "${auth_headers[@]}" \
   -H "Content-Type: application/json" \
   -d '{"sinceSeq":0,"topics":["sys.notify"]}')
 echo "$SYNC_RESP"

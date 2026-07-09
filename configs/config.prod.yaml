@@ -8,3 +8,11 @@ log:
 
 database:
   sslmode: require
+
+queue:
+  enabled: true
+
+scheduler:
+  enabled: true
+  hourly_notify:
+    enabled: true

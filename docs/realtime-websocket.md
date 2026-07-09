@@ -500,7 +500,17 @@ Flutter 客户端主动发送，Go 服务端立即响应。
 | `name` | 事件名，Flutter 按此路由到 Handler |
 | `notifyId` | 去重 ID（服务端 UUID） |
 | `title` / `body` | 通知展示文案 |
+| `category` | 消息分类：`scheduled` / `promotion` / `reminder` / `system` |
+| `priority` | `low` / `normal` / `high` |
+| `campaignId` | 批次 ID，如 `hourly-20260710-11` |
+| `scheduleSlot` | 计划槽位 ISO8601 |
+| `messageType` | 细分类，如 `hourly_digest` |
+| `expiresAt` | 毫秒过期时间 |
+| `action` | 点击行为 `{ type, route, params, url }` |
+| `metadata` | 埋点/运营透传 |
 | 其他 | 通过 `push.extra` 或业务扩展 |
+
+定时每小时通知完整示例见 [message-queue.md](./message-queue.md#定时每小时系统通知)。
 
 **客户端 → 服务端（presence.report，Flutter 上报在线状态）**
 

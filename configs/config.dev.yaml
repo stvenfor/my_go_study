@@ -13,4 +13,25 @@ database:
 redis:
   addr: localhost:6379
 
+# 测试环境固定手机号 OTP（仅 server.mode=debug 生效）
+auth:
+  dev_test_phone: "13400000000"
+  dev_test_otp: "123456"
+  dev_test_password: "dev-test-phone-secret"
+
+# 单设备白名单（可选）：内部测试账号可多设备登录
+# auth:
+#   session_whitelist_emails:
+#     - "demo@example.com"
+
 # Supabase 常量见 configs/supabase.env（入库）；service_role 见 .env.local
+
+# 开发环境启用 Asynq 异步 Push + Pub/Sub 多实例广播（需 make run-worker）
+queue:
+  enabled: true
+
+# 开发环境默认关闭 Cron，用手动触发：make trigger-hourly-notify
+scheduler:
+  enabled: true
+  hourly_notify:
+    enabled: false

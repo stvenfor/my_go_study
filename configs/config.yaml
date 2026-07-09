@@ -24,6 +24,11 @@ jwt:
   secret: change-me-in-production
   expire_hours: 72
 
+auth:
+  session_ttl_hours: 168
+  session_whitelist_user_ids: []
+  session_whitelist_emails: []
+
 supabase:
   url: ""
   anon_key: ""
@@ -44,3 +49,26 @@ realtime:
   max_connections_per_user: 3
   event_retention: 200
   public_ws_host: "127.0.0.1"
+
+# 异步任务队列（Asynq + Redis Pub/Sub 多实例 WS 广播）
+queue:
+  enabled: false
+  asynq:
+    concurrency: 10
+  pubsub:
+    channel: realtime:fanout
+
+# 定时任务（每小时系统通知，需 make run-worker）
+scheduler:
+  enabled: false
+  timezone: Asia/Shanghai
+  hourly_notify:
+    enabled: false
+    cron: "0 10-19 * * *"
+    title_template: "整点提醒"
+    body_template: "现在是 {{hour}}:00，{{message}}"
+    default_message: "别错过重要消息"
+    expires_minutes: 120
+    action:
+      type: deeplink
+      route: /home

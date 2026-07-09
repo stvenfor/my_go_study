@@ -19,52 +19,76 @@ SUPABASE_URL="${SUPABASE_URL:?请在 configs/supabase.env 配置 SUPABASE_URL}"
 ANON_KEY="${SUPABASE_ANON_KEY:?请在 configs/supabase.env 配置 SUPABASE_ANON_KEY}"
 TOKEN="${SUPABASE_ACCESS_TOKEN:-}"
 SERVICE_ROLE="${SUPABASE_SERVICE_ROLE_KEY:-}"
+DEVICE_ID="${TEST_DEVICE_ID:-tx-crud-device-$(date +%s)}"
+SESSION_ID=""
+EMAIL="${TEST_EMAIL:-}"
+PASSWORD="${TEST_PASSWORD:-123456}"
 
-auth_header() {
-  echo "Authorization: Bearer ${TOKEN}"
+auth_headers=(
+  -H "Authorization: Bearer ${TOKEN}"
+  -H "X-Session-ID: ${SESSION_ID}"
+  -H "X-Device-ID: ${DEVICE_ID}"
+)
+
+refresh_auth_headers() {
+  auth_headers=(
+    -H "Authorization: Bearer ${TOKEN}"
+    -H "X-Session-ID: ${SESSION_ID}"
+    -H "X-Device-ID: ${DEVICE_ID}"
+  )
+}
+
+bff_login() {
+  local email="$1"
+  local password="$2"
+  local resp
+  resp=$(curl -sf -X POST "${BASE_URL}/api/v1/user/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"${email}\",\"password\":\"${password}\",\"device_id\":\"${DEVICE_ID}\",\"platform\":\"ios\"}")
+  TOKEN=$(python3 -c "import json,sys; print(json.load(sys.stdin)['data']['token'])" <<<"$resp")
+  SESSION_ID=$(python3 -c "import json,sys; print(json.load(sys.stdin)['data']['session_id'])" <<<"$resp")
+  refresh_auth_headers
 }
 
 ensure_token() {
-  if [[ -n "$TOKEN" ]]; then
+  if [[ -n "$TOKEN" && -n "$SESSION_ID" ]]; then
+    return 0
+  fi
+  if [[ -n "$EMAIL" ]]; then
+    echo ">>> 通过 BFF 登录: $EMAIL"
+    bff_login "$EMAIL" "$PASSWORD"
+    echo ">>> token 已获取 (长度 ${#TOKEN}) session_id=${SESSION_ID}"
     return 0
   fi
   if [[ -z "$SERVICE_ROLE" ]]; then
-    echo "错误: 需要 SUPABASE_ACCESS_TOKEN 或 SUPABASE_SERVICE_ROLE_KEY"
+    echo "错误: 需要 TEST_EMAIL+密码、SUPABASE_ACCESS_TOKEN+SESSION，或 SUPABASE_SERVICE_ROLE_KEY"
     echo ""
-    echo "方式 1 — Flutter 登录后复制 token:"
-    echo "  Supabase.instance.client.auth.currentSession?.accessToken"
-    echo "  export SUPABASE_ACCESS_TOKEN='eyJ...'"
+    echo "方式 1 — 指定测试账号:"
+    echo "  export TEST_EMAIL='demo@example.com' TEST_PASSWORD='123456'"
     echo ""
     echo "方式 2 — 配置 service_role 自动创建测试用户:"
     echo "  export SUPABASE_SERVICE_ROLE_KEY='eyJ...'"
     exit 1
   fi
 
-  local email="go_tx_crud_$(date +%s)@gmail.com"
-  local password="TestPass123!"
+  EMAIL="go_tx_crud_$(date +%s)@gmail.com"
+  PASSWORD="TestPass123!"
 
-  echo ">>> 使用 service_role 创建已确认测试用户: $email"
+  echo ">>> 使用 service_role 创建已确认测试用户: $EMAIL"
   curl -sf --connect-timeout 15 --max-time 30 \
     -X POST "${SUPABASE_URL}/auth/v1/admin/users" \
     -H "apikey: ${SERVICE_ROLE}" \
     -H "Authorization: Bearer ${SERVICE_ROLE}" \
     -H "Content-Type: application/json" \
-    -d "{\"email\":\"${email}\",\"password\":\"${password}\",\"email_confirm\":true}" >/dev/null
+    -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\",\"email_confirm\":true}" >/dev/null
 
-  echo ">>> 登录获取 access_token"
-  local login_resp
-  login_resp=$(curl -sf --connect-timeout 15 --max-time 30 \
-    -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
-    -H "apikey: ${ANON_KEY}" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"${email}\",\"password\":\"${password}\"}")
-
-  TOKEN=$(echo "$login_resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
-  if [[ -z "$TOKEN" ]]; then
-    echo "登录失败: $login_resp"
+  echo ">>> 通过 BFF 登录获取 token + session"
+  bff_login "$EMAIL" "$PASSWORD"
+  if [[ -z "$TOKEN" || -z "$SESSION_ID" ]]; then
+    echo "BFF 登录失败"
     exit 1
   fi
-  echo ">>> token 已获取 (长度 ${#TOKEN})"
+  echo ">>> token 已获取 (长度 ${#TOKEN}) session_id=${SESSION_ID}"
 }
 
 check_server() {
@@ -94,7 +118,7 @@ echo "GET /api/v1/transactions (无 Auth) => HTTP ${code}"
 echo ""
 echo ">>> [1] GET /api/v1/transactions?limit=3"
 GET_LIST=$(curl -s -w "\n__HTTP_CODE__:%{http_code}" \
-  -H "$(auth_header)" \
+  "${auth_headers[@]}" \
   "${BASE_URL}/api/v1/transactions?limit=3")
 HTTP_CODE=$(echo "$GET_LIST" | grep '__HTTP_CODE__' | cut -d: -f2)
 BODY=$(echo "$GET_LIST" | sed '/__HTTP_CODE__/d')
@@ -106,7 +130,7 @@ echo ">>> [2] POST /api/v1/transactions"
 CREATE_BODY='{"type":"expense","category":"餐饮","amount":88.5,"date":"2026-07-08","note":"CRUD测试创建"}'
 CREATE_RESP=$(curl -s -w "\n__HTTP_CODE__:%{http_code}" \
   -X POST "${BASE_URL}/api/v1/transactions" \
-  -H "$(auth_header)" \
+  "${auth_headers[@]}" \
   -H "Content-Type: application/json" \
   -d "${CREATE_BODY}")
 HTTP_CODE=$(echo "$CREATE_RESP" | grep '__HTTP_CODE__' | cut -d: -f2)
@@ -124,7 +148,7 @@ echo ">>> 新建记录 id=${TX_ID}"
 echo ""
 echo ">>> [3] GET /api/v1/transactions/${TX_ID}"
 GET_ONE=$(curl -s -w "\n__HTTP_CODE__:%{http_code}" \
-  -H "$(auth_header)" \
+  "${auth_headers[@]}" \
   "${BASE_URL}/api/v1/transactions/${TX_ID}")
 HTTP_CODE=$(echo "$GET_ONE" | grep '__HTTP_CODE__' | cut -d: -f2)
 BODY=$(echo "$GET_ONE" | sed '/__HTTP_CODE__/d')
@@ -136,7 +160,7 @@ echo ">>> [4] PUT /api/v1/transactions/${TX_ID}"
 UPDATE_BODY='{"category":"交通","amount":99.9,"note":"CRUD测试更新"}'
 UPDATE_RESP=$(curl -s -w "\n__HTTP_CODE__:%{http_code}" \
   -X PUT "${BASE_URL}/api/v1/transactions/${TX_ID}" \
-  -H "$(auth_header)" \
+  "${auth_headers[@]}" \
   -H "Content-Type: application/json" \
   -d "${UPDATE_BODY}")
 HTTP_CODE=$(echo "$UPDATE_RESP" | grep '__HTTP_CODE__' | cut -d: -f2)
@@ -148,13 +172,13 @@ echo ""
 echo ">>> [5] DELETE /api/v1/transactions/${TX_ID}"
 DELETE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   -X DELETE "${BASE_URL}/api/v1/transactions/${TX_ID}" \
-  -H "$(auth_header)")
+  $(auth_headers))
 echo "HTTP ${DELETE_CODE}"
 
 echo ""
 echo ">>> [6] 再次 GET 应 404"
 GET_GONE=$(curl -s -w "\n__HTTP_CODE__:%{http_code}" \
-  -H "$(auth_header)" \
+  "${auth_headers[@]}" \
   "${BASE_URL}/api/v1/transactions/${TX_ID}")
 HTTP_CODE=$(echo "$GET_GONE" | grep '__HTTP_CODE__' | cut -d: -f2)
 BODY=$(echo "$GET_GONE" | sed '/__HTTP_CODE__/d')
