@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# 可选：git config core.hooksPath .githooks
+exec "$(dirname "$0")/../scripts/check-secrets.sh"

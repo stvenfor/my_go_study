@@ -11,15 +11,18 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/router"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
+	sbrepo "github.com/stvenfor/my_go_study/internal/repository/supabase"
 	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	"github.com/stvenfor/my_go_study/internal/usecase"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	"github.com/stvenfor/my_go_study/pkg/database"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 	"github.com/stvenfor/my_go_study/pkg/logger"
+	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -76,9 +79,37 @@ func run() error {
 	jwtMgr := jwtmanager.NewManager(cfg.JWT)
 	userRepo := postgres.NewUserRepository(db)
 	userUC := usecase.NewUserUsecase(userRepo, jwtMgr)
-	userHandler := handler.NewUserHandler(userUC)
+	var supabaseAuthUC *usecase.SupabaseAuthUsecase
+	var profileController *controller.ProfileController
+	var sbClient *pkgsb.Client
+	var transactionController *controller.TransactionController
+	if cfg.Supabase.Enabled() {
+		var err error
+		sbClient, err = pkgsb.New(cfg.Supabase)
+		if err != nil {
+			return fmt.Errorf("初始化 Supabase 失败: %w", err)
+		}
+		supabaseAuthUC = usecase.NewSupabaseAuthUsecase(sbClient)
+		profileRepo := sbrepo.NewProfileRepository(sbClient)
+		profileUC := usecase.NewProfileUsecase(profileRepo)
+		profileController = controller.NewProfileController(profileUC)
+		transactionRepo := sbrepo.NewTransactionRepository(sbClient)
+		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
+		transactionController = controller.NewTransactionController(transactionUC)
+		log.Info("Supabase 已启用（认证 + profile + transactions）", zap.String("url", cfg.Supabase.URL))
+	}
 
-	engine := router.Setup(log, jwtMgr, userHandler, cfg.Server.Mode)
+	userHandler := handler.NewUserHandler(userUC, supabaseAuthUC)
+
+	engine := router.Setup(router.Options{
+		Log:                   log,
+		Mode:                  cfg.Server.Mode,
+		JWTManager:            jwtMgr,
+		UserHandler:           userHandler,
+		ProfileController:     profileController,
+		TransactionController: transactionController,
+		Supabase:              cfg.Supabase,
+	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
 		Handler:           engine,
@@ -109,7 +140,7 @@ func run() error {
 
 // autoMigrate 自动迁移数据库表结构。
 func autoMigrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&entity.User{}); err != nil {
+	if err := db.AutoMigrate(&entity.User{}, &entity.TransactionRecord{}); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}
 	return nil

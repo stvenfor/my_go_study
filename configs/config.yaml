@@ -24,6 +24,11 @@ jwt:
   secret: change-me-in-production
   expire_hours: 72
 
+supabase:
+  url: ""
+  anon_key: ""
+  service_role_key: ""
+
 log:
   level: info
   file: logs/app.log
