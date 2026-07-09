@@ -290,7 +290,16 @@ USE_MOCK_AUTH=false   # true=本地 Mock；false=真实登录
 
 ### 6.3 手机号登录
 
-`BackendAuthService.sendPhoneOtp` / `verifyPhoneOtp` 当前抛出「短信登录暂未开放，请使用邮箱登录」。UI 可展示手机号入口，但后端未实现。
+**测试环境（dev bypass）**：`server.mode=debug` 时，手机号 `13400000000` + 验证码 `123456` 可走固定 OTP 登录，无需配置 SMS：
+
+- `POST /api/v1/user/phone/otp/send` — 测试号 no-op 成功
+- `POST /api/v1/user/phone/otp/verify` — Admin upsert 用户后 `SignInWithEmailPassword`，返回 Supabase JWT + `session_id`
+
+配置见 `configs/config.dev.yaml` 的 `auth.dev_test_phone` / `auth.dev_test_otp`；需 `SUPABASE_SERVICE_ROLE_KEY`。
+
+Flutter `BackendAuthService.sendPhoneOtp` / `verifyPhoneOtp` 已对接上述接口。Mock 模式（`USE_MOCK_AUTH=true`）同样仅允许 `13400000000` + `123456`。
+
+生产环境真实 SMS（Twilio 等）尚未实现，非测试号返回「短信登录暂未开放」。
 
 ---
 

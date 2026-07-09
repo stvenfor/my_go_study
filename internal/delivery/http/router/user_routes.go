@@ -14,6 +14,8 @@ func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, use
 	{
 		userGroup.POST("/register", userHandler.Register)
 		userGroup.POST("/login", userHandler.Login)
+		userGroup.POST("/phone/otp/send", userHandler.SendPhoneOTP)
+		userGroup.POST("/phone/otp/verify", userHandler.VerifyPhoneOTP)
 		userGroup.GET("/list", middleware.Auth(jwtManager), userHandler.List)
 		userGroup.GET("/profile", middleware.Auth(jwtManager), userHandler.Profile)
 	}

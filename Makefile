@@ -1,16 +1,26 @@
 APP_NAME := my_go_study
+# 请在 my_go_study/ 目录下执行 make（不要在工作区根目录 my_code_study/）
 MAIN_PATH := ./cmd/api
+WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
 DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
-.PHONY: run build test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets test-realtime
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify
 
 run:
 	./scripts/load-env.sh go run $(MAIN_PATH)
 
+run-worker:
+	./scripts/load-env.sh go run $(WORKER_PATH)
+
 build:
 	@mkdir -p $(BIN_DIR)
 	go build -o $(BIN_DIR)/api $(MAIN_PATH)
+	go build -o $(BIN_DIR)/worker $(WORKER_PATH)
+
+build-worker:
+	@mkdir -p $(BIN_DIR)
+	go build -o $(BIN_DIR)/worker $(WORKER_PATH)
 
 test:
 	go test ./... -count=1
@@ -68,6 +78,27 @@ check-rls:
 # Realtime WebSocket 联调（需 Go 后端 + Redis + 有效 Supabase 登录或 SUPABASE_ACCESS_TOKEN）
 test-realtime:
 	./scripts/test_realtime_ws.sh
+
+test-single-device-login:
+	./scripts/test_single_device_login.sh
+
+test-phone-otp-login:
+	chmod +x ./scripts/test_phone_otp_login.sh
+	./scripts/test_phone_otp_login.sh
+
+# 异步 Push 联调（需 make run + make run-worker，且 queue.enabled=true）
+test-queue-push:
+	chmod +x ./scripts/test_queue_push.sh
+	./scripts/test_queue_push.sh
+
+# 手动触发每小时广播（开发环境 scheduler.hourly_notify.enabled=false 时用）
+trigger-hourly-notify:
+	./scripts/load-env.sh go run ./cmd/scheduler-trigger
+
+# 定时广播联调（需 make run + make run-worker + 已登录 session）
+test-scheduled-notify:
+	chmod +x ./scripts/test_scheduled_notify.sh
+	./scripts/test_scheduled_notify.sh
 
 # 推送前检查：入库文件不得含 Supabase service_role（GitHub 推送保护）
 check-secrets:

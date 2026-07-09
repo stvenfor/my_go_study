@@ -30,6 +30,7 @@ import (
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 	"github.com/stvenfor/my_go_study/pkg/logger"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
+	"github.com/stvenfor/my_go_study/pkg/queue"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -90,12 +91,17 @@ func run() error {
 	jwtMgr := jwtmanager.NewManager(cfg.JWT)
 	userRepo := postgres.NewUserRepository(db)
 	userUC := usecase.NewUserUsecase(userRepo, jwtMgr)
+	sessionRepo := redisrepo.NewSessionRepository(redisClient)
+	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth)
 	var supabaseAuthUC *usecase.SupabaseAuthUsecase
+	var phoneOTPUC *usecase.PhoneOTPUsecase
 	var profileController *controller.ProfileController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
 	var wsGateway *wshandler.Handler
+	var queueClient *queue.Client
+	var fanoutSub *queue.FanoutSubscriber
 	if cfg.Supabase.Enabled() {
 		var err error
 		sbClient, err = pkgsb.New(cfg.Supabase)
@@ -103,6 +109,7 @@ func run() error {
 			return fmt.Errorf("初始化 Supabase 失败: %w", err)
 		}
 		supabaseAuthUC = usecase.NewSupabaseAuthUsecase(sbClient)
+		phoneOTPUC = usecase.NewPhoneOTPUsecase(sbClient, cfg.Auth, cfg.Server.Mode)
 		profileRepo := sbrepo.NewProfileRepository(sbClient)
 		profileUC := usecase.NewProfileUsecase(profileRepo)
 		profileController = controller.NewProfileController(profileUC)
@@ -119,7 +126,26 @@ func run() error {
 		syncUC := usecase.NewRealtimeSyncUsecase(eventRepo, *cfg)
 		presenceUC := usecase.NewRealtimePresenceUsecase(presenceRepo, hub)
 		wsGateway = wshandler.NewHandler(hub, ticketUC, presenceUC, log)
-		pushUC := usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub)
+
+		var pushEnqueuer usecase.PushEnqueuer
+		if cfg.Queue.Enabled {
+			queueClient = queue.NewAsynqClient(*cfg)
+			pushEnqueuer = queueClient
+			fanoutSub = queue.NewFanoutSubscriber(
+				redisClient,
+				cfg.Queue.PubSubChannel(),
+				hub.BroadcastToUser,
+			)
+			go func() {
+				log.Info("Redis Pub/Sub 订阅已启动", zap.String("channel", cfg.Queue.PubSubChannel()))
+				if err := fanoutSub.Run(context.Background()); err != nil && err != context.Canceled {
+					log.Error("Pub/Sub 订阅异常退出", zap.Error(err))
+				}
+			}()
+			log.Info("异步队列已启用", zap.Bool("queue_enabled", true))
+		}
+
+		pushUC := usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub, pushEnqueuer)
 		realtimeController = controller.NewRealtimeController(ticketUC, syncUC, pushUC)
 		log.Info("Realtime WebSocket 已启用",
 			zap.String("ws_path", cfg.Realtime.WsPath),
@@ -127,7 +153,7 @@ func run() error {
 		)
 	}
 
-	userHandler := handler.NewUserHandler(userUC, supabaseAuthUC)
+	userHandler := handler.NewUserHandler(userUC, supabaseAuthUC, deviceSessionUC, phoneOTPUC)
 
 	engine := router.Setup(router.Options{
 		Log:                   log,
@@ -140,6 +166,7 @@ func run() error {
 		WSHandler:             wsGateway,
 		Config:                *cfg,
 		Supabase:              cfg.Supabase,
+		DeviceSessionUC:       deviceSessionUC,
 	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
@@ -161,6 +188,12 @@ func run() error {
 	log.Info("收到关机信号，开始优雅关闭...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if queueClient != nil {
+		if err := queueClient.Close(); err != nil {
+			log.Warn("关闭 Asynq 客户端失败", zap.Error(err))
+		}
+	}
 
 	if err := server.Shutdown(ctx); err != nil {
 		return fmt.Errorf("优雅关机失败: %w", err)

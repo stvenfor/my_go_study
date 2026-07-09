@@ -20,18 +20,24 @@ import (
 
 // UserHandler 用户 API 处理器。
 type UserHandler struct {
-	userUsecase    *usecase.UserUsecase
-	supabaseAuthUC *usecase.SupabaseAuthUsecase
+	userUsecase     *usecase.UserUsecase
+	supabaseAuthUC  *usecase.SupabaseAuthUsecase
+	deviceSessionUC *usecase.DeviceSessionUsecase
+	phoneOTPUC      *usecase.PhoneOTPUsecase
 }
 
 // NewUserHandler 创建用户处理器。
 func NewUserHandler(
 	userUsecase *usecase.UserUsecase,
 	supabaseAuthUC *usecase.SupabaseAuthUsecase,
+	deviceSessionUC *usecase.DeviceSessionUsecase,
+	phoneOTPUC *usecase.PhoneOTPUsecase,
 ) *UserHandler {
 	return &UserHandler{
-		userUsecase:    userUsecase,
-		supabaseAuthUC: supabaseAuthUC,
+		userUsecase:     userUsecase,
+		supabaseAuthUC:  supabaseAuthUC,
+		deviceSessionUC: deviceSessionUC,
+		phoneOTPUC:      phoneOTPUC,
 	}
 }
 
@@ -61,9 +67,15 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 	user := response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email)
 	if result.Token != "" {
+		sessionID, err := h.issueDeviceSession(c, result.UserID, result.Email, req.DeviceID, req.Platform)
+		if err != nil {
+			h.handleUsecaseError(c, err)
+			return
+		}
 		response.Success(c, response.LoginData{
-			Token: result.Token,
-			User:  user,
+			Token:     result.Token,
+			SessionID: sessionID,
+			User:      user,
 		})
 		return
 	}
@@ -93,9 +105,77 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
+	sessionID, err := h.issueDeviceSession(c, result.UserID, result.Email, req.DeviceID, req.Platform)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
 	response.Success(c, response.LoginData{
-		Token: result.Token,
-		User:  response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
+		Token:     result.Token,
+		SessionID: sessionID,
+		User:      response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
+	})
+}
+
+// SendPhoneOTP POST /api/v1/user/phone/otp/send
+func (h *UserHandler) SendPhoneOTP(c *gin.Context) {
+	var req request.SendPhoneOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误: "+err.Error())
+		return
+	}
+	if h.phoneOTPUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
+		return
+	}
+	if err := h.phoneOTPUC.SendPhoneOTP(c.Request.Context(), req.Phone); err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"ok": true})
+}
+
+// VerifyPhoneOTP POST /api/v1/user/phone/otp/verify
+func (h *UserHandler) VerifyPhoneOTP(c *gin.Context) {
+	var req request.VerifyPhoneOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误: "+err.Error())
+		return
+	}
+	if h.phoneOTPUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
+		return
+	}
+
+	result, err := h.phoneOTPUC.VerifyPhoneOTP(c.Request.Context(), req.Phone, req.OTP)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	sessionID, err := h.issueDeviceSession(c, result.UserID, result.Email, req.DeviceID, req.Platform)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	response.Success(c, response.LoginData{
+		Token:     result.Token,
+		SessionID: sessionID,
+		User:      response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
+	})
+}
+
+func (h *UserHandler) issueDeviceSession(c *gin.Context, userID, email, deviceID, platform string) (string, error) {
+	if h.deviceSessionUC == nil {
+		return "", usecase.ErrSupabaseUnavailable
+	}
+	return h.deviceSessionUC.IssueOnLogin(c.Request.Context(), usecase.IssueSessionInput{
+		UserID:   userID,
+		Email:    email,
+		DeviceID: deviceID,
+		Platform: platform,
 	})
 }
 
@@ -150,6 +230,14 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "注册成功，请查收验证邮件后再登录")
 	case errors.Is(err, usecase.ErrSupabaseUnavailable):
 		response.Error(c, http.StatusBadGateway, response.CodeInternalError, "认证服务暂时不可用，请检查后端网络或配置")
+	case errors.Is(err, usecase.ErrInvalidPlatform):
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "platform 必须为 android 或 ios")
+	case errors.Is(err, usecase.ErrInvalidDeviceID):
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "device_id 不能为空")
+	case errors.Is(err, usecase.ErrInvalidOTP):
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "验证码错误或已失效")
+	case errors.Is(err, usecase.ErrPhoneLoginNotAvailable):
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "短信登录暂未开放，请使用邮箱登录")
 	default:
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}

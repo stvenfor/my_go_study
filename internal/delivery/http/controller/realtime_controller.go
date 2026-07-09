@@ -111,7 +111,7 @@ func (ctrl *RealtimeController) Push(c *gin.Context) {
 		targetUserID = user.ID
 	}
 
-	envelope, delivered, err := ctrl.pushUC.PushToUser(c.Request.Context(), usecase.RealtimePushInput{
+	out, err := ctrl.pushUC.PushToUser(c.Request.Context(), usecase.RealtimePushInput{
 		UserID: targetUserID,
 		Topic:  req.Topic,
 		Title:  req.Title,
@@ -125,7 +125,9 @@ func (ctrl *RealtimeController) Push(c *gin.Context) {
 	}
 
 	response.BackendJSON(c, http.StatusOK, response.RealtimePushData{
-		Envelope:  envelope,
-		Delivered: delivered,
+		Envelope:  out.Envelope,
+		Delivered: out.Delivered,
+		Queued:    out.Queued,
+		TaskID:    out.TaskID,
 	})
 }

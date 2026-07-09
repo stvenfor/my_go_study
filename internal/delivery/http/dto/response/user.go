@@ -34,8 +34,9 @@ type AuthUserItem struct {
 
 // LoginData 登录成功响应 data。
 type LoginData struct {
-	Token string       `json:"token"`
-	User  AuthUserItem `json:"user"`
+	Token     string       `json:"token"`
+	SessionID string       `json:"session_id"`
+	User      AuthUserItem `json:"user"`
 }
 
 // FromSupabaseAuthUser 从 Supabase 认证结果转换。

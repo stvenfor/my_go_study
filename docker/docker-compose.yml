@@ -47,8 +47,33 @@ services:
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
       JWT_SECRET: change-me-in-production
+      QUEUE_ENABLED: "true"
     ports:
       - "8080:8080"
+    volumes:
+      - ../logs:/app/logs
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: my_go_study_worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      APP_ENV: dev
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_DBNAME: my_go_study
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: change-me-in-production
+      QUEUE_ENABLED: "true"
+    command: ["/app/worker"]
     volumes:
       - ../logs:/app/logs
 

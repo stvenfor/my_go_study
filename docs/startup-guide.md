@@ -386,21 +386,27 @@ make test-realtime   # 一键联调（需 Redis + make run）
 
 ## 7. Makefile 命令速查
 
+> 在 **`my_go_study/`** 目录执行（先 `cd my_go_study`）。
+
 | 命令 | 说明 |
 |------|------|
 | `make run` | `go run ./cmd/api` |
-| `make build` | 编译到 `bin/api` |
+| `make run-worker` | `go run ./cmd/worker`（Asynq 消费，dev 默认需与 API 同启） |
+| `make build` | 编译到 `bin/api` 与 `bin/worker` |
 | `make test` | 运行全部单元测试 |
 | `make tidy` | `go mod tidy` |
 | `make air` | Air 热加载开发 |
 | `make migrate-up` | 执行数据库迁移（升级） |
 | `make migrate-down` | 回滚最近一次迁移 |
-| `make docker-up` | 构建并启动全部容器（需 Docker Desktop） |
+| `make docker-up` | 构建并启动全部容器（app + worker + postgres + redis） |
 | `make deps-up` | Homebrew 安装并启动 PostgreSQL + Redis（无需 Docker） |
 | `make docker-down` | 停止并移除容器 |
 | `make clean` | 删除 `bin/`、`tmp/`、日志 |
 | `make test-transactions` | transactions CRUD 联调（`SUPABASE_SERVICE_ROLE_KEY` 放 `.env.local`） |
 | `make test-realtime` | WebSocket 联调（ws-ticket / sync / push + WS auth） |
+| `make test-queue-push` | 异步 Push 联调（需 `make run` + `make run-worker`） |
+| `make trigger-hourly-notify` | 手动入队定时广播任务 |
+| `make test-scheduled-notify` | 定时通知联调（登录 + 触发 + sync） |
 | `make check-secrets` | 推送前检查入库文件是否含 service_role 密钥 |
 
 ---
