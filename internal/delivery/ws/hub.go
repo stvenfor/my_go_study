@@ -70,3 +70,24 @@ func (h *Hub) BroadcastToUser(userID, topic string, envelope entity.RealtimeEnve
 	}
 	return delivered
 }
+
+// BroadcastToTopicExcept 向订阅 topic 的所有连接推送，排除指定用户（用于 presence 等广播）。
+func (h *Hub) BroadcastToTopicExcept(excludeUserID, topic string, envelope entity.RealtimeEnvelope) int {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.clients))
+	for c := range h.clients {
+		if c.userID != "" && c.userID != excludeUserID {
+			clients = append(clients, c)
+		}
+	}
+	h.mu.RUnlock()
+
+	delivered := 0
+	for _, c := range clients {
+		if c.IsSubscribed(topic) {
+			c.Send(envelope)
+			delivered++
+		}
+	}
+	return delivered
+}

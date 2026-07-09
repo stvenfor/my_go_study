@@ -17,6 +17,13 @@ const (
 	TopicPresenceBulk = "presence.bulk"
 )
 
+// Realtime event names（与 Flutter payload.name 一致）。
+const (
+	EventSysNotifyShow   = "sys.notify.show"
+	EventPresenceReport  = "presence.report"
+	EventPresenceUpdate  = "presence.update"
+)
+
 // WS close codes（与 Flutter RealtimeConfig 一致）。
 const (
 	WSCloseAuthFailed     = 4001

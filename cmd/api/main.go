@@ -109,9 +109,11 @@ func run() error {
 		hub := wshandler.NewHub()
 		ticketRepo := redisrepo.NewWSTicketRepository(redisClient)
 		eventRepo := redisrepo.NewRealtimeEventRepository(redisClient)
+		presenceRepo := redisrepo.NewPresenceRepository(redisClient)
 		ticketUC := usecase.NewRealtimeTicketUsecase(ticketRepo, *cfg)
 		syncUC := usecase.NewRealtimeSyncUsecase(eventRepo, *cfg)
-		wsGateway = wshandler.NewHandler(hub, ticketUC, log)
+		presenceUC := usecase.NewRealtimePresenceUsecase(presenceRepo, hub)
+		wsGateway = wshandler.NewHandler(hub, ticketUC, presenceUC, log)
 		pushUC := usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub)
 		realtimeController = controller.NewRealtimeController(ticketUC, syncUC, pushUC)
 		log.Info("Realtime WebSocket 已启用",

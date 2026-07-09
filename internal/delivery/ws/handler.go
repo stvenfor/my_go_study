@@ -24,14 +24,20 @@ var upgrader = websocket.Upgrader{
 
 // Handler WebSocket 网关。
 type Handler struct {
-	hub      *Hub
-	ticketUC *usecase.RealtimeTicketUsecase
-	log      *zap.Logger
+	hub        *Hub
+	ticketUC   *usecase.RealtimeTicketUsecase
+	presenceUC *usecase.RealtimePresenceUsecase
+	log        *zap.Logger
 }
 
 // NewHandler 创建 WS Handler。
-func NewHandler(hub *Hub, ticketUC *usecase.RealtimeTicketUsecase, log *zap.Logger) *Handler {
-	return &Handler{hub: hub, ticketUC: ticketUC, log: log}
+func NewHandler(
+	hub *Hub,
+	ticketUC *usecase.RealtimeTicketUsecase,
+	presenceUC *usecase.RealtimePresenceUsecase,
+	log *zap.Logger,
+) *Handler {
+	return &Handler{hub: hub, ticketUC: ticketUC, presenceUC: presenceUC, log: log}
 }
 
 // Hub 返回 Hub（供 push usecase 注入）。
@@ -71,7 +77,7 @@ func (h *Handler) handleEnvelope(client *Client, envelope entity.RealtimeEnvelop
 		active := client.Unsubscribe(topics)
 		h.sendAck(client, envelope.ID, map[string]any{"topics": active})
 	case "event":
-		h.sendAck(client, envelope.ID, map[string]any{"accepted": true})
+		h.handleEvent(client, envelope)
 	default:
 		h.log.Debug("ws ignore type", zap.String("type", envelope.Type))
 	}
@@ -126,6 +132,45 @@ func (h *Handler) handleAuth(client *Client, envelope entity.RealtimeEnvelope) {
 			"serverTime": time.Now().UnixMilli(),
 		},
 	})
+}
+
+func (h *Handler) handleEvent(client *Client, envelope entity.RealtimeEnvelope) {
+	defer h.sendAck(client, envelope.ID, map[string]any{"accepted": true})
+
+	if client.userID == "" {
+		h.log.Warn("ws event before auth", zap.String("type", envelope.Type))
+		return
+	}
+	if h.presenceUC == nil {
+		return
+	}
+
+	name, _ := envelope.Payload["name"].(string)
+	if envelope.Topic != entity.TopicPresenceBulk || name != entity.EventPresenceReport {
+		return
+	}
+
+	online := true
+	if v, ok := envelope.Payload["online"].(bool); ok {
+		online = v
+	}
+	device, _ := envelope.Payload["device"].(string)
+
+	out, delivered, err := h.presenceUC.Report(context.Background(), usecase.RealtimePresenceInput{
+		UserID: client.userID,
+		Online: online,
+		Device: device,
+	})
+	if err != nil {
+		h.log.Warn("presence report failed", zap.Error(err), zap.String("userId", client.userID))
+		return
+	}
+	h.log.Info("presence broadcast",
+		zap.String("userId", client.userID),
+		zap.Bool("online", online),
+		zap.Int("delivered", delivered),
+		zap.String("eventId", out.ID),
+	)
 }
 
 func (h *Handler) sendAck(client *Client, refID string, payload map[string]any) {
