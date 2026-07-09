@@ -9,6 +9,8 @@
 | Go 后端 | `my_go_study` | Ticket 签发、WS 网关、事件存储与广播 |
 | Flutter 客户端 | `my_ai_project` | `AppRealtimeClient` 连接、心跳、订阅、UI 展示 |
 
+> **初学者**：建议先读 [Realtime 初学者逐行导读](./realtime-beginner-walkthrough.md)，再查阅本文协议细节。
+
 **前置条件**
 
 - Go 后端已启动（`make run`），且 Supabase 已配置（`configs/supabase.env`）

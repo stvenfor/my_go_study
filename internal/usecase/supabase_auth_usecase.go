@@ -1,4 +1,13 @@
-// supabase_auth_usecase.go 通过 Supabase Auth 实现邮箱密码注册与登录。
+// =============================================================================
+// 文件：supabase_auth_usecase.go
+// 层级：Usecase —— 登录/注册的「业务大脑」
+//
+// 数据流：UserHandler → 本文件 → pkg/supabase (gotrue-go) → Supabase Cloud
+//
+// 【初学者】Register 与 Login 区别：
+//   Register → Auth.Signup，可能需邮箱验证才返回 token
+//   Login    → SignInWithEmailPassword，成功必有 access_token
+// =============================================================================
 package usecase
 
 import (
@@ -15,33 +24,27 @@ import (
 const supabaseAuthTimeout = 20 * time.Second
 
 var (
-	// ErrEmailConfirmationRequired 注册成功但需邮箱验证后才能登录。
 	ErrEmailConfirmationRequired = errors.New("email confirmation required")
-	// ErrAccountNotRegistered 邮箱尚未注册。
-	ErrAccountNotRegistered = errors.New("account not registered")
-	// ErrSupabaseUnavailable 无法连接 Supabase 服务。
-	ErrSupabaseUnavailable = errors.New("supabase unavailable")
+	ErrAccountNotRegistered        = errors.New("account not registered")
+	ErrSupabaseUnavailable         = errors.New("supabase unavailable")
 )
 
-// SupabaseAuthOutput Supabase 认证成功结果。
 type SupabaseAuthOutput struct {
-	Token    string
-	UserID   string
-	Username string
+	Token    string // Supabase access_token，Flutter 存本地
+	UserID   string // UUID
+	Username string // 展示名
 	Email    string
 }
 
-// SupabaseAuthUsecase Supabase 邮箱密码认证用例。
 type SupabaseAuthUsecase struct {
 	sb *pkgsb.Client
 }
 
-// NewSupabaseAuthUsecase 创建 Supabase 认证用例。
 func NewSupabaseAuthUsecase(sb *pkgsb.Client) *SupabaseAuthUsecase {
 	return &SupabaseAuthUsecase{sb: sb}
 }
 
-// Register 使用邮箱密码在 Supabase 注册。
+// Register 在 Supabase 创建账号。
 func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput) (*SupabaseAuthOutput, error) {
 	email := strings.TrimSpace(input.Email)
 	if email == "" || input.Password == "" {
@@ -53,7 +56,7 @@ func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput)
 
 	metadata := map[string]interface{}{}
 	if name := strings.TrimSpace(input.Username); name != "" {
-		metadata["display_name"] = name
+		metadata["display_name"] = name // 存 Supabase user_metadata
 	}
 
 	var resp *types.SignupResponse
@@ -74,10 +77,12 @@ func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput)
 	}
 
 	user := resp.User
+	// 部分 Supabase 版本 Signup 用户 ID 在 Session 里
 	if user.ID.String() == "00000000-0000-0000-0000-000000000000" && resp.Session.User.ID.String() != "00000000-0000-0000-0000-000000000000" {
 		user = resp.Session.User
 	}
 
+	// 开启邮箱验证时 Signup 不返回 token
 	if resp.Session.AccessToken == "" {
 		if user.ID.String() != "00000000-0000-0000-0000-000000000000" {
 			return &SupabaseAuthOutput{
@@ -92,14 +97,14 @@ func (u *SupabaseAuthUsecase) Register(ctx context.Context, input RegisterInput)
 	return supabaseAuthOutputFromSession(resp.Session, input.Username), nil
 }
 
-// Login 使用邮箱密码登录 Supabase 并返回 access token。
+// Login 邮箱密码登录。input.Username 实际是邮箱（Flutter 传入）。
 func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*SupabaseAuthOutput, error) {
 	email := strings.TrimSpace(input.Username)
 	if email == "" || input.Password == "" {
 		return nil, ErrInvalidParams
 	}
 	if !strings.Contains(email, "@") {
-		return nil, ErrInvalidCredentials
+		return nil, ErrInvalidCredentials // 强制邮箱格式
 	}
 
 	var token *types.TokenResponse
@@ -111,6 +116,7 @@ func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*Sup
 	if err != nil {
 		mapped := mapSupabaseAuthError(err)
 		if errors.Is(mapped, ErrInvalidCredentials) {
+			// 有 service_role 时可区分「未注册」与「密码错」
 			return nil, u.refineInvalidCredentials(email, mapped)
 		}
 		return nil, mapped
@@ -118,6 +124,7 @@ func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*Sup
 	return supabaseAuthOutputFromToken(token, email), nil
 }
 
+// withAuthTimeout 防止 Supabase 网络卡住占满 HTTP  worker。
 func (u *SupabaseAuthUsecase) withAuthTimeout(ctx context.Context, fn func(context.Context) error) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -185,6 +192,7 @@ func resolveSupabaseUsername(user types.User, fallback string) string {
 	return user.Email
 }
 
+// mapSupabaseAuthError 把 Supabase 英文错误映射为项目内 sentinel error，供 Handler 翻译中文。
 func mapSupabaseAuthError(err error) error {
 	if err == nil {
 		return nil

@@ -100,4 +100,7 @@ make test-realtime        # WebSocket 联调（ws-ticket/sync/push + WS auth）
 - [启动指南](./docs/startup-guide.md)
 - [Supabase 集成说明](./docs/supabase-integration.md)
 - [Realtime WebSocket 协议与联调指南](./docs/realtime-websocket.md)
+- [Realtime 初学者逐行导读](./docs/realtime-beginner-walkthrough.md)
+- [认证初学者导读](./docs/auth-beginner-walkthrough.md)
+- [Transactions 初学者导读](./docs/transactions-beginner-walkthrough.md)
 - Flutter [AGENTS.md](../../my_ai_project/AGENTS.md)

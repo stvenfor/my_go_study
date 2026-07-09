@@ -1,3 +1,11 @@
+// =============================================================================
+// 文件：realtime_push_usecase.go
+// 作用：Go → Flutter 推送（如 sys.notify 通知）
+//
+// 【为什么先写 Redis 再广播？】
+//   1. 用户离线时 delivered=0，但 sync 仍能补拉
+//   2. seq 持久化后，客户端可按序号去重
+// =============================================================================
 package usecase
 
 import (
@@ -11,7 +19,6 @@ import (
 	"github.com/stvenfor/my_go_study/pkg/config"
 )
 
-// RealtimePushInput 推送通知请求。
 type RealtimePushInput struct {
 	UserID string
 	Topic  string
@@ -21,19 +28,17 @@ type RealtimePushInput struct {
 	Extra  map[string]any
 }
 
-// RealtimePushUsecase 事件推送用例。
 type RealtimePushUsecase struct {
 	events repository.RealtimeEventRepository
 	cfg    config.Config
 	hub    RealtimeBroadcaster
 }
 
-// RealtimeBroadcaster WS 广播接口（由 Hub 实现）。
+// RealtimeBroadcaster 接口：Usecase 不依赖具体 Hub，方便单元测试 mock。
 type RealtimeBroadcaster interface {
 	BroadcastToUser(userID, topic string, envelope entity.RealtimeEnvelope) int
 }
 
-// NewRealtimePushUsecase 创建推送用例。
 func NewRealtimePushUsecase(
 	events repository.RealtimeEventRepository,
 	cfg config.Config,
@@ -42,26 +47,27 @@ func NewRealtimePushUsecase(
 	return &RealtimePushUsecase{events: events, cfg: cfg, hub: hub}
 }
 
-// PushToUser 向指定用户推送 event 并持久化供 sync。
 func (u *RealtimePushUsecase) PushToUser(ctx context.Context, input RealtimePushInput) (entity.RealtimeEnvelope, int, error) {
 	if input.UserID == "" {
 		return entity.RealtimeEnvelope{}, 0, fmt.Errorf("userId 不能为空")
 	}
+
 	topic := input.Topic
 	if topic == "" {
-		topic = entity.TopicSysNotify
+		topic = entity.TopicSysNotify // 默认推系统通知
 	}
 	name := input.Name
 	if name == "" {
-		name = "sys.notify.show"
+		name = entity.EventSysNotifyShow
 	}
 
+	// 每个用户独立 seq，INCR 保证单调递增
 	seq, err := u.events.NextSeq(ctx, input.UserID)
 	if err != nil {
 		return entity.RealtimeEnvelope{}, 0, err
 	}
 
-	notifyID := uuid.NewString()
+	notifyID := uuid.NewString() // 客户端按 notifyId 去重，防 sync+实时双份
 	payload := map[string]any{
 		"name":     name,
 		"notifyId": notifyID,
@@ -73,11 +79,11 @@ func (u *RealtimePushUsecase) PushToUser(ctx context.Context, input RealtimePush
 	}
 
 	envelope := entity.RealtimeEnvelope{
-		ID:    fmt.Sprintf("evt_%d", time.Now().UnixMilli()),
-		Type:  "event",
-		Topic: topic,
-		TS:    time.Now().UnixMilli(),
-		Seq:   seq,
+		ID:      fmt.Sprintf("evt_%d", time.Now().UnixMilli()),
+		Type:    "event",
+		Topic:   topic,
+		TS:      time.Now().UnixMilli(),
+		Seq:     seq,
 		Payload: payload,
 	}
 

@@ -1,4 +1,11 @@
-// transaction_repo.go 通过 Supabase PostgREST 访问 transactions 表（用户 token + user_id 过滤）。
+// =============================================================================
+// 文件：transaction_repo.go
+// 层级：Repository —— 通过 Supabase PostgREST 读写 transactions 表
+//
+// 【初学者】WithUserToken(accessToken) 的含义：
+//   用登录用户的 JWT 调 PostgREST，RLS 策略按 auth.uid() 过滤。
+//   绝不能用 service_role 替代，否则会绕过 RLS。
+// =============================================================================
 package supabase
 
 import (
@@ -23,12 +30,14 @@ func NewTransactionRepository(client *pkgsb.Client) *TransactionRepository {
 	return &TransactionRepository{client: client}
 }
 
+// List Flutter 兼容列表：limit/offset，无 total 计数。
 func (r *TransactionRepository) List(ctx context.Context, accessToken, userID string, filter entity.TransactionFilter) ([]entity.Transaction, error) {
 	client, err := r.client.WithUserToken(accessToken)
 	if err != nil {
 		return nil, err
 	}
 
+	// 双保险：Eq user_id + RLS
 	query := client.From(entity.TransactionsTable).
 		Select("*", "", false).
 		Eq("user_id", userID).
@@ -112,6 +121,7 @@ func (r *TransactionRepository) GetByID(ctx context.Context, accessToken, userID
 	return unmarshalSingle[entity.Transaction](data)
 }
 
+// Create 插入时强制写入 user_id，防止客户端伪造他人 ID。
 func (r *TransactionRepository) Create(ctx context.Context, accessToken, userID string, input entity.CreateTransactionInput) (*entity.Transaction, error) {
 	client, err := r.client.WithUserToken(accessToken)
 	if err != nil {
@@ -119,7 +129,7 @@ func (r *TransactionRepository) Create(ctx context.Context, accessToken, userID 
 	}
 
 	payload := map[string]any{
-		"user_id":  userID,
+		"user_id":  userID, // 服务端赋值，不信任客户端 body
 		"type":     input.Type,
 		"category": input.Category,
 		"amount":   input.Amount,

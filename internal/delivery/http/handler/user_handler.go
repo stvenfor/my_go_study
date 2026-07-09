@@ -1,4 +1,10 @@
-// user_handler.go 处理用户注册、登录、个人信息等 HTTP 请求。
+// =============================================================================
+// 文件：user_handler.go
+// 层级：Delivery/HTTP —— 用户注册/登录的 HTTP 入口（Flutter 调用的接口）
+//
+// 【注意】登录返回的是 Supabase token，不是 Go 自建 JWT。
+// 遗留路由 /api/v1/user/profile 仍用自建 JWT，与 Flutter 当前链路不兼容。
+// =============================================================================
 package handler
 
 import (
@@ -29,7 +35,8 @@ func NewUserHandler(
 	}
 }
 
-// Register 用户注册。
+// Register POST /api/v1/user/register
+// Flutter 注册页提交 username + email + password。
 func (h *UserHandler) Register(c *gin.Context) {
 	var req request.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -63,7 +70,8 @@ func (h *UserHandler) Register(c *gin.Context) {
 	response.Success(c, user)
 }
 
-// Login 用户登录：Supabase 邮箱密码认证。
+// Login POST /api/v1/user/login
+// req.Username = 邮箱；成功返回 { token, user } 包在 ResultModel.data 里。
 func (h *UserHandler) Login(c *gin.Context) {
 	var req request.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -125,7 +133,7 @@ func (h *UserHandler) List(c *gin.Context) {
 	response.SuccessList(c, list, page.Page, page.Size, total)
 }
 
-// handleUsecaseError 将用例层错误映射为 HTTP 响应。
+// handleUsecaseError 业务错误 → HTTP 状态码 + 中文提示（Flutter _mapFailure 依赖这些文案）。
 func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidParams):
