@@ -30,3 +30,16 @@ type VerifyPhoneOTPRequest struct {
 	DeviceID string `json:"device_id" binding:"required"`
 	Platform string `json:"platform" binding:"required,oneof=android ios"`
 }
+
+// RefreshTokenRequest 刷新 access token 请求体。
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" binding:"required"`
+	DeviceID     string `json:"device_id"`
+	SessionID    string `json:"session_id"`
+	Platform     string `json:"platform" binding:"omitempty,oneof=android ios"`
+}
+
+// LogoutRequest 退出登录请求体（refresh_token 可选，用于 Supabase sign-out）。
+type LogoutRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}

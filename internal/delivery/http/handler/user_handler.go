@@ -10,6 +10,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/dto/request"
@@ -72,14 +73,74 @@ func (h *UserHandler) Register(c *gin.Context) {
 			h.handleUsecaseError(c, err)
 			return
 		}
-		response.Success(c, response.LoginData{
-			Token:     result.Token,
-			SessionID: sessionID,
-			User:      user,
-		})
+		response.Success(c, loginDataFrom(result, sessionID))
 		return
 	}
 	response.Success(c, user)
+}
+
+// Refresh POST /api/v1/user/refresh
+func (h *UserHandler) Refresh(c *gin.Context) {
+	var req request.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误: "+err.Error())
+		return
+	}
+	if h.supabaseAuthUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
+		return
+	}
+
+	result, err := h.supabaseAuthUC.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	data := response.RefreshTokenData{
+		Token:        result.Token,
+		RefreshToken: result.RefreshToken,
+	}
+	if h.deviceSessionUC != nil && strings.TrimSpace(req.DeviceID) != "" {
+		sessionID, renewErr := h.deviceSessionUC.RenewOnRefresh(c.Request.Context(), usecase.RenewSessionInput{
+			UserID:    result.UserID,
+			Email:     result.Email,
+			DeviceID:  req.DeviceID,
+			Platform:  req.Platform,
+			SessionID: req.SessionID,
+		})
+		if renewErr != nil {
+			h.handleSessionError(c, renewErr)
+			return
+		}
+		data.SessionID = sessionID
+	}
+
+	response.Success(c, data)
+}
+
+// Logout POST /api/v1/user/logout
+func (h *UserHandler) Logout(c *gin.Context) {
+	user, ok := middleware.GetSupabaseUser(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+
+	sessionID := strings.TrimSpace(c.GetHeader(middleware.HeaderSessionID))
+	deviceID := strings.TrimSpace(c.GetHeader(middleware.HeaderDeviceID))
+	if h.deviceSessionUC != nil {
+		if err := h.deviceSessionUC.RevokeOnLogout(c.Request.Context(), user.ID, user.Email, sessionID, deviceID); err != nil {
+			h.handleSessionError(c, err)
+			return
+		}
+	}
+
+	if accessToken, ok := middleware.GetAccessToken(c); ok && accessToken != "" && h.supabaseAuthUC != nil {
+		_ = h.supabaseAuthUC.Logout(c.Request.Context(), accessToken)
+	}
+
+	response.Success(c, gin.H{"ok": true})
 }
 
 // Login POST /api/v1/user/login
@@ -111,11 +172,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, response.LoginData{
-		Token:     result.Token,
-		SessionID: sessionID,
-		User:      response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
-	})
+	response.Success(c, loginDataFrom(result, sessionID))
 }
 
 // SendPhoneOTP POST /api/v1/user/phone/otp/send
@@ -160,11 +217,7 @@ func (h *UserHandler) VerifyPhoneOTP(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, response.LoginData{
-		Token:     result.Token,
-		SessionID: sessionID,
-		User:      response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
-	})
+	response.Success(c, loginDataFrom(result, sessionID))
 }
 
 func (h *UserHandler) issueDeviceSession(c *gin.Context, userID, email, deviceID, platform string) (string, error) {
@@ -240,5 +293,25 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "短信登录暂未开放，请使用邮箱登录")
 	default:
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
+	}
+}
+
+func (h *UserHandler) handleSessionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrSessionReplaced):
+		response.BackendError(c, http.StatusUnauthorized, usecase.MsgSessionReplaced)
+	case errors.Is(err, usecase.ErrSessionInvalid):
+		response.BackendError(c, http.StatusUnauthorized, usecase.MsgSessionInvalid)
+	default:
+		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
+	}
+}
+
+func loginDataFrom(result *usecase.SupabaseAuthOutput, sessionID string) response.LoginData {
+	return response.LoginData{
+		Token:        result.Token,
+		RefreshToken: result.RefreshToken,
+		SessionID:    sessionID,
+		User:         response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
 	}
 }

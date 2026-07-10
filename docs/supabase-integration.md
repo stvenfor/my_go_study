@@ -148,7 +148,7 @@ Flutter BackendAuthService.signUpWithEmail
 **注册响应两种情况**
 
 1. Supabase 开启邮箱确认：无 `token`，返回用户信息 + 错误码提示「请查收验证邮件」
-2. 关闭邮箱确认：直接返回 `LoginData { token, user }`
+2. 关闭邮箱确认：直接返回 `LoginData { token, refresh_token, session_id, user }`
 
 Flutter `BackendAuthService` 在无 session 时会尝试自动 `signInWithEmail`。
 
@@ -159,12 +159,37 @@ Flutter signInWithEmail
   → POST /api/v1/user/login { username: email, password }
   → SupabaseAuthUsecase.Login
   → gotrue: Anon.Auth.SignInWithEmailPassword
-  → LoginData { token: access_token, user: { id: UUID, ... } }
+  → LoginData { token: access_token, refresh_token, session_id, user: { id: UUID, ... } }
 ```
 
-**请求约定**：`username` 字段传 **邮箱地址**（须含 `@`），不是本地 users 表的用户名。
+**Session 策略**
 
-### 3.3 错误映射
+- Redis `auth:session:{user_id}` 默认 **无 TTL**（`auth.session_ttl_hours: 0`），用户保持登录直至主动 logout 或其它设备登录互踢
+- 业务 API 除 Bearer token 外还需 `X-Session-ID` + `X-Device-ID`（`middleware.SupabaseSessionAuth`）
+- access token 过期时客户端调 `POST /api/v1/user/refresh` 静默续期；被踢设备 refresh 后仍因 session 不匹配而无法访问业务 API
+
+### 3.3 刷新 Token
+
+```
+Flutter（access token 将过期）
+  → POST /api/v1/user/refresh { refresh_token }
+  → SupabaseAuthUsecase.RefreshToken
+  → gotrue: Anon.Auth.RefreshToken
+  → { token, refresh_token }
+```
+
+### 3.4 退出登录
+
+```
+Flutter logout
+  → POST /api/v1/user/logout
+     Headers: Authorization, X-Session-ID, X-Device-ID
+  → DeviceSessionUsecase.RevokeOnLogout（删除 Redis session）
+  → SupabaseAuthUsecase.Logout（撤销 Supabase refresh token）
+  → { ok: true }
+```
+
+### 3.5 错误映射
 
 Go 用例层错误 → HTTP 响应 → Flutter `AuthFailure`：
 
@@ -176,10 +201,14 @@ Go 用例层错误 → HTTP 响应 → Flutter `AuthFailure`：
 | `ErrInvalidCredentials` | 401 | 密码错误 | `InvalidCredentialsFailure` |
 | `ErrEmailConfirmationRequired` | 400 | 验证邮件 | `EmailConfirmationRequiredFailure` |
 | `ErrSupabaseUnavailable` | 502 | 无法连接 Supabase | `UnknownAuthFailure` |
+| `ErrSessionReplaced` | 401 | 账号已在其他设备登录 | 清凭证并跳登录页 |
+| `ErrSessionInvalid` | 401 | 会话无效 | 清凭证并跳登录页 |
 
 `ErrAccountNotRegistered` 仅在配置了 `SUPABASE_SERVICE_ROLE_KEY` 时可用：`refineInvalidCredentials` 通过 Admin API 查邮箱是否已注册。
 
-### 3.4 Token 校验（受保护路由）
+**请求约定**：`username` 字段传 **邮箱地址**（须含 `@`），不是本地 users 表的用户名。
+
+### 3.6 Token 校验（受保护路由）
 
 `middleware.SupabaseAuth` 流程：
 

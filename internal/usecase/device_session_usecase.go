@@ -80,6 +80,18 @@ func (u *DeviceSessionUsecase) IssueOnLogin(ctx context.Context, input IssueSess
 	return sessionID, nil
 }
 
+// RevokeOnLogout 主动退出时删除当前活跃 session。
+func (u *DeviceSessionUsecase) RevokeOnLogout(ctx context.Context, userID, email, sessionID, deviceID string) error {
+	userID = strings.TrimSpace(userID)
+	if u.cfg.IsSessionExempt(userID, email) {
+		return nil
+	}
+	if err := u.Validate(ctx, userID, email, sessionID, deviceID); err != nil {
+		return err
+	}
+	return u.sessions.Delete(ctx, userID)
+}
+
 // Validate 校验请求携带的 session 是否为当前活跃会话；白名单用户直接放行。
 func (u *DeviceSessionUsecase) Validate(ctx context.Context, userID, email, sessionID, deviceID string) error {
 	userID = strings.TrimSpace(userID)
@@ -100,8 +112,107 @@ func (u *DeviceSessionUsecase) Validate(ctx context.Context, userID, email, sess
 	if stored == nil {
 		return ErrSessionInvalid
 	}
-	if stored.SessionID != sessionID || stored.DeviceID != deviceID {
+
+	// 同 session 但 device_id 变更：允许客户端升级稳定 device_id（如 iOS 模拟器占位 id）。
+	if stored.SessionID == sessionID && stored.DeviceID != deviceID {
+		updated := *stored
+		updated.DeviceID = deviceID
+		if err := u.sessions.Save(ctx, userID, updated, u.cfg.SessionTTL()); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	if stored.DeviceID != deviceID {
 		return ErrSessionReplaced
 	}
+	if stored.SessionID != sessionID {
+		// 同设备 session_id 过期，客户端应走 refresh 续期，不应视为其他设备互踢。
+		return ErrSessionInvalid
+	}
 	return nil
+}
+
+// RenewSessionInput refresh 时续期单设备 session 的入参。
+type RenewSessionInput struct {
+	UserID    string
+	Email     string
+	DeviceID  string
+	Platform  string
+	SessionID string
+}
+
+// RenewOnRefresh 同设备 refresh 时续期 session 并返回最新 session_id；其他设备仍拒绝。
+func (u *DeviceSessionUsecase) RenewOnRefresh(ctx context.Context, input RenewSessionInput) (string, error) {
+	deviceID := strings.TrimSpace(input.DeviceID)
+	platform := strings.ToLower(strings.TrimSpace(input.Platform))
+	userID := strings.TrimSpace(input.UserID)
+	clientSessionID := strings.TrimSpace(input.SessionID)
+
+	if userID == "" {
+		return "", ErrInvalidParams
+	}
+	if deviceID == "" {
+		return "", ErrInvalidDeviceID
+	}
+	if platform != "" && platform != "android" && platform != "ios" {
+		return "", ErrInvalidPlatform
+	}
+	if platform == "" {
+		platform = "ios"
+	}
+
+	newSessionID := uuid.NewString()
+	if u.cfg.IsSessionExempt(userID, input.Email) {
+		if clientSessionID != "" {
+			return clientSessionID, nil
+		}
+		return newSessionID, nil
+	}
+
+	stored, err := u.sessions.Get(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if stored == nil {
+		session := domainrepo.DeviceSession{
+			SessionID: newSessionID,
+			DeviceID:  deviceID,
+			Platform:  platform,
+			CreatedAt: time.Now().Unix(),
+		}
+		if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
+			return "", err
+		}
+		return newSessionID, nil
+	}
+
+	if stored.DeviceID == deviceID {
+		session := domainrepo.DeviceSession{
+			SessionID: newSessionID,
+			DeviceID:  deviceID,
+			Platform:  platform,
+			CreatedAt: time.Now().Unix(),
+		}
+		if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
+			return "", err
+		}
+		return newSessionID, nil
+	}
+
+	// device_id 变更但客户端仍持有当前 session_id：视为同设备 id 迁移，续期并更新 device。
+	if clientSessionID != "" && stored.SessionID == clientSessionID {
+		session := domainrepo.DeviceSession{
+			SessionID: newSessionID,
+			DeviceID:  deviceID,
+			Platform:  platform,
+			CreatedAt: time.Now().Unix(),
+		}
+		if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
+			return "", err
+		}
+		return newSessionID, nil
+	}
+
+	return "", ErrSessionReplaced
 }

@@ -135,6 +135,7 @@ func run() error {
 				redisClient,
 				cfg.Queue.PubSubChannel(),
 				hub.BroadcastToUser,
+				log,
 			)
 			go func() {
 				log.Info("Redis Pub/Sub 订阅已启动", zap.String("channel", cfg.Queue.PubSubChannel()))

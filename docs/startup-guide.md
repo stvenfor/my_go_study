@@ -257,11 +257,30 @@ curl -X POST http://localhost:8080/api/v1/user/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "test@example.com",
-    "password": "123456"
+    "password": "123456",
+    "device_id": "dev-test-device",
+    "platform": "ios"
   }'
 ```
 
-> `username` 填**邮箱地址**。返回的 `data.token` 为 **Supabase access token**（非自建 JWT）。
+> `username` 填**邮箱地址**。返回的 `data.token` 为 **Supabase access token**，`data.refresh_token` 用于静默续期，`data.session_id` 用于业务 API 的 `X-Session-ID` 头。
+
+### 5.3.1 刷新 Token
+
+```bash
+curl -X POST http://localhost:8080/api/v1/user/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "<refresh_token>"}'
+```
+
+### 5.3.2 退出登录
+
+```bash
+curl -X POST http://localhost:8080/api/v1/user/logout \
+  -H "Authorization: Bearer <access_token>" \
+  -H "X-Session-ID: <session_id>" \
+  -H "X-Device-ID: <device_id>"
+```
 
 从 `data.token` 复制 token，用于下一步。
 
@@ -282,7 +301,9 @@ curl http://localhost:8080/api/v1/me/profile \
 |------|------|------|------|
 | GET | `/health` | 否 | 健康检查 |
 | POST | `/api/v1/user/register` | 否 | 邮箱注册（Supabase Auth） |
-| POST | `/api/v1/user/login` | 否 | 邮箱登录，返回 Supabase access token |
+| POST | `/api/v1/user/login` | 否 | 邮箱登录，返回 access token + refresh_token + session_id |
+| POST | `/api/v1/user/refresh` | 否 | 用 refresh_token 换取新 access token |
+| POST | `/api/v1/user/logout` | Supabase token + session | 主动退出，删除 Redis session |
 | GET | `/api/v1/user/list` | Bearer 自建 JWT | 本地用户列表（遗留，`?page=1&size=20`） |
 | GET | `/api/v1/user/profile` | Bearer 自建 JWT | 本地用户详情（遗留，与 Supabase 登录不兼容） |
 
@@ -407,6 +428,7 @@ make test-realtime   # 一键联调（需 Redis + make run）
 | `make test-queue-push` | 异步 Push 联调（需 `make run` + `make run-worker`） |
 | `make trigger-hourly-notify` | 手动入队定时广播任务 |
 | `make test-scheduled-notify` | 定时通知联调（登录 + 触发 + sync） |
+| `make test-auth-refresh-logout` | refresh + logout 联调 |
 | `make check-secrets` | 推送前检查入库文件是否含 service_role 密钥 |
 
 ---

@@ -84,6 +84,106 @@ func TestDeviceSessionIssueAndValidate(t *testing.T) {
 	}
 }
 
+func TestDeviceSessionSameDeviceStaleSessionID(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+
+	sessionID, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-1",
+		DeviceID: "device-a",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if err := uc.Validate(context.Background(), "user-1", "", "stale-session", "device-a"); err != usecase.ErrSessionInvalid {
+		t.Fatalf("expected invalid session on same device, got %v", err)
+	}
+	if err := uc.Validate(context.Background(), "user-1", "", sessionID, "device-a"); err != nil {
+		t.Fatalf("validate current session: %v", err)
+	}
+}
+
+func TestDeviceSessionRenewOnRefreshSameDevice(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+
+	oldSession, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-1",
+		DeviceID: "device-a",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	newSession, err := uc.RenewOnRefresh(context.Background(), usecase.RenewSessionInput{
+		UserID:    "user-1",
+		DeviceID:  "device-a",
+		Platform:  "ios",
+		SessionID: oldSession,
+	})
+	if err != nil {
+		t.Fatalf("renew: %v", err)
+	}
+	if newSession == "" || newSession == oldSession {
+		t.Fatalf("expected new session id, got %q", newSession)
+	}
+	if err := uc.Validate(context.Background(), "user-1", "", newSession, "device-a"); err != nil {
+		t.Fatalf("validate renewed session: %v", err)
+	}
+}
+
+func TestDeviceSessionRenewOnRefreshOtherDevice(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+
+	_, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-1",
+		DeviceID: "device-a",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	_, err = uc.RenewOnRefresh(context.Background(), usecase.RenewSessionInput{
+		UserID:   "user-1",
+		DeviceID: "device-b",
+		Platform: "android",
+	})
+	if err != usecase.ErrSessionReplaced {
+		t.Fatalf("expected replaced error, got %v", err)
+	}
+}
+
+func TestDeviceSessionRenewOnRefreshDeviceMigration(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+
+	oldSession, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-1",
+		DeviceID: "ios",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+
+	newSession, err := uc.RenewOnRefresh(context.Background(), usecase.RenewSessionInput{
+		UserID:    "user-1",
+		DeviceID:  "stable-device-id",
+		Platform:  "ios",
+		SessionID: oldSession,
+	})
+	if err != nil {
+		t.Fatalf("renew with migration: %v", err)
+	}
+	if err := uc.Validate(context.Background(), "user-1", "", newSession, "stable-device-id"); err != nil {
+		t.Fatalf("validate migrated device: %v", err)
+	}
+}
+
 func TestDeviceSessionWhitelistExempt(t *testing.T) {
 	repo := &mockSessionRepo{}
 	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{
@@ -150,5 +250,31 @@ func TestDeviceSessionMissingHeaders(t *testing.T) {
 	}
 	if err := uc.Validate(context.Background(), "user-1", "", sessionID, ""); err != usecase.ErrSessionInvalid {
 		t.Fatalf("expected invalid session, got %v", err)
+	}
+}
+
+func TestDeviceSessionRevokeOnLogout(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{SessionTTLHours: 0})
+
+	sessionID, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-1",
+		DeviceID: "device-a",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue: %v", err)
+	}
+	if repo.lastTTL != 0 {
+		t.Fatalf("expected ttl=0, got %v", repo.lastTTL)
+	}
+	if err := uc.RevokeOnLogout(context.Background(), "user-1", "", sessionID, "device-a"); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if _, ok := repo.sessions["user-1"]; ok {
+		t.Fatal("session should be deleted after logout")
+	}
+	if err := uc.Validate(context.Background(), "user-1", "", sessionID, "device-a"); err != usecase.ErrSessionInvalid {
+		t.Fatalf("expected invalid session after logout, got %v", err)
 	}
 }

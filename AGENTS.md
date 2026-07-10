@@ -64,6 +64,8 @@ make test-phone-otp-login
 |--------|------|
 | 健康 | `GET /health` |
 | 登录 | `POST /api/v1/user/login` |
+| 刷新 Token | `POST /api/v1/user/refresh` |
+| 退出登录 | `POST /api/v1/user/logout` |
 | 测试手机号 OTP | `POST /api/v1/user/phone/otp/send` · `verify`（dev：`13400000000` + `123456`） |
 | Realtime | Flutter 设置 → Realtime 调试 |
 | 异步 Push | `make test-queue-push`（需 Worker） |
@@ -153,6 +155,12 @@ pkg/
 
 **单设备登录**：登录时 Redis `auth:session:{user_id}` 存 `{session_id, device_id}`；业务 API 需 `X-Session-ID` + `X-Device-ID`；新 mobile 登录覆盖旧 session。
 
+**Session 永不过期**：`auth.session_ttl_hours: 0`（或 `AUTH_SESSION_TTL_HOURS=0`）时 Redis session 无 TTL，仅主动 logout 或其它设备登录时失效。
+
+**Token 续期**：登录/注册返回 `token` + `refresh_token`；access token 过期前客户端调 `POST /api/v1/user/refresh` 静默续期。
+
+**主动退出**：`POST /api/v1/user/logout`（SupabaseSessionAuth）删除 Redis session 并撤销 Supabase refresh token。
+
 **账号白名单豁免**：`auth.session_whitelist_user_ids` / `session_whitelist_emails`（或环境变量 `AUTH_SESSION_WHITELIST_*`）中的账号跳过 Redis session 校验，可多设备同时在线；普通用户不受影响。
 
 ### 两套认证（勿混淆）
@@ -162,7 +170,7 @@ pkg/
 | `SupabaseSessionAuth` | `/api/v1/transactions*`、`/api/v1/realtime/*` | Supabase access token + session | UUID |
 | `Auth`（JWT） | `/api/v1/user/list` | Go 自建 JWT | `uint` |
 
-Flutter 登录返回 **Supabase token + session_id**，业务 API 走 `SupabaseSessionAuth`。
+Flutter 登录返回 **Supabase token + refresh_token + session_id**，业务 API 走 `SupabaseSessionAuth`。
 
 ### 配置与环境变量
 

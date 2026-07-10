@@ -5,7 +5,7 @@ WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
 DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout
 
 run:
 	./scripts/load-env.sh go run $(MAIN_PATH)
@@ -82,6 +82,10 @@ test-realtime:
 test-single-device-login:
 	./scripts/test_single_device_login.sh
 
+test-auth-refresh-logout:
+	chmod +x ./scripts/test_auth_refresh_logout.sh
+	./scripts/test_auth_refresh_logout.sh
+
 test-phone-otp-login:
 	chmod +x ./scripts/test_phone_otp_login.sh
 	./scripts/test_phone_otp_login.sh
@@ -99,6 +103,11 @@ trigger-hourly-notify:
 test-scheduled-notify:
 	chmod +x ./scripts/test_scheduled_notify.sh
 	./scripts/test_scheduled_notify.sh
+
+# 向指定 userId 推送 sys.notify（开发环境 push_async=false 同步直投 WS）
+push-notify-user:
+	chmod +x ./scripts/push_notify_user.sh
+	./scripts/push_notify_user.sh $(USER_ID) $(EMAIL) "$(TITLE)" "$(BODY)"
 
 # 推送前检查：入库文件不得含 Supabase service_role（GitHub 推送保护）
 check-secrets:
