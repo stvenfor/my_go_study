@@ -1,0 +1,19 @@
+# 飞书文档同步配置（Git Markdown → 飞书 Wiki，via lark-cli）
+# 详见 docs/FEISHU_SYNC.md
+
+wiki:
+  # 知识库名称（bootstrap 时匹配已有空间）
+  space_name: "项目 docs"
+  space_description: "各项目 Markdown 文档聚合知识库（Git 自动同步）"
+  # 知识库下的一级项目文件夹（与仓库/项目名一致）
+  project_folder: "my_go_study"
+
+sync:
+  include:
+    - "docs/**/*.md"
+    - "AGENTS.md"
+  exclude: []
+
+paths:
+  manifest: "docs/feishu-sync.manifest.json"
+  repo_root: "."
