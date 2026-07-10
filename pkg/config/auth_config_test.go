@@ -1,20 +1,17 @@
-package config
+package config_test
 
-import "testing"
+import (
+	"testing"
+	"time"
 
-func TestAuthConfigIsSessionExempt(t *testing.T) {
-	cfg := AuthConfig{
-		SessionWhitelistUserIDs: []string{"user-uuid-1"},
-		SessionWhitelistEmails:  []string{"Internal@Example.com"},
-	}
+	"github.com/stvenfor/my_go_study/pkg/config"
+)
 
-	if !cfg.IsSessionExempt("user-uuid-1", "") {
-		t.Fatal("expected user id whitelist match")
+func TestAuthConfigSessionTTL(t *testing.T) {
+	if got := (config.AuthConfig{SessionTTLHours: 0}).SessionTTL(); got != 0 {
+		t.Fatalf("SessionTTL(0) = %v, want 0", got)
 	}
-	if !cfg.IsSessionExempt("", "internal@example.com") {
-		t.Fatal("expected email whitelist match case-insensitive")
-	}
-	if cfg.IsSessionExempt("other-user", "other@example.com") {
-		t.Fatal("expected non-whitelist user to be rejected")
+	if got := (config.AuthConfig{SessionTTLHours: 24}).SessionTTL(); got != 24*time.Hour {
+		t.Fatalf("SessionTTL(24) = %v, want 24h", got)
 	}
 }

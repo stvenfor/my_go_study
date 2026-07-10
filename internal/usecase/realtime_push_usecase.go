@@ -70,7 +70,7 @@ func (u *RealtimePushUsecase) PushToUser(ctx context.Context, input RealtimePush
 		return RealtimePushOutput{}, fmt.Errorf("userId 不能为空")
 	}
 
-	if u.cfg.Queue.Enabled && u.queue != nil {
+	if u.cfg.Queue.UseAsyncPush() && u.queue != nil {
 		taskID, err := u.queue.EnqueueRealtimePush(ctx, input)
 		if err != nil {
 			return RealtimePushOutput{}, err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
+	"go.uber.org/zap"
 )
 
 // FanoutMessage Pub/Sub 广播消息体。
@@ -46,6 +47,7 @@ type FanoutSubscriber struct {
 	redis       *redis.Client
 	channel     string
 	broadcaster func(userID, topic string, envelope entity.RealtimeEnvelope) int
+	log         *zap.Logger
 }
 
 // NewFanoutSubscriber 创建 Pub/Sub 订阅器。
@@ -53,11 +55,16 @@ func NewFanoutSubscriber(
 	redisClient *redis.Client,
 	channel string,
 	broadcaster func(userID, topic string, envelope entity.RealtimeEnvelope) int,
+	log *zap.Logger,
 ) *FanoutSubscriber {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &FanoutSubscriber{
 		redis:       redisClient,
 		channel:     channel,
 		broadcaster: broadcaster,
+		log:         log,
 	}
 }
 
@@ -85,10 +92,22 @@ func (s *FanoutSubscriber) Run(ctx context.Context) error {
 func (s *FanoutSubscriber) handleMessage(payload string) {
 	var msg FanoutMessage
 	if err := json.Unmarshal([]byte(payload), &msg); err != nil {
+		s.log.Warn("pubsub fanout unmarshal failed", zap.Error(err))
 		return
 	}
 	if msg.UserID == "" || msg.Envelope.Type == "" {
+		s.log.Warn("pubsub fanout drop invalid message",
+			zap.String("userId", msg.UserID),
+			zap.String("type", msg.Envelope.Type),
+			zap.String("topic", msg.Topic),
+		)
 		return
 	}
-	s.broadcaster(msg.UserID, msg.Topic, msg.Envelope)
+	delivered := s.broadcaster(msg.UserID, msg.Topic, msg.Envelope)
+	s.log.Info("pubsub fanout delivered",
+		zap.String("userId", msg.UserID),
+		zap.String("topic", msg.Topic),
+		zap.Int64("seq", msg.Envelope.Seq),
+		zap.Int("delivered", delivered),
+	)
 }

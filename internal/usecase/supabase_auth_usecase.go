@@ -30,10 +30,11 @@ var (
 )
 
 type SupabaseAuthOutput struct {
-	Token    string // Supabase access_token，Flutter 存本地
-	UserID   string // UUID
-	Username string // 展示名
-	Email    string
+	Token        string // Supabase access_token，Flutter 存本地
+	RefreshToken string // Supabase refresh_token，用于静默续期
+	UserID       string // UUID
+	Username     string // 展示名
+	Email        string
 }
 
 type SupabaseAuthUsecase struct {
@@ -124,6 +125,42 @@ func (u *SupabaseAuthUsecase) Login(ctx context.Context, input LoginInput) (*Sup
 	return supabaseAuthOutputFromToken(token, email), nil
 }
 
+// RefreshToken 使用 refresh_token 换取新的 access_token。
+func (u *SupabaseAuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*SupabaseAuthOutput, error) {
+	if u.sb == nil {
+		return nil, ErrSupabaseUnavailable
+	}
+	refreshToken = strings.TrimSpace(refreshToken)
+	if refreshToken == "" {
+		return nil, ErrInvalidParams
+	}
+
+	var token *types.TokenResponse
+	err := u.withAuthTimeout(ctx, func(ctx context.Context) error {
+		var callErr error
+		token, callErr = u.sb.Anon.Auth.RefreshToken(refreshToken)
+		return callErr
+	})
+	if err != nil {
+		return nil, mapSupabaseAuthError(err)
+	}
+	return supabaseAuthOutputFromToken(token, ""), nil
+}
+
+// Logout 撤销 Supabase 侧 refresh token（需有效 access_token）。
+func (u *SupabaseAuthUsecase) Logout(ctx context.Context, accessToken string) error {
+	if u.sb == nil {
+		return ErrSupabaseUnavailable
+	}
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken == "" {
+		return ErrInvalidParams
+	}
+	return u.withAuthTimeout(ctx, func(ctx context.Context) error {
+		return u.sb.Anon.Auth.WithToken(accessToken).Logout()
+	})
+}
+
 // withAuthTimeout 防止 Supabase 网络卡住占满 HTTP  worker。
 func (u *SupabaseAuthUsecase) withAuthTimeout(ctx context.Context, fn func(context.Context) error) error {
 	if ctx == nil {
@@ -166,10 +203,11 @@ func supabaseAuthOutputFromToken(token *types.TokenResponse, fallbackUsername st
 func supabaseAuthOutputFromSession(session types.Session, fallbackUsername string) *SupabaseAuthOutput {
 	user := session.User
 	return &SupabaseAuthOutput{
-		Token:    session.AccessToken,
-		UserID:   user.ID.String(),
-		Username: resolveSupabaseUsername(user, fallbackUsername),
-		Email:    user.Email,
+		Token:        session.AccessToken,
+		RefreshToken: session.RefreshToken,
+		UserID:       user.ID.String(),
+		Username:     resolveSupabaseUsername(user, fallbackUsername),
+		Email:        user.Email,
 	}
 }
 

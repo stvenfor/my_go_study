@@ -25,7 +25,7 @@ jwt:
   expire_hours: 72
 
 auth:
-  session_ttl_hours: 168
+  session_ttl_hours: 0
   session_whitelist_user_ids: []
   session_whitelist_emails: []
 

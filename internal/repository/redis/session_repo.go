@@ -4,7 +4,6 @@ package redis
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -42,10 +41,11 @@ func (r *SessionRepository) Save(ctx context.Context, userID string, session rep
 	if err != nil {
 		return err
 	}
+	key := sessionKeyPrefix + userID
 	if ttl <= 0 {
-		return fmt.Errorf("session ttl 必须大于 0")
+		return r.client.Set(ctx, key, raw, 0).Err()
 	}
-	return r.client.Set(ctx, sessionKeyPrefix+userID, raw, ttl).Err()
+	return r.client.Set(ctx, key, raw, ttl).Err()
 }
 
 func (r *SessionRepository) Delete(ctx context.Context, userID string) error {

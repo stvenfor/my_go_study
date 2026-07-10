@@ -41,20 +41,32 @@ func Setup(opts Options) *gin.Engine {
 	})
 
 	v1 := r.Group("/api/v1")
-	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler)
+
+	var sbAuth gin.HandlerFunc
+	if opts.Supabase.Enabled() && opts.DeviceSessionUC != nil {
+		sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+	}
+
+	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sbAuth)
 
 	if opts.Supabase.Enabled() && opts.TransactionController != nil {
-		sbAuth := middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		if sbAuth == nil {
+			sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		}
 		registerTransactionRoutes(v1, sbAuth, opts.TransactionController)
 	}
 
 	if opts.Supabase.Enabled() && opts.ProfileController != nil {
-		sbAuth := middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		if sbAuth == nil {
+			sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		}
 		registerProfileRoutes(v1, sbAuth, opts.ProfileController)
 	}
 
 	if opts.Supabase.Enabled() && opts.RealtimeController != nil {
-		sbAuth := middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		if sbAuth == nil {
+			sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		}
 		registerRealtimeRoutes(v1, sbAuth, opts.RealtimeController)
 	}
 
