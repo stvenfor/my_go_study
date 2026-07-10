@@ -1,0 +1,56 @@
+{
+  "wiki_space_id": "7660742459801996254",
+  "wiki_space_name": "项目 docs",
+  "project_folder_name": "my_go_study",
+  "project_folder_node_token": "LRaqwulH6iVQobku51qcCzyZneq",
+  "directories": {
+    "docs": "Q5FZwwxnkibq18k0TUDcGtIgn5d"
+  },
+  "files": {
+    "AGENTS.md": {
+      "node_token": "S13gwhQDEiVlyuk8gLkcVnxJnyb",
+      "document_id": "Y0cedVTDZook8JxIrfpcdErPnZd",
+      "content_hash": "sha256:5ded06f0a7cc0857a489d3291d66bda10ae465cb52392772efcc3bb3fa2cf3ea"
+    },
+    "docs/FEISHU_SYNC.md": {
+      "node_token": "VL9uwmqryiApefkCLBVceVhdnSc",
+      "document_id": "DqyRdsB3AoSLPqxlKqOcqw3cnqd",
+      "content_hash": "sha256:4ffe5fb8f07a854076f4f391ff676162ae5eea875bb7daf1508fde59208423ba"
+    },
+    "docs/auth-beginner-walkthrough.md": {
+      "node_token": "EperwNvELigNqlk21TJcJzB4nve",
+      "document_id": "Dh0xd4DLyoETSexT8HRcFGaLnSd",
+      "content_hash": "sha256:346eb40c63ab470fad8df9d781553b84774ae75eae23819c69402dc25282c06c"
+    },
+    "docs/message-queue.md": {
+      "node_token": "Xwoow1FfBi3TM1kpYO9c0BbOnGe",
+      "document_id": "CeZ5doSZ7oxkkpxHY5Fc4MQenff",
+      "content_hash": "sha256:1958af70cdb8bda406bc31cec22963a1feddbe6e5a4453d5437f6a46160d69f5"
+    },
+    "docs/realtime-beginner-walkthrough.md": {
+      "node_token": "WvAtwY8mei6EO5kl2NZcsg5Gnpc",
+      "document_id": "OMytdNfnLoEl3Kxl1KUcvRQcnFx",
+      "content_hash": "sha256:9eafa0cc69a9827c1810468cc5f0ff1fc608c095dc372a56f1aeaf1e4b4f4d69"
+    },
+    "docs/realtime-websocket.md": {
+      "node_token": "HQ37wpUH0iNJ1ukqLCocNkjcnS1",
+      "document_id": "MvqNdI3d7ouPVMxgiDGcjvIXnIe",
+      "content_hash": "sha256:2efac2c8803f3d5bf21925a47a4b522e2b787f4ed883706ff8d07e7156310c12"
+    },
+    "docs/startup-guide.md": {
+      "node_token": "ANaGwsqCnihXLhkI5MUcUnQkn6b",
+      "document_id": "Ygzkd3lvyoneF1xNARrc0E1Znob",
+      "content_hash": "sha256:e01e8ead1d8ff8a06cd821e05168fd340f57ae08d0b7db867a8410dcb3e6be75"
+    },
+    "docs/supabase-integration.md": {
+      "node_token": "PlL4w5hjeij0giksMzwckttnnyf",
+      "document_id": "RzwZdUvjeo6WSvxPyoIcTIYynic",
+      "content_hash": "sha256:574e3e61f8a82899ad4afdb562531bfbd5c5e4442bb25d5b7bda8ff31215d5fb"
+    },
+    "docs/transactions-beginner-walkthrough.md": {
+      "node_token": "J1jswvF2mib6C1khgAycRDTLnxe",
+      "document_id": "JKSPdaVZUo9JahxxX7ucuUE0nVd",
+      "content_hash": "sha256:a648044d6ec7bc17acef094767641ef5d17d1ad4ec5c0d567770a6ec01dce796"
+    }
+  }
+}
