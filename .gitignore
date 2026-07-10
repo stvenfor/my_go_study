@@ -25,3 +25,9 @@ coverage.*
 # Go workspace
 go.work
 go.work.sum
+
+# Python (feishu_doc_sync 等脚本)
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
