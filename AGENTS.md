@@ -2,6 +2,20 @@
 
 Go BFF 后端 Agent 指南，并包含与 Flutter **`my_ai_project`** 协作的工作区总览。
 
+### Agent 编排（`.harness`）
+
+多角色 / 多会话任务默认走编排层，**不要**跳过 Brief 与验证直接自称完成：
+
+| 入口 | 路径 |
+|------|------|
+| 编排总览 | [`.harness/README.md`](./.harness/README.md) |
+| 角色合同 | [`.harness/agents/`](./.harness/agents/)（conductor → planner → executor → reviewer） |
+| 当前指针 | [`.harness/changes/current.md`](./.harness/changes/current.md) |
+| 硬规则 | [`.harness/rules/`](./.harness/rules/) |
+| 文档索引 | [`.harness/wiki/README.md`](./.harness/wiki/README.md) |
+
+新任务未指定角色时，先读 **conductor**；人批 Brief 与 commit/push。
+
 ---
 
 ## 一、工作区总览（Flutter + Go）
