@@ -26,11 +26,15 @@ from scanner import load_config, scan_markdown_files  # noqa: E402
 
 
 def _apply_repo_paths(config, repo_root: Path):
-    return replace(
-        config,
-        repo_root=repo_root,
-        manifest_path=repo_root / "docs" / "feishu-sync.manifest.json",
-    )
+    # Keep manifest path from YAML (supports alternate targets like feishu-sync-code.manifest.json).
+    # Re-resolve if the loaded config used a different CWD than the real repo root.
+    configured = config.manifest_path
+    try:
+        relative = configured.relative_to(config.repo_root)
+        manifest_path = (repo_root / relative).resolve()
+    except ValueError:
+        manifest_path = configured
+    return replace(config, repo_root=repo_root, manifest_path=manifest_path)
 
 
 def _repo_root() -> Path:

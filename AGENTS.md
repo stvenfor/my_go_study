@@ -92,7 +92,9 @@ make test-phone-otp-login
 
 | 文档 | 用途 |
 |------|------|
+| [README.md](./docs/README.md) | **文档总览**：架构摘要 + 完整使用手册（入口） |
 | [startup-guide.md](./docs/startup-guide.md) | 环境、Makefile、Docker |
+| [architecture-learning-guide.md](./docs/architecture-learning-guide.md) | 分层、优缺点、认证/交易/Realtime 时序 |
 | [supabase-integration.md](./docs/supabase-integration.md) | Supabase 架构 |
 | [realtime-websocket.md](./docs/realtime-websocket.md) | WS 协议 |
 | [auth-beginner-walkthrough.md](./docs/auth-beginner-walkthrough.md) | 认证导读 |
@@ -253,7 +255,9 @@ make check-secrets
 
 ### 相关文档
 
+- [文档总览（架构 + 使用）](./docs/README.md)
 - [启动指南](./docs/startup-guide.md)
+- [架构学习指南](./docs/architecture-learning-guide.md)
 - [Supabase 集成说明](./docs/supabase-integration.md)
 - [Realtime WebSocket 协议](./docs/realtime-websocket.md)
 - [认证初学者导读](./docs/auth-beginner-walkthrough.md)

@@ -1,0 +1,21 @@
+{
+  "wiki_space_id": "7660024466872765661",
+  "wiki_space_name": "code",
+  "project_folder_name": "my_go_study",
+  "project_folder_node_token": "KnoowCwT9iImwBkdjXocuAxjnWd",
+  "directories": {
+    "docs": "Q18nw3G3jioTOWkCzNMcqnj7nsb"
+  },
+  "files": {
+    "AGENTS.md": {
+      "node_token": "BrlwwAVI6ihSl9kE5HEcuzXAnJy",
+      "document_id": "FhoWdoqwBo6H07xZSuKcXCRUn5g",
+      "content_hash": "sha256:61e12848aa8b4b9474de272ba1447ca691adc8792c1d264b18044c60e0be60e1"
+    },
+    "docs/architecture-learning-guide.md": {
+      "node_token": "JQQ8wvPsmiI6rDkEHpDcTykKnBd",
+      "document_id": "ISZgdhtmKo1IEwxdDRjc2Gumnor",
+      "content_hash": "sha256:93a91a310db5fa58cf9ac66014814f943cac96e2dac2ca67420e05f656b3db43"
+    }
+  }
+}

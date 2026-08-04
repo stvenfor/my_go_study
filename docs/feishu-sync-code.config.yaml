@@ -1,0 +1,20 @@
+# 飞书知识库「code」同步配置（与「项目 docs」并列，互不覆盖 manifest）
+# 用法：
+#   ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-code.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-code.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-code.config.yaml --file docs/architecture-learning-guide.md
+
+wiki:
+  space_name: "code"
+  space_description: "Migrated from Yuque"
+  project_folder: "my_go_study"
+
+sync:
+  include:
+    - "docs/architecture-learning-guide.md"
+    - "AGENTS.md"
+  exclude: []
+
+paths:
+  manifest: "docs/feishu-sync-code.manifest.json"
+  repo_root: "."

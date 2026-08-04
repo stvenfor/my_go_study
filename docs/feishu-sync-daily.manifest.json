@@ -1,0 +1,16 @@
+{
+  "wiki_space_id": "7659993277281668282",
+  "wiki_space_name": "daily",
+  "project_folder_name": "日常知识",
+  "project_folder_node_token": "DNNpwjP4KiZL01kOcmNcmTNQnzb",
+  "directories": {
+    "docs": "WcagwuPvAi3BPDkd9eKcSwUnnQg"
+  },
+  "files": {
+    "docs/llm-ai-fundamentals.md": {
+      "node_token": "Hv4jwJVAoikEFNkd65fcWOCNn2e",
+      "document_id": "G6IfdlQxwoJXrex0yfMcEnqlnGc",
+      "content_hash": "sha256:ada33da00424830c142b4cd9d53810c6fb4d8929f95eeea488da264ff213e4f2"
+    }
+  }
+}

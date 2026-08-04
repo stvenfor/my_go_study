@@ -17,6 +17,13 @@
 
 配置见 [`feishu-sync.config.yaml`](./feishu-sync.config.yaml)，节点映射见 [`feishu-sync.manifest.json`](./feishu-sync.manifest.json)。
 
+另有两套并列配置（互不覆盖 manifest）：
+
+| 知识库 | 配置 | 用途 |
+|--------|------|------|
+| **code** | [`feishu-sync-code.config.yaml`](./feishu-sync-code.config.yaml) | 精选学习文档 |
+| **daily** | [`feishu-sync-daily.config.yaml`](./feishu-sync-daily.config.yaml) | 「日常知识」文件夹下的日常笔记 |
+
 ## 一、前置准备（一次性）
 
 ### 1. 安装并登录 lark-cli
@@ -60,6 +67,14 @@ lark-cli auth status
 
 # 单文件
 python3 scripts/feishu_doc_sync/main.py sync --file docs/startup-guide.md
+
+# 同步到知识库「code」（架构学习指南等）
+./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-code.config.yaml
+./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-code.config.yaml
+
+# 同步到知识库「daily」→ 文件夹「日常知识」
+./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-daily.config.yaml
+./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-daily.config.yaml
 ```
 
 依赖：`lark-cli`（必需）、Python 3.10+ 与 `PyYAML`（脚本自动安装）。

@@ -10,12 +10,17 @@
     "AGENTS.md": {
       "node_token": "S13gwhQDEiVlyuk8gLkcVnxJnyb",
       "document_id": "Y0cedVTDZook8JxIrfpcdErPnZd",
-      "content_hash": "sha256:5ded06f0a7cc0857a489d3291d66bda10ae465cb52392772efcc3bb3fa2cf3ea"
+      "content_hash": "sha256:61e12848aa8b4b9474de272ba1447ca691adc8792c1d264b18044c60e0be60e1"
     },
     "docs/FEISHU_SYNC.md": {
       "node_token": "VL9uwmqryiApefkCLBVceVhdnSc",
       "document_id": "DqyRdsB3AoSLPqxlKqOcqw3cnqd",
-      "content_hash": "sha256:4ffe5fb8f07a854076f4f391ff676162ae5eea875bb7daf1508fde59208423ba"
+      "content_hash": "sha256:4515be25a8dfda4f259576219dea45f3040df3863a80f5ef2352e53abb63a53c"
+    },
+    "docs/architecture-learning-guide.md": {
+      "node_token": "F1PDwKPbOiRURekvCBRcPb4cnAc",
+      "document_id": "Vjf2d6qCPoVDAkxWPqncUAQjnke",
+      "content_hash": "sha256:93a91a310db5fa58cf9ac66014814f943cac96e2dac2ca67420e05f656b3db43"
     },
     "docs/auth-beginner-walkthrough.md": {
       "node_token": "EperwNvELigNqlk21TJcJzB4nve",

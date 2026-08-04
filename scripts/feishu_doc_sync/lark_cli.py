@@ -125,7 +125,12 @@ def list_wiki_nodes(
     args = ["wiki", "+node-list", "--space-id", space_id, "--page-all"]
     if parent_node_token:
         args.extend(["--parent-node-token", parent_node_token])
-    payload = run_lark_cli(*args, as_identity=as_identity, jq=".data.items")
+    payload = run_lark_cli(*args, as_identity=as_identity, jq=".data")
+    if isinstance(payload, dict):
+        for key in ("nodes", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return value
     if isinstance(payload, list):
         return payload
     return []

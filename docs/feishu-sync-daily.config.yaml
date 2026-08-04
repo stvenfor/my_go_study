@@ -1,0 +1,20 @@
+# 飞书知识库「daily」同步配置
+# 在 daily 下创建「日常知识」文件夹并同步精选日常笔记
+# 用法：
+#   ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-daily.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-daily.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-daily.config.yaml --file docs/llm-ai-fundamentals.md
+
+wiki:
+  space_name: "daily"
+  space_description: "日常知识与笔记"
+  project_folder: "日常知识"
+
+sync:
+  include:
+    - "docs/llm-ai-fundamentals.md"
+  exclude: []
+
+paths:
+  manifest: "docs/feishu-sync-daily.manifest.json"
+  repo_root: "."
