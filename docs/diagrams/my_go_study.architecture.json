@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "my_go_study 系统架构",
+    "output": "my_go_study.architecture.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-path",
+        "label": "主请求路径",
+        "focus": ["flutter", "gin-bff", "supabase-auth", "supabase-db"],
+        "note": "Flutter 经 BFF 访问 Supabase 认证与业务数据，不直连 Supabase SDK。"
+      },
+      {
+        "id": "realtime-session",
+        "label": "Session 与 Realtime",
+        "focus": ["flutter", "gin-bff", "redis", "supabase-auth"],
+        "note": "Redis 存单设备 Session、WS Ticket 与 Pub/Sub 事件广播。"
+      },
+      {
+        "id": "async-worker",
+        "label": "异步队列",
+        "focus": ["gin-bff", "redis", "worker"],
+        "note": "API 入队 Asynq 任务，Worker 消费并广播 Push / 定时通知。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "flutter",
+      "type": "frontend",
+      "label": "my_ai_project",
+      "sublabel": "Flutter 客户端",
+      "pos": [40, 280],
+      "size": [140, 64]
+    },
+    {
+      "id": "gin-bff",
+      "type": "backend",
+      "label": "Gin BFF",
+      "sublabel": "cmd/api :8080",
+      "pos": [240, 280],
+      "size": [150, 64]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Asynq Worker",
+      "sublabel": "cmd/worker",
+      "pos": [240, 420],
+      "size": [150, 64]
+    },
+    {
+      "id": "supabase-auth",
+      "type": "security",
+      "label": "Supabase Auth",
+      "sublabel": "GoTrue / JWT",
+      "brand": "supabase",
+      "pos": [500, 40],
+      "size": [150, 64]
+    },
+    {
+      "id": "supabase-db",
+      "type": "cloud",
+      "label": "Supabase Cloud",
+      "sublabel": "PostgREST + RLS",
+      "brand": "supabase",
+      "pos": [740, 40],
+      "size": [160, 64]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "Session / Ticket / Queue",
+      "brand": "redis",
+      "pos": [500, 180],
+      "size": [150, 64]
+    },
+    {
+      "id": "local-pg",
+      "type": "database",
+      "label": "本地 PostgreSQL",
+      "sublabel": "GORM 遗留 users",
+      "brand": "postgresql",
+      "pos": [740, 280],
+      "size": [160, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "客户端",
+      "wraps": ["flutter"]
+    },
+    {
+      "kind": "region",
+      "label": "my_go_study（BFF 层）",
+      "wraps": ["gin-bff", "worker"]
+    },
+    {
+      "kind": "region",
+      "label": "Supabase Cloud",
+      "wraps": ["supabase-auth", "supabase-db"]
+    },
+    {
+      "kind": "security-group",
+      "label": "单设备 Session + RLS",
+      "wraps": ["gin-bff", "redis", "supabase-auth"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-http-ws",
+      "from": "flutter",
+      "to": "gin-bff",
+      "label": "HTTP / WebSocket",
+      "variant": "emphasis",
+      "labelDy": 56
+    },
+    {
+      "id": "auth-flow",
+      "from": "gin-bff",
+      "to": "supabase-auth",
+      "label": "登录 / Token 校验",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [380, 220]
+    },
+    {
+      "id": "business-data",
+      "from": "gin-bff",
+      "to": "supabase-db",
+      "label": "PostgREST",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "via": [[315, 130], [820, 130]],
+      "labelAt": [750, 118]
+    },
+    {
+      "id": "session-redis",
+      "from": "gin-bff",
+      "to": "redis",
+      "label": "Session / PubSub",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [420, 240]
+    },
+    {
+      "id": "auth-to-db",
+      "from": "supabase-auth",
+      "to": "supabase-db",
+      "label": "用户数据",
+      "labelAt": [695, 72]
+    },
+    {
+      "id": "enqueue",
+      "from": "gin-bff",
+      "to": "worker",
+      "label": "Asynq 入队",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [260, 370]
+    },
+    {
+      "id": "worker-redis",
+      "from": "worker",
+      "to": "redis",
+      "label": "消费 / 广播",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [[460, 452], [575, 452]],
+      "labelAt": [500, 440]
+    }
+  ]
+}
