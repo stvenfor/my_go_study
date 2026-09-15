@@ -79,13 +79,8 @@ func main() {
 			fatalf("获取 sql.DB: %v", err)
 		}
 		defer sqlDB.Close()
-		if err := db.AutoMigrate(
-			&entity.AuthUser{},
-			&entity.AuthRefreshToken{},
-			&entity.Profile{},
-			&entity.Transaction{},
-		); err != nil {
-			fatalf("AutoMigrate: %v", err)
+		if err := prepareLocalSchema(db); err != nil {
+			fatalf("准备本地表结构: %v", err)
 		}
 	}
 
@@ -290,4 +285,27 @@ func importTransactions(db *gorm.DB, items []entity.Transaction) (int, error) {
 func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
+}
+
+// prepareLocalSchema 确保 UUID 版 transactions 可用；旧 bigint user_id 表改名为 legacy。
+func prepareLocalSchema(db *gorm.DB) error {
+	var dataType string
+	_ = db.Raw(`
+		SELECT data_type FROM information_schema.columns
+		WHERE table_schema = CURRENT_SCHEMA()
+		  AND table_name = 'transactions'
+		  AND column_name = 'user_id'
+	`).Scan(&dataType).Error
+	if dataType != "" && dataType != "uuid" {
+		fmt.Printf("检测到旧 transactions.user_id=%s，重命名为 transactions_legacy_uint\n", dataType)
+		if err := db.Exec(`ALTER TABLE transactions RENAME TO transactions_legacy_uint`).Error; err != nil {
+			return fmt.Errorf("重命名旧 transactions: %w", err)
+		}
+	}
+	return db.AutoMigrate(
+		&entity.AuthUser{},
+		&entity.AuthRefreshToken{},
+		&entity.Profile{},
+		&entity.Transaction{},
+	)
 }

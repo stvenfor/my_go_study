@@ -223,6 +223,18 @@ func run() error {
 
 // autoMigrate 自动迁移数据库表结构。
 func autoMigrate(db *gorm.DB) error {
+	var dataType string
+	_ = db.Raw(`
+		SELECT data_type FROM information_schema.columns
+		WHERE table_schema = CURRENT_SCHEMA()
+		  AND table_name = 'transactions'
+		  AND column_name = 'user_id'
+	`).Scan(&dataType).Error
+	if dataType != "" && dataType != "uuid" {
+		if err := db.Exec(`ALTER TABLE transactions RENAME TO transactions_legacy_uint`).Error; err != nil {
+			return fmt.Errorf("重命名旧 transactions 失败: %w", err)
+		}
+	}
 	if err := db.AutoMigrate(
 		&entity.User{},
 		&entity.AuthUser{},
