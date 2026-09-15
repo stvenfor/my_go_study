@@ -2,7 +2,7 @@
 
 > 目标：日常 **完全使用本机 Postgres + 自建 Auth**；保留 `auth.provider=supabase` 以便后期切回 Cloud。  
 > 与 [lan-backend-host.md](./lan-backend-host.md) 的关系：**升级后的 `lan` = 本地全栈 + 局域网暴露**（不再 LAN+Cloud）。  
-> 状态：**实现中已可编译**（`auth.provider=local`、lan 默认本地 Auth；Cloud 导入后置）。
+> 状态：**已实现**（`auth.provider=local`、lan 默认本地 Auth；`make import-supabase` 已可用）。
 
 ---
 

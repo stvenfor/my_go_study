@@ -107,6 +107,7 @@ make lan-down
 | [realtime-beginner-walkthrough.md](./docs/realtime-beginner-walkthrough.md) | Realtime 导读 |
 | [message-queue.md](./docs/message-queue.md) | Asynq + Pub/Sub 异步队列 |
 | [lan-backend-host.md](./docs/lan-backend-host.md) | 本机 Mac 当局域网 BFF（现为本地 Auth） |
+| [dual-end-lan-startup.md](./docs/dual-end-lan-startup.md) | **Go + Flutter 两端启动配置手册** |
 | [local-auth-postgres.md](./docs/local-auth-postgres.md) | `auth.provider=local` / 可切回 supabase |
 
 **Flutter（`my_ai_project/docs/`）**
