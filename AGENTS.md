@@ -72,6 +72,10 @@ make trigger-hourly-notify  # 手动触发定时广播
 make test-scheduled-notify  # 定时通知联调
 make test-single-device-login
 make test-phone-otp-login
+
+# 局域网真机（Compose）：cp .env.lan.example .env.lan 后
+make lan-up                 # docs/lan-backend-host.md
+make lan-down
 ```
 
 | 检查项 | 说明 |
@@ -84,6 +88,7 @@ make test-phone-otp-login
 | Realtime | Flutter 设置 → Realtime 调试 |
 | 异步 Push | `make test-queue-push`（需 Worker） |
 | 定时通知 | `make trigger-hourly-notify` + `make test-scheduled-notify` |
+| 局域网真机 | `make lan-up` + Flutter `--dart-define-from-file=.env.lan` |
 | 密钥 | `make check-secrets` |
 
 ### 文档地图
@@ -101,6 +106,7 @@ make test-phone-otp-login
 | [transactions-beginner-walkthrough.md](./docs/transactions-beginner-walkthrough.md) | 收支 API 导读 |
 | [realtime-beginner-walkthrough.md](./docs/realtime-beginner-walkthrough.md) | Realtime 导读 |
 | [message-queue.md](./docs/message-queue.md) | Asynq + Pub/Sub 异步队列 |
+| [lan-backend-host.md](./docs/lan-backend-host.md) | 本机 Mac 当局域网 BFF（真机联调） |
 
 **Flutter（`my_ai_project/docs/`）**
 

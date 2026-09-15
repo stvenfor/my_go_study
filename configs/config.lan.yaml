@@ -1,0 +1,27 @@
+# config.lan.yaml — 本机局域网后端主机（LAN Backend Host）覆盖项。
+# 与纯本机 dev、prod 分开；真实 IP / 白名单见项目根 .env.lan（不入库）。
+# 用法：APP_ENV=lan，且设置 REALTIME_PUBLIC_WS_HOST=<固定局域网 IP>
+# 详见 docs/lan-backend-host.md
+
+server:
+  mode: release
+
+log:
+  level: info
+
+# 不在此写入 public_ws_host；必须由 REALTIME_PUBLIC_WS_HOST 注入，避免把家庭 IP 提交进仓库。
+
+# 默认关闭开发测试 OTP；若临时需要可在 .env.lan 设 AUTH_DEV_TEST_*（仅信任局域网）。
+auth:
+  dev_test_phone: ""
+  dev_test_otp: ""
+  dev_test_password: ""
+
+queue:
+  enabled: true
+  push_async: false
+
+scheduler:
+  enabled: true
+  hourly_notify:
+    enabled: false

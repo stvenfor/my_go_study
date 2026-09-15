@@ -1,0 +1,45 @@
+# LAN Backend Host overlay — 与 docker-compose.yml 叠加使用。
+# make lan-up → docker compose -f docker/docker-compose.yml -f docker/docker-compose.lan.yml --env-file .env.lan up -d --build
+#
+# 端口策略：基础 compose 将 Postgres/Redis 绑到 127.0.0.1（仅本机调试）；
+# 本 overlay 不向局域网额外暴露 DB/Redis；API 仍为 8080:8080。
+
+services:
+  app:
+    environment:
+      APP_ENV: lan
+      SERVER_PORT: 8080
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_DBNAME: my_go_study
+      REDIS_ADDR: redis:6379
+      QUEUE_ENABLED: "true"
+      REALTIME_PUBLIC_WS_HOST: ${REALTIME_PUBLIC_WS_HOST:?set REALTIME_PUBLIC_WS_HOST in .env.lan}
+      AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
+      AUTH_SESSION_WHITELIST_USER_IDS: ${AUTH_SESSION_WHITELIST_USER_IDS:-}
+      AUTH_DEV_TEST_PHONE: ${AUTH_DEV_TEST_PHONE:-}
+      AUTH_DEV_TEST_OTP: ${AUTH_DEV_TEST_OTP:-}
+      AUTH_DEV_TEST_PASSWORD: ${AUTH_DEV_TEST_PASSWORD:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+
+  worker:
+    environment:
+      APP_ENV: lan
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_DBNAME: my_go_study
+      REDIS_ADDR: redis:6379
+      QUEUE_ENABLED: "true"
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
+      AUTH_SESSION_WHITELIST_USER_IDS: ${AUTH_SESSION_WHITELIST_USER_IDS:-}

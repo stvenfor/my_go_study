@@ -5,7 +5,7 @@ WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
 DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout
 
 run:
 	./scripts/load-env.sh go run $(MAIN_PATH)
@@ -63,6 +63,17 @@ deps-up:
 
 docker-down:
 	$(DOCKER_COMPOSE) down
+
+# 本机局域网后端（真机联调）：需 .env.lan，见 docs/lan-backend-host.md
+lan-up:
+	@command -v docker >/dev/null 2>&1 || { \
+		echo "错误: 未安装 Docker Desktop。"; \
+		exit 1; \
+	}
+	./scripts/lan-compose.sh up -d --build
+
+lan-down:
+	./scripts/lan-compose.sh down
 
 clean:
 	rm -rf $(BIN_DIR) tmp logs/*.log

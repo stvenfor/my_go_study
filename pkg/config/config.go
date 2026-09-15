@@ -354,6 +354,7 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("queue.pubsub.channel", "QUEUE_PUBSUB_CHANNEL")
 	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
 	_ = v.BindEnv("scheduler.hourly_notify.enabled", "SCHEDULER_HOURLY_NOTIFY_ENABLED")
+	_ = v.BindEnv("realtime.public_ws_host", "REALTIME_PUBLIC_WS_HOST")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
