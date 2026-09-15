@@ -2,7 +2,7 @@
 
 > 把开发者 Mac 当作家庭/信任 Wi‑Fi 上的 Go BFF，供 iOS / Android 真机联调。  
 > **不是**公网生产部署。用语见仓库根 [`CONTEXT.md`](../CONTEXT.md)。  
-> 状态：**已实现**（`config.lan` / `make lan-up` / `.env.lan.example`；Flutter 侧 `.env.lan.example` + 文档）。
+> 状态：**已实现**；且 **lan = 本地 Auth + Postgres**（见 [local-auth-postgres.md](./local-auth-postgres.md)），不再默认连 Supabase Cloud。
 
 ---
 

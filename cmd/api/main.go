@@ -59,8 +59,8 @@ func run() error {
 	}
 	defer logger.Sync()
 
-	if !cfg.Supabase.Enabled() {
-		log.Warn("Supabase 未启用：请检查 configs/supabase.env 或 SUPABASE_URL / SUPABASE_ANON_KEY 环境变量")
+	if !cfg.Supabase.Enabled() && !cfg.Auth.IsLocalProvider() {
+		log.Warn("Supabase 未启用：请检查 configs/supabase.env，或设置 auth.provider=local")
 	}
 
 	db, err := database.NewPostgres(cfg.Database)
@@ -93,8 +93,8 @@ func run() error {
 	userUC := usecase.NewUserUsecase(userRepo, jwtMgr)
 	sessionRepo := redisrepo.NewSessionRepository(redisClient)
 	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth)
-	var supabaseAuthUC *usecase.SupabaseAuthUsecase
-	var phoneOTPUC *usecase.PhoneOTPUsecase
+	var sessionAuthUC usecase.SessionAuth
+	var phoneOTPUC usecase.PhoneOTPAuth
 	var profileController *controller.ProfileController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
@@ -102,13 +102,27 @@ func run() error {
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
-	if cfg.Supabase.Enabled() {
+
+	businessEnabled := cfg.Auth.IsLocalProvider() || cfg.Supabase.Enabled()
+	if cfg.Auth.IsLocalProvider() {
+		localAuth := usecase.NewLocalAuthUsecase(db, jwtMgr, cfg.Auth, cfg.Server.Mode)
+		sessionAuthUC = localAuth
+		phoneOTPUC = localAuth
+		profileRepo := postgres.NewProfileRepository(db)
+		profileUC := usecase.NewProfileUsecase(profileRepo)
+		profileController = controller.NewProfileController(profileUC)
+		transactionRepo := postgres.NewTransactionRepository(db)
+		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
+		transactionController = controller.NewTransactionController(transactionUC)
+		log.Info("Auth provider=local（本机 Postgres Auth + 业务表）")
+	} else if cfg.Supabase.Enabled() {
 		var err error
 		sbClient, err = pkgsb.New(cfg.Supabase)
 		if err != nil {
 			return fmt.Errorf("初始化 Supabase 失败: %w", err)
 		}
-		supabaseAuthUC = usecase.NewSupabaseAuthUsecase(sbClient)
+		supabaseAuthUC := usecase.NewSupabaseAuthUsecase(sbClient)
+		sessionAuthUC = supabaseAuthUC
 		phoneOTPUC = usecase.NewPhoneOTPUsecase(sbClient, cfg.Auth, cfg.Server.Mode)
 		profileRepo := sbrepo.NewProfileRepository(sbClient)
 		profileUC := usecase.NewProfileUsecase(profileRepo)
@@ -116,8 +130,12 @@ func run() error {
 		transactionRepo := sbrepo.NewTransactionRepository(sbClient)
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
-		log.Info("Supabase 已启用（认证 + profile + transactions）", zap.String("url", cfg.Supabase.URL))
+		log.Info("Auth provider=supabase（认证 + profile + transactions）", zap.String("url", cfg.Supabase.URL))
+	} else {
+		log.Warn("未启用业务认证：请设置 auth.provider=local，或配置 SUPABASE_URL / SUPABASE_ANON_KEY")
+	}
 
+	if businessEnabled {
 		hub := wshandler.NewHub()
 		ticketRepo := redisrepo.NewWSTicketRepository(redisClient)
 		eventRepo := redisrepo.NewRealtimeEventRepository(redisClient)
@@ -154,7 +172,7 @@ func run() error {
 		)
 	}
 
-	userHandler := handler.NewUserHandler(userUC, supabaseAuthUC, deviceSessionUC, phoneOTPUC)
+	userHandler := handler.NewUserHandler(userUC, sessionAuthUC, deviceSessionUC, phoneOTPUC)
 
 	engine := router.Setup(router.Options{
 		Log:                   log,
@@ -205,7 +223,14 @@ func run() error {
 
 // autoMigrate 自动迁移数据库表结构。
 func autoMigrate(db *gorm.DB) error {
-	if err := db.AutoMigrate(&entity.User{}, &entity.TransactionRecord{}); err != nil {
+	if err := db.AutoMigrate(
+		&entity.User{},
+		&entity.AuthUser{},
+		&entity.AuthRefreshToken{},
+		&entity.Profile{},
+		&entity.Transaction{},
+		&entity.TransactionRecord{},
+	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}
 	return nil

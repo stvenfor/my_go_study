@@ -22,21 +22,21 @@ import (
 // UserHandler 用户 API 处理器。
 type UserHandler struct {
 	userUsecase     *usecase.UserUsecase
-	supabaseAuthUC  *usecase.SupabaseAuthUsecase
+	sessionAuthUC   usecase.SessionAuth
 	deviceSessionUC *usecase.DeviceSessionUsecase
-	phoneOTPUC      *usecase.PhoneOTPUsecase
+	phoneOTPUC      usecase.PhoneOTPAuth
 }
 
 // NewUserHandler 创建用户处理器。
 func NewUserHandler(
 	userUsecase *usecase.UserUsecase,
-	supabaseAuthUC *usecase.SupabaseAuthUsecase,
+	sessionAuthUC usecase.SessionAuth,
 	deviceSessionUC *usecase.DeviceSessionUsecase,
-	phoneOTPUC *usecase.PhoneOTPUsecase,
+	phoneOTPUC usecase.PhoneOTPAuth,
 ) *UserHandler {
 	return &UserHandler{
 		userUsecase:     userUsecase,
-		supabaseAuthUC:  supabaseAuthUC,
+		sessionAuthUC:   sessionAuthUC,
 		deviceSessionUC: deviceSessionUC,
 		phoneOTPUC:      phoneOTPUC,
 	}
@@ -51,12 +51,12 @@ func (h *UserHandler) Register(c *gin.Context) {
 		return
 	}
 
-	if h.supabaseAuthUC == nil {
+	if h.sessionAuthUC == nil {
 		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
 		return
 	}
 
-	result, err := h.supabaseAuthUC.Register(c.Request.Context(), usecase.RegisterInput{
+	result, err := h.sessionAuthUC.Register(c.Request.Context(), usecase.RegisterInput{
 		Username: req.Username,
 		Password: req.Password,
 		Email:    req.Email,
@@ -86,12 +86,12 @@ func (h *UserHandler) Refresh(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误: "+err.Error())
 		return
 	}
-	if h.supabaseAuthUC == nil {
+	if h.sessionAuthUC == nil {
 		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
 		return
 	}
 
-	result, err := h.supabaseAuthUC.RefreshToken(c.Request.Context(), req.RefreshToken)
+	result, err := h.sessionAuthUC.RefreshToken(c.Request.Context(), req.RefreshToken)
 	if err != nil {
 		h.handleUsecaseError(c, err)
 		return
@@ -136,8 +136,8 @@ func (h *UserHandler) Logout(c *gin.Context) {
 		}
 	}
 
-	if accessToken, ok := middleware.GetAccessToken(c); ok && accessToken != "" && h.supabaseAuthUC != nil {
-		_ = h.supabaseAuthUC.Logout(c.Request.Context(), accessToken)
+	if accessToken, ok := middleware.GetAccessToken(c); ok && accessToken != "" && h.sessionAuthUC != nil {
+		_ = h.sessionAuthUC.Logout(c.Request.Context(), accessToken)
 	}
 
 	response.Success(c, gin.H{"ok": true})
@@ -152,12 +152,12 @@ func (h *UserHandler) Login(c *gin.Context) {
 		return
 	}
 
-	if h.supabaseAuthUC == nil {
+	if h.sessionAuthUC == nil {
 		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "认证服务未配置，请联系管理员")
 		return
 	}
 
-	result, err := h.supabaseAuthUC.Login(c.Request.Context(), usecase.LoginInput{
+	result, err := h.sessionAuthUC.Login(c.Request.Context(), usecase.LoginInput{
 		Username: req.Username,
 		Password: req.Password,
 	})

@@ -19,9 +19,9 @@ type TransactionRecord struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// TableName 指定 GORM 表名。
+// TableName 遗留 uint 交易表（已弃用；本地 UUID 路径使用 entity.Transaction → transactions）。
 func (TransactionRecord) TableName() string {
-	return "transactions"
+	return "transaction_records"
 }
 
 // ToTransaction 转为 API 领域模型。

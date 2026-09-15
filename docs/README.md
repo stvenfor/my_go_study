@@ -18,8 +18,9 @@
 | Realtime | [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md) · [realtime-websocket.md](./realtime-websocket.md) | ✅ |
 | 消息队列 | [message-queue.md](./message-queue.md) | ✅ |
 | 飞书同步 | [FEISHU_SYNC.md](./FEISHU_SYNC.md) | ✅ |
-| **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ 已实现（`make lan-up`） |
-| ADR | [adr/](./adr/) | ✅ LAN 相关决策记录 |
+| **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ `make lan-up`（现为本地 Auth） |
+| **本地 Auth + Postgres** | [local-auth-postgres.md](./local-auth-postgres.md) | ✅ `auth.provider=local`；可切回 supabase |
+| ADR | [adr/](./adr/) | ✅ 含 LAN / local Auth 决策 |
 
 **结论：** 架构文档与使用文档都已存在，但此前分散在多篇里。下文是把「怎么装、怎么跑、怎么调、有哪些 API、架构是什么」收成一份的完整使用手册；细节仍以专题文档为准。
 

@@ -4,6 +4,7 @@ package jwt
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -67,6 +68,59 @@ func (m *Manager) Parse(tokenString string) (*Claims, error) {
 	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
 		return nil, errors.New("无效 token")
+	}
+	return claims, nil
+}
+
+// UUIDClaims 本地 Auth 签发的 JWT（sub = 用户 UUID，对齐 Supabase 用户 id）。
+type UUIDClaims struct {
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	jwt.RegisteredClaims
+}
+
+// GenerateUUID 为 UUID 用户签发 access token。
+func (m *Manager) GenerateUUID(userID, email, username string) (string, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "", errors.New("user id 不能为空")
+	}
+	now := time.Now()
+	claims := UUIDClaims{
+		Email:    email,
+		Username: username,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.ttl)),
+			NotBefore: jwt.NewNumericDate(now),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString(m.secret)
+	if err != nil {
+		return "", fmt.Errorf("签发 JWT 失败: %w", err)
+	}
+	return signed, nil
+}
+
+// ParseUUID 解析并校验本地 UUID access token。
+func (m *Manager) ParseUUID(tokenString string) (*UUIDClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &UUIDClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return m.secret, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("解析 JWT 失败: %w", err)
+	}
+	claims, ok := token.Claims.(*UUIDClaims)
+	if !ok || !token.Valid {
+		return nil, errors.New("无效 token")
+	}
+	if strings.TrimSpace(claims.Subject) == "" {
+		return nil, errors.New("无效 token: 缺少 sub")
 	}
 	return claims, nil
 }

@@ -1,11 +1,12 @@
-// transaction_repo.go 基于 PostgreSQL 的 transactions 仓储（自建 JWT 用户体系）。
+// transaction_repo.go 基于 PostgreSQL 的 transactions 仓储（user_id = UUID，对齐 Supabase）。
 package postgres
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
+	"strings"
+	"time"
 
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
 	domainrepo "github.com/stvenfor/my_go_study/internal/domain/repository"
@@ -27,12 +28,12 @@ func (r *transactionRepository) List(ctx context.Context, _, userID string, filt
 }
 
 func (r *transactionRepository) ListPage(ctx context.Context, _, userID string, filter entity.TransactionFilter) ([]entity.Transaction, int64, error) {
-	uid, err := parseUserID(userID)
+	uid, err := requireUUID(userID)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	query := r.db.WithContext(ctx).Model(&entity.TransactionRecord{}).Where("user_id = ?", uid)
+	query := r.db.WithContext(ctx).Model(&entity.Transaction{}).Where("user_id = ?", uid)
 	if filter.Type != "" {
 		query = query.Where("type = ?", filter.Type)
 	}
@@ -51,69 +52,62 @@ func (r *transactionRepository) ListPage(ctx context.Context, _, userID string, 
 		offset = 0
 	}
 
-	var records []entity.TransactionRecord
-	err = query.Order("date DESC, id DESC").
-		Offset(offset).
-		Limit(limit).
-		Find(&records).Error
+	var items []entity.Transaction
+	err = query.Order("date DESC, id DESC").Offset(offset).Limit(limit).Find(&items).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询 transactions 失败: %w", err)
 	}
-
-	return toTransactions(records), total, nil
+	return items, total, nil
 }
 
 func (r *transactionRepository) GetByID(ctx context.Context, _, userID string, id int64) (*entity.Transaction, error) {
-	uid, err := parseUserID(userID)
+	uid, err := requireUUID(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	var record entity.TransactionRecord
-	err = r.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", id, uid).
-		First(&record).Error
+	var item entity.Transaction
+	err = r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, uid).First(&item).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("交易记录不存在")
 		}
 		return nil, fmt.Errorf("查询 transaction 失败: %w", err)
 	}
-	item := record.ToTransaction()
 	return &item, nil
 }
 
 func (r *transactionRepository) Create(ctx context.Context, _, userID string, input entity.CreateTransactionInput) (*entity.Transaction, error) {
-	uid, err := parseUserID(userID)
+	uid, err := requireUUID(userID)
 	if err != nil {
 		return nil, err
 	}
-
-	record := entity.TransactionRecord{
-		UserID:   uid,
-		Type:     input.Type,
-		Category: input.Category,
-		Amount:   input.Amount,
-		Date:     input.Date,
-		Note:     input.Note,
+	now := time.Now().UTC()
+	uidCopy := uid
+	item := entity.Transaction{
+		UserID:    &uidCopy,
+		Type:      input.Type,
+		Category:  input.Category,
+		Amount:    input.Amount,
+		Date:      input.Date,
+		Note:      input.Note,
+		CreatedAt: &now,
+		UpdatedAt: &now,
 	}
-	if err := r.db.WithContext(ctx).Create(&record).Error; err != nil {
+	if err := r.db.WithContext(ctx).Create(&item).Error; err != nil {
 		return nil, fmt.Errorf("创建 transaction 失败: %w", err)
 	}
-	item := record.ToTransaction()
 	return &item, nil
 }
 
 func (r *transactionRepository) Update(ctx context.Context, _, userID string, id int64, input entity.UpdateTransactionInput) (*entity.Transaction, error) {
-	uid, err := parseUserID(userID)
+	uid, err := requireUUID(userID)
 	if err != nil {
 		return nil, err
 	}
 
-	var record entity.TransactionRecord
-	err = r.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", id, uid).
-		First(&record).Error
+	var item entity.Transaction
+	err = r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, uid).First(&item).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("交易记录不存在")
@@ -138,29 +132,26 @@ func (r *transactionRepository) Update(ctx context.Context, _, userID string, id
 		updates["note"] = *input.Note
 	}
 	if len(updates) == 0 {
-		item := record.ToTransaction()
 		return &item, nil
 	}
+	now := time.Now().UTC()
+	updates["updated_at"] = now
 
-	if err := r.db.WithContext(ctx).Model(&record).Updates(updates).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&item).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("更新 transaction 失败: %w", err)
 	}
-	if err := r.db.WithContext(ctx).First(&record, record.ID).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&item, item.ID).Error; err != nil {
 		return nil, fmt.Errorf("刷新 transaction 失败: %w", err)
 	}
-	item := record.ToTransaction()
 	return &item, nil
 }
 
 func (r *transactionRepository) Delete(ctx context.Context, _, userID string, id int64) error {
-	uid, err := parseUserID(userID)
+	uid, err := requireUUID(userID)
 	if err != nil {
 		return err
 	}
-
-	result := r.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", id, uid).
-		Delete(&entity.TransactionRecord{})
+	result := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, uid).Delete(&entity.Transaction{})
 	if result.Error != nil {
 		return fmt.Errorf("删除 transaction 失败: %w", result.Error)
 	}
@@ -170,21 +161,10 @@ func (r *transactionRepository) Delete(ctx context.Context, _, userID string, id
 	return nil
 }
 
-func parseUserID(userID string) (uint, error) {
+func requireUUID(userID string) (string, error) {
+	userID = strings.TrimSpace(userID)
 	if userID == "" {
-		return 0, fmt.Errorf("无效的用户 ID")
+		return "", fmt.Errorf("无效的用户 ID")
 	}
-	parsed, err := strconv.ParseUint(userID, 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("无效的用户 ID")
-	}
-	return uint(parsed), nil
-}
-
-func toTransactions(records []entity.TransactionRecord) []entity.Transaction {
-	items := make([]entity.Transaction, 0, len(records))
-	for _, record := range records {
-		items = append(items, record.ToTransaction())
-	}
-	return items
+	return userID, nil
 }

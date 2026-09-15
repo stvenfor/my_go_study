@@ -57,14 +57,37 @@ type JWTConfig struct {
 	ExpireHours int    `mapstructure:"expire_hours"`
 }
 
+// AuthProviderLocal / AuthProviderSupabase 认证后端切换（见 docs/local-auth-postgres.md）。
+const (
+	AuthProviderLocal    = "local"
+	AuthProviderSupabase = "supabase"
+)
+
 // AuthConfig 单设备登录等认证策略配置。
 type AuthConfig struct {
+	// Provider: local（本机 Postgres Auth）| supabase（Cloud GoTrue）；空则按 supabase 兼容旧行为。
+	Provider                string   `mapstructure:"provider"`
 	SessionTTLHours         int      `mapstructure:"session_ttl_hours"`
 	SessionWhitelistUserIDs []string `mapstructure:"session_whitelist_user_ids"`
 	SessionWhitelistEmails  []string `mapstructure:"session_whitelist_emails"`
 	DevTestPhone            string   `mapstructure:"dev_test_phone"`
 	DevTestOTP              string   `mapstructure:"dev_test_otp"`
 	DevTestPassword         string   `mapstructure:"dev_test_password"`
+}
+
+// ProviderName 归一化认证后端名称。
+func (a AuthConfig) ProviderName() string {
+	switch strings.ToLower(strings.TrimSpace(a.Provider)) {
+	case AuthProviderLocal:
+		return AuthProviderLocal
+	default:
+		return AuthProviderSupabase
+	}
+}
+
+// IsLocalProvider 是否使用本机 Auth + Postgres 业务库。
+func (a AuthConfig) IsLocalProvider() bool {
+	return a.ProviderName() == AuthProviderLocal
 }
 
 // SessionTTL 返回 Redis device session 有效期；0 表示永不过期（仅 logout / 互踢删除）。
@@ -342,6 +365,7 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("supabase.url", "SUPABASE_URL")
 	_ = v.BindEnv("supabase.anon_key", "SUPABASE_ANON_KEY", "SUPABASE_KEY")
 	_ = v.BindEnv("supabase.service_role_key", "SUPABASE_SERVICE_ROLE_KEY")
+	_ = v.BindEnv("auth.provider", "AUTH_PROVIDER")
 	_ = v.BindEnv("auth.session_ttl_hours", "AUTH_SESSION_TTL_HOURS")
 	_ = v.BindEnv("auth.session_whitelist_user_ids", "AUTH_SESSION_WHITELIST_USER_IDS")
 	_ = v.BindEnv("auth.session_whitelist_emails", "AUTH_SESSION_WHITELIST_EMAILS")

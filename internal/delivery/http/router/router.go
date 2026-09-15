@@ -1,4 +1,3 @@
-// router.go 注册 HTTP 路由与中间件。
 package router
 
 import (
@@ -42,32 +41,28 @@ func Setup(opts Options) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 
-	var sbAuth gin.HandlerFunc
-	if opts.Supabase.Enabled() && opts.DeviceSessionUC != nil {
-		sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+	businessAuth := opts.Config.Auth.IsLocalProvider() || opts.Supabase.Enabled()
+	var sessionAuth gin.HandlerFunc
+	if businessAuth && opts.DeviceSessionUC != nil {
+		if opts.Config.Auth.IsLocalProvider() {
+			sessionAuth = middleware.LocalSessionAuth(opts.JWTManager, opts.DeviceSessionUC)
+		} else {
+			sessionAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
+		}
 	}
 
-	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sbAuth)
+	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sessionAuth)
 
-	if opts.Supabase.Enabled() && opts.TransactionController != nil {
-		if sbAuth == nil {
-			sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
-		}
-		registerTransactionRoutes(v1, sbAuth, opts.TransactionController)
+	if businessAuth && opts.TransactionController != nil && sessionAuth != nil {
+		registerTransactionRoutes(v1, sessionAuth, opts.TransactionController)
 	}
 
-	if opts.Supabase.Enabled() && opts.ProfileController != nil {
-		if sbAuth == nil {
-			sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
-		}
-		registerProfileRoutes(v1, sbAuth, opts.ProfileController)
+	if businessAuth && opts.ProfileController != nil && sessionAuth != nil {
+		registerProfileRoutes(v1, sessionAuth, opts.ProfileController)
 	}
 
-	if opts.Supabase.Enabled() && opts.RealtimeController != nil {
-		if sbAuth == nil {
-			sbAuth = middleware.SupabaseSessionAuth(opts.Supabase, opts.DeviceSessionUC)
-		}
-		registerRealtimeRoutes(v1, sbAuth, opts.RealtimeController)
+	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {
+		registerRealtimeRoutes(v1, sessionAuth, opts.RealtimeController)
 	}
 
 	if opts.WSHandler != nil {

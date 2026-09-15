@@ -8,6 +8,7 @@ services:
   app:
     environment:
       APP_ENV: lan
+      AUTH_PROVIDER: local
       SERVER_PORT: 8080
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -22,14 +23,12 @@ services:
       AUTH_DEV_TEST_PHONE: ${AUTH_DEV_TEST_PHONE:-}
       AUTH_DEV_TEST_OTP: ${AUTH_DEV_TEST_OTP:-}
       AUTH_DEV_TEST_PASSWORD: ${AUTH_DEV_TEST_PASSWORD:-}
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
 
   worker:
     environment:
       APP_ENV: lan
+      AUTH_PROVIDER: local
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: postgres
@@ -37,9 +36,6 @@ services:
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
       QUEUE_ENABLED: "true"
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
       AUTH_SESSION_WHITELIST_USER_IDS: ${AUTH_SESSION_WHITELIST_USER_IDS:-}

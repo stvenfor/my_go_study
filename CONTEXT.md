@@ -1,6 +1,6 @@
-# my_go_study — 本机局域网后端
+# my_go_study — 本机局域网后端与本地认证
 
-本仓库在「家庭/信任 Wi‑Fi 上，用开发者 Mac 充当 Flutter 可连的 BFF」这一上下文中的用语。与公网生产托管无关。
+本仓库在「家庭/信任 Wi‑Fi 上，用开发者 Mac 充当 Flutter 可连的 BFF」以及「本地 Auth/Postgres 可迁回 Supabase」上下文中的用语。
 
 ## Language
 
@@ -9,8 +9,12 @@
 _Avoid_: 生产服务器、云主机、公网部署
 
 **LAN 配置档 (LAN Profile)**：
-专为局域网真机联调准备的运行姿态，与纯本机 `dev`、以及 `prod` 区分开。
-_Avoid_: 直接把 prod 当作家用联调、长期混用未区分的 dev 当「家里服务器」
+局域网真机联调姿态；现语义为本地全栈（`auth.provider=local`）+ 局域网暴露。
+_Avoid_: LAN + Supabase Cloud 混用、直接把 prod 当作家用联调
+
+**本地认证后端 (Local Auth Provider)**：
+`auth.provider=local`：本机 Postgres `auth_users` 签发 UUID JWT，业务表在本机；`supabase` 为可切回的 Cloud 路径。
+_Avoid_: 把自托管 GoTrue 说成「只要 Postgres」
 
 **固定局域网地址 (Pinned LAN Address)**：
 为该 Mac 稳定下来的 IPv4（DHCP 预留或静态），供 HTTP 与 Realtime 主机名共用。
