@@ -129,15 +129,40 @@ func (c *Client) ensureDevPhoneUserCredentials(userID, devEmail, password, displ
 }
 
 func (c *Client) listAdminUsers() ([]types.User, error) {
+	return c.ListAdminUsersAll()
+}
+
+// ListAdminUsersAll 分页拉取全部 Auth 用户（需 service_role）。
+func (c *Client) ListAdminUsersAll() ([]types.User, error) {
+	if !c.HasServiceRole() {
+		return nil, fmt.Errorf("未配置 service_role_key")
+	}
+	const perPage = 200
+	var all []types.User
+	for page := 1; page <= 50; page++ {
+		batch, err := c.listAdminUsersPage(page, perPage)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, batch...)
+		if len(batch) < perPage {
+			break
+		}
+	}
+	return all, nil
+}
+
+func (c *Client) listAdminUsersPage(page, perPage int) ([]types.User, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), adminLookupTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		strings.TrimRight(c.cfg.URL, "/")+"/auth/v1/admin/users?page=1&per_page=200",
-		nil,
+	url := fmt.Sprintf(
+		"%s/auth/v1/admin/users?page=%d&per_page=%d",
+		strings.TrimRight(c.cfg.URL, "/"),
+		page,
+		perPage,
 	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}

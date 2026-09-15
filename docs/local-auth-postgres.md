@@ -95,6 +95,36 @@ auth:
 
 ---
 
+## 5.1 Cloud → 本地导入（已实现）
+
+前提：本地 Postgres 可达；`.env.local` 有 `SUPABASE_SERVICE_ROLE_KEY`；`configs/supabase.env` 有 URL/anon。
+
+```bash
+# 只看数量（不写库；跳过用户因无需密码）
+make import-supabase-dry
+
+# 正式导入（Cloud 密码无法导出，所有导入用户统一临时密码）
+make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
+```
+
+等价：
+
+```bash
+./scripts/load-env.sh go run ./cmd/import-supabase --default-password='ChangeMe123!'
+./scripts/load-env.sh go run ./cmd/import-supabase --dry-run --skip-users
+```
+
+| 标志 | 含义 |
+|------|------|
+| `--default-password` | 写入 `auth_users` 的 bcrypt 临时密码（≥6） |
+| `--dry-run` | 只拉取统计 |
+| `--skip-users` / `--skip-profiles` / `--skip-transactions` | 跳过对应表 |
+
+导入后用该临时密码登录本地；**Cloud 原密码不会生效**。幂等：按用户 UUID / profile id / transaction id upsert。
+
+---
+
 ## 6. 相关 ADR
 
 - `docs/adr/0004-local-auth-postgres-dual-provider.md`
+- `docs/adr/0005-supabase-cloud-import.md`

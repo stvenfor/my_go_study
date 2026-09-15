@@ -5,7 +5,7 @@ WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
 DOCKER_COMPOSE := docker compose -f docker/docker-compose.yml
 
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down import-supabase clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout
 
 run:
 	./scripts/load-env.sh go run $(MAIN_PATH)
@@ -74,6 +74,17 @@ lan-up:
 
 lan-down:
 	./scripts/lan-compose.sh down
+
+# 从 Supabase Cloud 导入到本地 Postgres（需 .env.local 的 service_role）
+# 例: make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
+# 预览: make import-supabase-dry
+DEFAULT_PASSWORD ?=
+import-supabase:
+	@test -n "$(DEFAULT_PASSWORD)" || { echo "用法: make import-supabase DEFAULT_PASSWORD='你的临时密码'"; exit 2; }
+	./scripts/load-env.sh go run ./cmd/import-supabase --default-password='$(DEFAULT_PASSWORD)'
+
+import-supabase-dry:
+	./scripts/load-env.sh go run ./cmd/import-supabase --dry-run --skip-users
 
 clean:
 	rm -rf $(BIN_DIR) tmp logs/*.log
