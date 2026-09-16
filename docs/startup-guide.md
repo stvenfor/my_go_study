@@ -32,37 +32,32 @@ go version
 ```text
 my_go_study/
 ├── cmd/api/main.go                    # 应用入口
-├── internal/delivery/http/
-│   ├── controller/                    # 控制器层（Profile / Transaction 管理）
-│   │   ├── profile_controller.go
-│   │   └── transaction_controller.go
-│   ├── handler/                       # 自建用户 Handler
-│   └── router/                        # 路由注册（按模块拆分）
-│       ├── router.go
-│       ├── user_routes.go
-│       ├── profile_routes.go
-│       └── transaction_routes.go
-├── configs/                 # YAML 配置（按 APP_ENV 合并）
-│   ├── config.yaml          # 基础配置
-│   ├── config.dev.yaml      # 开发环境覆盖
-│   └── config.prod.yaml     # 生产环境覆盖
-├── migrations/              # golang-migrate SQL 文件
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml   # postgres + redis + app
-├── configs/
+├── cmd/worker/main.go                 # Asynq Worker
+├── configs/                           # YAML 配置（按 APP_ENV 合并）
 │   ├── config.yaml
 │   ├── config.dev.yaml
-│   ├── supabase.env          # Supabase URL / anon key（团队常量，入库）
+│   ├── config.lan.yaml
+│   ├── config.prod.yaml
+│   ├── supabase.env                   # URL / anon（入库）
 │   └── supabase.env.example
-├── .env                     # 应用运行时配置（入库）
+├── migrations/
+├── docker/
+│   ├── Dockerfile                     # 多阶段构建（TARGETARCH；默认 CMD=api）
+│   ├── docker-compose.yml             # postgres + redis + app + worker
+│   └── docker-compose.lan.yml         # 局域网 overlay（AUTH_PROVIDER=local）
+├── scripts/
+│   ├── docker-compose.sh              # make docker-up 入口
+│   ├── lan-compose.sh                 # make lan-up 入口
+│   └── lan-run.sh                     # 无 Docker 的 lan 本机进程
+├── .env                               # 应用运行时配置（入库）
 ├── .env.example
-├── .env.local               # service_role 等私密密钥（不入库）
-├── Makefile                 # 常用命令
-├── .air.toml                # 热加载配置
-└── docs/                    # 文档
-    ├── startup-guide.md     # 启动与环境
-    └── supabase-integration.md  # Supabase 集成详解
+├── .env.lan.example                   # 局域网模板（复制为 .env.lan）
+├── .env.local                         # service_role（不入库）
+├── Makefile
+└── docs/
+    ├── startup-guide.md
+    ├── dual-end-lan-startup.md
+    └── lan-backend-host.md
 ```
 
 > **注意**：所有 `go`、`make` 命令必须在 **`my_go_study` 目录内**执行，不要在父目录 `my_code_study` 下执行，否则会报 `go.mod file not found`。
@@ -124,7 +119,7 @@ cp .env.local.example .env.local   # 填写 service_role
 
 ### 方式 A：Docker Compose（推荐，零基础最快）
 
-一条命令启动 **PostgreSQL + Redis + App**：
+一条命令启动 **PostgreSQL + Redis + App + Worker**：
 
 ```bash
 cd my_go_study
@@ -134,16 +129,18 @@ make docker-up
 等价于：
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build
+./scripts/docker-compose.sh up -d --build
+# 脚本会先加载 configs/supabase.env、.env、.env.local，再注入容器
 ```
 
 **容器说明**：
 
-| 服务 | 容器名 | 端口 |
-|------|--------|------|
-| PostgreSQL | `my_go_study_postgres` | `5432` |
-| Redis | `my_go_study_redis` | `6379` |
-| Go API | `my_go_study_app` | `8080` |
+| 服务 | 容器名 | 端口 | 备注 |
+|------|--------|------|------|
+| PostgreSQL | `my_go_study_postgres` | `127.0.0.1:5432` | 仅本机 |
+| Redis | `my_go_study_redis` | `127.0.0.1:6379` | 仅本机 |
+| Go API | `my_go_study_app` | `8080` | HTTP healthcheck |
+| Worker | `my_go_study_worker` | 无 | 已 disable 镜像默认 /health 检查 |
 
 查看日志：
 
@@ -157,6 +154,7 @@ docker logs -f my_go_study_app
 make docker-down
 ```
 
+> **改 Go 代码后**：须再次 `make docker-up`（会 `--build`）。局域网真机用 `make lan-up`（见 [dual-end-lan-startup.md](./dual-end-lan-startup.md)）。
 ---
 
 ### 方式 B：本地开发（无需 Docker，推荐当前环境）
@@ -419,7 +417,9 @@ make test-realtime   # 一键联调（需 Redis + make run）
 | `make air` | Air 热加载开发 |
 | `make migrate-up` | 执行数据库迁移（升级） |
 | `make migrate-down` | 回滚最近一次迁移 |
-| `make docker-up` | 构建并启动全部容器（app + worker + postgres + redis） |
+| `make docker-up` | 构建并启动全部容器（app + worker + postgres + redis；注入 SUPABASE_*） |
+| `make docker-down` | 停止并移除上述容器 |
+| `make lan-up` / `lan-down` | 局域网全栈（需 `.env.lan`；改代码需重建镜像） |
 | `make deps-up` | Homebrew 安装并启动 PostgreSQL + Redis（无需 Docker） |
 | `make docker-down` | 停止并移除容器 |
 | `make clean` | 删除 `bin/`、`tmp/`、日志 |

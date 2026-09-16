@@ -1,6 +1,10 @@
 # 多阶段构建：编译 Go 二进制并打包到 Alpine 镜像。
+# TARGETARCH 由 BuildKit/compose 注入（arm64 / amd64），避免 Apple Silicon 上写死 amd64。
 
 FROM golang:1.22-alpine AS builder
+
+ARG TARGETARCH
+ARG TARGETOS=linux
 
 WORKDIR /app
 
@@ -10,8 +14,14 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/api ./cmd/api \
-    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/worker ./cmd/worker
+# BuildKit/compose 注入 TARGETARCH（arm64/amd64）；未开启 BuildKit 时回退为构建机 uname
+ARG TARGETARCH
+RUN arch="${TARGETARCH}" \
+    && if [ -z "$arch" ]; then \
+         case "$(uname -m)" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=amd64 ;; *) arch=amd64 ;; esac; \
+       fi \
+    && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH="$arch" go build -ldflags="-w -s" -o /app/bin/api ./cmd/api \
+    && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH="$arch" go build -ldflags="-w -s" -o /app/bin/worker ./cmd/worker
 
 FROM alpine:3.20
 
@@ -28,6 +38,7 @@ USER appuser
 
 EXPOSE 8080
 
+# 仅适合默认 CMD（api）。worker 服务在 compose 中 disable healthcheck。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1
 

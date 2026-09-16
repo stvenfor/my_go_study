@@ -108,6 +108,7 @@ make lan-down
 | [message-queue.md](./docs/message-queue.md) | Asynq + Pub/Sub 异步队列 |
 | [lan-backend-host.md](./docs/lan-backend-host.md) | 本机 Mac 当局域网 BFF（现为本地 Auth） |
 | [dual-end-lan-startup.md](./docs/dual-end-lan-startup.md) | **Go + Flutter 两端启动配置手册** |
+| [ios-lan-device-debug-2026-09-16.md](./docs/ios-lan-device-debug-2026-09-16.md) | iOS 真机「无法连接服务端 / 127.0.0.1」调试记录 |
 | [local-auth-postgres.md](./docs/local-auth-postgres.md) | `auth.provider=local` / 可切回 supabase |
 
 **Flutter（`my_ai_project/docs/`）**

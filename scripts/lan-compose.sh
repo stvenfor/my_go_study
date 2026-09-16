@@ -2,6 +2,7 @@
 # LAN Backend Host：加载 supabase/.env/.env.local/.env.lan 后执行 docker compose（基础 + lan overlay）。
 # 用法：./scripts/lan-compose.sh up -d --build
 #       ./scripts/lan-compose.sh down
+# 改 Go 代码后须带 --build 重建；仅改 env 也建议 down 后再 up。
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

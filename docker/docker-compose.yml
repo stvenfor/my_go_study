@@ -38,8 +38,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # 宿主机 env 由 scripts/docker-compose.sh / lan-compose.sh source 后注入下方 ${VAR}
     environment:
-      APP_ENV: dev
+      APP_ENV: ${APP_ENV:-dev}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-}
       SERVER_PORT: 8080
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -47,12 +49,26 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
-      JWT_SECRET: change-me-in-production
-      QUEUE_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
+      AUTH_SESSION_WHITELIST_USER_IDS: ${AUTH_SESSION_WHITELIST_USER_IDS:-}
+      AUTH_DEV_TEST_PHONE: ${AUTH_DEV_TEST_PHONE:-}
+      AUTH_DEV_TEST_OTP: ${AUTH_DEV_TEST_OTP:-}
+      AUTH_DEV_TEST_PASSWORD: ${AUTH_DEV_TEST_PASSWORD:-}
     ports:
       - "8080:8080"
     volumes:
       - ../logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   worker:
     build:
@@ -65,18 +81,25 @@ services:
       app:
         condition: service_started
     environment:
-      APP_ENV: dev
+      APP_ENV: ${APP_ENV:-dev}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
-      JWT_SECRET: change-me-in-production
-      QUEUE_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
     command: ["/app/worker"]
     volumes:
       - ../logs:/app/logs
+    # 镜像默认 HEALTHCHECK 打 /health；worker 无 HTTP，必须关闭
+    healthcheck:
+      disable: true
 
 volumes:
   postgres_data:

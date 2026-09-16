@@ -35,20 +35,20 @@ iOS / Android 真机（同 Wi‑Fi）
   │  ws://<PINNED_LAN_IP>:8080/realtime/v1/connect
   ▼
 Mac（LAN Backend Host）
-  Docker Compose
+  Docker Compose（或 make lan-run 本机进程）
     ├── app      :8080 → 宿主机 8080（唯一常驻对外端口）
     ├── worker   （队列 / 推送消费，不对局域网暴露端口）
-    ├── postgres （仅容器网络；调试时再映射或 exec）
-    └── redis    （仅容器网络；同上）
+    ├── postgres （127.0.0.1:5432；业务 + local auth）
+    └── redis    （127.0.0.1:6379；session / realtime / queue）
   │
-  ├── Auth / 业务数据 → Supabase Cloud（不变）
-  └── 本机未入库 env：LAN IP、白名单邮箱/UID、Supabase service_role 等
+  ├── Auth 默认 → 本地 Postgres（AUTH_PROVIDER=local）
+  └── 本机未入库 env：LAN IP、白名单邮箱/UID、JWT；切回 Cloud 时再要 SUPABASE_*
 ```
 
 要点：
 
 - API 进程本身监听 `:{port}`（全网卡），局域网可达；缺的是 **对外宣告的主机名**（尤其 Realtime ticket 里的 `realtime.public_ws_host`）与 **Flutter base URL** 对齐到同一固定 IP。
-- Auth 仍走云端 Supabase；本机 Postgres/Redis 服务 session、Realtime、队列与遗留库，不是业务主库替代品。
+- 默认 **本地 Auth + 本地 Postgres**（见 [local-auth-postgres.md](./local-auth-postgres.md)）。若 `.env.lan` 设 `AUTH_PROVIDER=supabase`，则 Auth 走 Cloud，容器仍注入 `SUPABASE_*`。
 
 ---
 
@@ -92,8 +92,9 @@ curl -s http://<PINNED_LAN_IP>:8080/health
 
 | 项 | 行为 |
 |----|------|
-| `server.mode` | `release` |
+| `server.mode` | `debug`（便于测试 OTP；勿当生产） |
 | `log.level` | `info` |
+| `auth.provider` | `local`（可用 env 切回 `supabase`） |
 | `auth.dev_test_*` | 默认清空（可用 `.env.lan` 的 `AUTH_DEV_TEST_*` 临时打开） |
 | `realtime.public_ws_host` | **不写死 IP**；由 `REALTIME_PUBLIC_WS_HOST` 注入（`pkg/config` 已 BindEnv） |
 | `queue.enabled` | `true` |
@@ -112,11 +113,11 @@ curl -s http://<PINNED_LAN_IP>:8080/health
 
 ### 3.4 镜像与代码变更节奏
 
-Compose 全栈下，**改 Go 代码需 `make lan-up` 重建**。
+Compose 全栈下，**改 Go 代码需重新 `make lan-up`（会 `--build`）**；仅改 `.env.lan` 也建议 `lan-down` 后再 `lan-up` 以便环境变量生效。频繁改代码时可改用 `make lan-run`（本机热编译）+ Compose 只跑 postgres/redis。
 
-### 3.5 Supabase 与密钥
+### 3.5 密钥与可切回 Cloud Auth
 
-`lan-compose.sh` 会 source `configs/supabase.env`、`.env`、`.env.local`、`.env.lan`，注入容器环境。
+`lan-compose.sh` 会 source `configs/supabase.env`、`.env`、`.env.local`、`.env.lan`；`docker-compose.lan.yml` 将 `SUPABASE_*` / 白名单等映射进 app/worker。默认 `AUTH_PROVIDER=local` 不依赖 Cloud；切回时在 `.env.lan` 设 `AUTH_PROVIDER=supabase` 并保证 anon/service_role 可用。
 
 ---
 
@@ -151,13 +152,13 @@ Realtime 以 ticket 的 `wsUrl` 为准（Go `REALTIME_PUBLIC_WS_HOST`）；若�
 
 ```text
 1. 确认 PINNED_LAN_IP；关闭 macOS 防火墙（联调窗口）
-2. 本仓：配置 .env.lan + 已有 supabase/.env.local
-3. make lan-up（或等价 compose 命令）
+2. 本仓：配置 .env.lan（REALTIME_PUBLIC_WS_HOST + 白名单）；local auth 不必强依赖 supabase
+3. make lan-up（有 Docker）或 make lan-run（无 Docker）
 4. curl http://<PINNED_LAN_IP>:8080/health
 5. Flutter：.env.lan 指向同一 IP，真机 flutter run
 6. 用白名单测试账号在 iOS + Android 同时登录，验证不互踢
 7. 验证 Realtime：换票后 WS 主机为 PINNED_LAN_IP，不是 127.0.0.1
-8. 结束：make lan-down；酌情重新打开防火墙
+8. 结束：make lan-down 或 Ctrl+C；酌情重新打开防火墙
 ```
 
 ---
@@ -215,12 +216,14 @@ Realtime 以 ticket 的 `wsUrl` 为准（Go `REALTIME_PUBLIC_WS_HOST`）；若�
 | 2 | Compose overlay + `make lan-up/down`；DB/Redis 绑 127.0.0.1 | ✅ |
 | 3 | 文档索引 / AGENTS / 本文 | ✅ |
 | 4 | Flutter `.env.lan.example` + BACKEND_INTEGRATION | ✅ |
-| 5 | ADR `docs/adr/0001`–`0003` | ✅ |  
+| 9 | Compose Phase 1：TARGETARCH、worker healthcheck、env 注入、文档对齐 | ✅ |  
 
 ---
 
 ## 10. 相关文档
 
+- [两端联调启动手册](./dual-end-lan-startup.md)  
+- [iOS 真机 LAN 调试记录（2026-09-16）](./ios-lan-device-debug-2026-09-16.md)  
 - [启动指南](./startup-guide.md)  
 - [Realtime WebSocket](./realtime-websocket.md)  
 - [认证导读（含白名单）](./auth-beginner-walkthrough.md)  

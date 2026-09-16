@@ -1,14 +1,18 @@
 # LAN Backend Host overlay — 与 docker-compose.yml 叠加使用。
-# make lan-up → docker compose -f docker/docker-compose.yml -f docker/docker-compose.lan.yml --env-file .env.lan up -d --build
+# make lan-up → ./scripts/lan-compose.sh up -d --build
+# （脚本会 source .env.lan / supabase.env / .env / .env.local，供 ${VAR} 替换）
 #
 # 端口策略：基础 compose 将 Postgres/Redis 绑到 127.0.0.1（仅本机调试）；
 # 本 overlay 不向局域网额外暴露 DB/Redis；API 仍为 8080:8080。
+#
+# 默认 AUTH_PROVIDER=local。若要切回 Cloud Auth：在 .env.lan 设 AUTH_PROVIDER=supabase
+#（并保证 SUPABASE_* 已由 source-env / supabase.env 注入）。
 
 services:
   app:
     environment:
       APP_ENV: lan
-      AUTH_PROVIDER: local
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       SERVER_PORT: 8080
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
@@ -24,11 +28,14 @@ services:
       AUTH_DEV_TEST_OTP: ${AUTH_DEV_TEST_OTP:-}
       AUTH_DEV_TEST_PASSWORD: ${AUTH_DEV_TEST_PASSWORD:-}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
 
   worker:
     environment:
       APP_ENV: lan
-      AUTH_PROVIDER: local
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: postgres
@@ -39,3 +46,6 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
       AUTH_SESSION_WHITELIST_USER_IDS: ${AUTH_SESSION_WHITELIST_USER_IDS:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}

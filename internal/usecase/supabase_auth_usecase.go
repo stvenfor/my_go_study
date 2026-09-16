@@ -261,6 +261,11 @@ func mapSupabaseAuthError(err error) error {
 		strings.Contains(msg, "no such host"),
 		strings.Contains(msg, "i/o timeout"):
 		return ErrSupabaseUnavailable
+	case strings.Contains(msg, "over_email_send_rate_limit"),
+		strings.Contains(msg, "email rate limit"),
+		strings.Contains(msg, "rate limit"):
+		// Prefer actionable copy over opaque 500 for signup email throttling.
+		return fmt.Errorf("%w: 注册邮件发送过于频繁，请稍后再试", ErrInvalidParams)
 	default:
 		return fmt.Errorf("supabase auth 失败: %w", err)
 	}

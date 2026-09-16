@@ -1,0 +1,14 @@
+.git
+.harness
+.idea
+.vscode
+bin
+tmp
+logs
+*.log
+.env.local
+.env.lan
+agent-transcripts
+docs
+**/*_test.go
+coverage.out

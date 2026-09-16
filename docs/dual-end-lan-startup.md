@@ -122,42 +122,34 @@ JWT_SECRET=change-me-in-lan
 
 真实 IP **不要**写进此文件。
 
-### 2.3 启动方式 A — Compose 全栈（推荐真机）
+### 2.3 启动方式 A — Compose 全栈（需 Docker Desktop）
 
 ```bash
 cd my_go_study
-make lan-up      # postgres + redis + app + worker
-# 停止
+make lan-up      # postgres + redis + app + worker（会 --build）
 make lan-down
 ```
 
-等价底层：
+说明：
 
-```bash
-./scripts/lan-compose.sh up -d --build
-```
+- 脚本 `lan-compose.sh` 会加载 `.env.lan` + supabase/.env/.env.local，并映射进容器（含可切回 Cloud 的 `SUPABASE_*`）。
+- **改 Go 代码后须再执行 `make lan-up`**（镜像重建）；频繁改代码用方式 B。
+- Apple Silicon 镜像按 `TARGETARCH` 原生构建；worker 已关闭误用的 HTTP healthcheck。
 
-改 Go 代码后需重新 `make lan-up`（重建镜像）。
+未安装 Docker 时会提示改用下方方式 B。
 
-### 2.4 启动方式 B — 本机进程（依赖已 `make deps-up`）
+### 2.4 启动方式 B — 本机进程（无 Docker，推荐你当前环境）
+
+依赖：Homebrew PostgreSQL + Redis（`make deps-up`，你这边通常已就绪）。
 
 ```bash
 cd my_go_study
-# 将 .env.lan 中的变量 export，或：
-set -a && source .env.lan && source configs/supabase.env 2>/dev/null; set +a
-# local 模式可不依赖 supabase.env
-
-APP_ENV=lan AUTH_PROVIDER=local \
-  REALTIME_PUBLIC_WS_HOST=<LAN_IP> \
-  ./scripts/load-env.sh go run ./cmd/api
-
-# 另开终端（需要异步推送 / 定时任务时）
-APP_ENV=lan ./scripts/load-env.sh go run ./cmd/worker
+make lan-run          # 读取 .env.lan，启动 API :8080
+# 另开终端（需要异步推送时）
+make lan-run-worker
 ```
 
-注意：`load-env.sh` 默认加载 `.env` / `.env.local` / `supabase.env`；请保证 `APP_ENV=lan` 与 `AUTH_PROVIDER=local` 最终生效（`.env.lan` 需自行 `source`，或写进环境）。
-
-更省事：把关键变量写进 `.env` 仅本机使用，或始终用 **方式 A**。
+等价：`./scripts/lan-run.sh api` / `./scripts/lan-run.sh worker`。
 
 ### 2.5 后端验收
 
@@ -202,13 +194,19 @@ BACKEND_HOST=192.168.0.102
 ```bash
 cd my_ai_project
 
-# 真机（推荐）
-flutter run --dart-define-from-file=.env.lan
+# IDE（推荐）：Run and Debug →「my_ai_project (LAN 真机)」
+# （已内置 --dart-define-from-file=.env.lan）
 
-# 指定设备
-flutter devices
+# CLI
+./scripts/run_app.sh --lan -d <device_id>
+# 或只指定真机，脚本自动切 .env.lan
+./scripts/run_app.sh -d <device_id>
+
+# 等价手写
 flutter run -d <device_id> --dart-define-from-file=.env.lan
 ```
+
+`flutter devices` 可查 device id。模拟器仍用默认 `.env`（`./scripts/run_app.sh --ios`）。
 
 ### 3.3 模拟器对照（可不改 BACKEND_HOST）
 
@@ -225,8 +223,14 @@ flutter run -d <device_id> --dart-define-from-file=.env.lan
 | 平台 | 注意 |
 |------|------|
 | Android | 主 Manifest 已 `usesCleartextTraffic=true` |
-| iOS | 首次访问本地网可能弹「本地网络」权限 → 允许 |
+| iOS | 首次访问本地网会弹「本地网络」→ **允许**；须用 LAN 启动配置注入 `BACKEND_HOST`（否则会打手机自己的 `127.0.0.1`） |
 | 双端同账号 | Go `.env.lan` 配置白名单邮箱，否则单设备互踢 |
+
+**真机登录「无法连接服务端」速查**：
+
+1. 看报错括号里的 URL：若是 `http://127.0.0.1:8080` → 未注入 `.env.lan`，请用 IDE「LAN 真机」**完整重启**（Hot Restart 不够）。
+2. 若是 `http://172.x.x.x:8080`：iPhone Safari 打开同地址 `/health`；关 Mac 防火墙；系统设置里允许本 App「本地网络」。
+3. 设置页环境须为 **测试**，且展示的 baseUrl 已是局域网 IP。
 
 ### 3.5 客户端验收
 
@@ -244,11 +248,11 @@ flutter run -d <device_id> --dart-define-from-file=.env.lan
 □ 2. 关闭防火墙（联调窗口）
 □ 3. Go：.env.lan 中 REALTIME_PUBLIC_WS_HOST=<LAN_IP>
 □ 4. Flutter：.env.lan 中 BACKEND_HOST=<LAN_IP>
-□ 5. make lan-up（或本机 make deps-up + API/Worker）
+□ 5. make lan-run（无 Docker）或 make lan-up（有 Docker）
 □ 6. curl http://<LAN_IP>:8080/health
-□ 7. flutter run --dart-define-from-file=.env.lan
+□ 7. Flutter：IDE「LAN 真机」或 ./scripts/run_app.sh --lan -d <iphone>
 □ 8. 登录 → 业务 → Realtime
-□ 9. 结束：make lan-down；酌情开防火墙
+□ 9. 结束：Ctrl+C 停 API；有 Docker 则 make lan-down；酌情开防火墙
 ```
 
 ---
@@ -281,13 +285,19 @@ make import-supabase DEFAULT_PASSWORD='…'
 
 ## 7. 排障速查
 
+> **完整调试记录（含根因、时间线、验收）**：[ios-lan-device-debug-2026-09-16.md](./ios-lan-device-debug-2026-09-16.md)
+
 | 现象 | 处理 |
 |------|------|
-| 真机 health 不通 | 同 Wi‑Fi？IP 变了？防火墙？访客网络隔离？ |
+| 真机登录「无法连接服务端（`127.0.0.1`）」 | **BACKEND_HOST 未注入**；看日志 `BACKEND_HOST=(未注入)` → IDE「LAN 真机」/ `--lan` **完整重装**（Hot Restart 无效）；或依赖 `LanHost.debugFallback` |
+| 日志 `baseUrl=http://127.0.0.1:8080` | 同上；成功时应为 `http://<LAN_IP>:8080` |
+| 真机 health 不通 | 同 Wi‑Fi？IP 变了？防火墙？访客网络隔离？Safari 先测 `/health` |
 | HTTP 通、登录后 WS 失败 | Go `REALTIME_PUBLIC_WS_HOST` 是否仍为 127.0.0.1 |
-| Android 立刻网络错误 | cleartext；确认用了 `.env.lan` 且 Hot Restart / 重跑 |
+| Android 立刻网络错误 | cleartext；确认用了 `.env.lan` 且完整重跑 |
 | 第二台设备 401 | 单设备互踢 → 加白名单 |
 | 登录密码错误（导入用户） | 用导入临时密码，不是 Cloud 密码 |
+| 短信 OTP（`13400000000`）失败 | `.env.lan` 打开 `AUTH_DEV_TEST_*` 并 **重启** `lan-run`；验证码 `123456` |
+| `lan-up` 失败缺 Docker | 预期；改用 `make lan-run` |
 | `lan-up` 失败缺 IP | `.env.lan` 未设或仍为 `YOUR_LAN_IP` |
 | 改 Go 不生效 | Compose 需 `--build` / 再执行 `make lan-up` |
 | AutoMigrate 报 bigint→uuid | 已有自动重命名 `transactions_legacy_uint`；或清 Docker volume |
@@ -303,8 +313,10 @@ make import-supabase DEFAULT_PASSWORD='…'
 | `.env.lan.example` | 是 | 模板 |
 | `.env.lan` | **否** | 真实 IP / 白名单 / JWT |
 | `configs/config.lan.yaml` | 是 | lan 覆盖项 |
-| `docker/docker-compose.yml` | 是 | 基础栈 |
-| `docker/docker-compose.lan.yml` | 是 | lan overlay（`AUTH_PROVIDER=local`） |
+| `docker/docker-compose.yml` | 是 | 基础栈（env 注入 + worker healthcheck off） |
+| `docker/docker-compose.lan.yml` | 是 | lan overlay（默认 `AUTH_PROVIDER=local`） |
+| `scripts/docker-compose.sh` | 是 | `make docker-up` 入口（先 source env） |
+| `scripts/lan-compose.sh` | 是 | `make lan-up` 入口 |
 | `.env.local` | 否 | 仅 Cloud 导入需要 service_role |
 | `configs/supabase.env` | 是 | 仅 Cloud / 导入时需要 |
 
@@ -323,11 +335,14 @@ make import-supabase DEFAULT_PASSWORD='…'
 ```bash
 # Go
 make deps-up
-make lan-up / make lan-down
+make lan-run / make lan-run-worker   # 无 Docker（你当前环境）
+make lan-up / make lan-down          # 需 Docker Desktop
 make import-supabase-dry
 make import-supabase DEFAULT_PASSWORD='…'
 curl http://127.0.0.1:8080/health
+curl http://172.16.0.43:8080/health
 
 # Flutter
-flutter run --dart-define-from-file=.env.lan
+# IDE: Run →「my_ai_project (LAN 真机)」
+./scripts/run_app.sh --lan -d <device_id>
 ```

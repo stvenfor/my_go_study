@@ -20,6 +20,7 @@
 | 飞书同步 | [FEISHU_SYNC.md](./FEISHU_SYNC.md) | ✅ |
 | **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ `make lan-up`（现为本地 Auth） |
 | **两端联调启动手册** | [dual-end-lan-startup.md](./dual-end-lan-startup.md) | ✅ Go + Flutter 配置与启动清单 |
+| **iOS 真机 LAN 调试记录** | [ios-lan-device-debug-2026-09-16.md](./ios-lan-device-debug-2026-09-16.md) | ✅ 127.0.0.1 / BACKEND_HOST 未注入根因与验收 |
 | **本地 Auth + Postgres** | [local-auth-postgres.md](./local-auth-postgres.md) | ✅ `auth.provider=local`；`make import-supabase` |
 | ADR | [adr/](./adr/) | ✅ 含 LAN / local Auth 决策 |
 
