@@ -33,49 +33,51 @@ Go BFF 后端 Agent 指南，并包含与 Flutter **`my_ai_project`** 协作的�
 
 ```text
 my_ai_project (Flutter)
-    │  HTTP JSON（ResultModel / 直出 JSON）
+    │  HTTP JSON :8080（登录 / 业务）
+    │  gRPC :9090（数据分析试验）
     ▼
-my_go_study (Gin BFF :8080)    ← 你在这里
-    │  Auth / PostgREST / Redis
+my_go_study (同进程双端口)    ← 你在这里
+    │  Auth / Postgres / Redis / PostgREST
     ▼
-Supabase Cloud（Auth + PostgreSQL + RLS）
+Supabase Cloud 或 local Auth + 本地 Postgres
 ```
 
 | 能力 | Flutter | Go（本仓库） | 外部 |
 |------|---------|--------------|------|
-| 登录注册 | `BackendAuthService` | `UserHandler` → `SupabaseAuthUsecase` + `DeviceSessionUsecase` | Supabase Auth + Redis session |
+| 登录注册 | `BackendAuthService` | `UserHandler` → Auth usecase + `DeviceSessionUsecase` | Auth + Redis session |
 | 收支/二手车 | `TransactionApi` | `TransactionController` | PostgREST + RLS |
 | 实时消息 | `AppRealtimeClient` | `RealtimeController` + WS Hub | Redis |
 | 用户资料 | — | `ProfileController` | PostgREST |
+| 数据分析 | `AnalyticsGrpcApi`（gRPC） | `AnalyticsService` → `AnalyticsUsecase` | 本地表 `analytics_records` |
 
 ### 本地联调
 
 > **工作目录**：以下命令均在 **`my_go_study/`** 目录执行（`cd my_go_study`），不要在工作区根目录 `my_code_study/` 运行 `make`。
 
 ```bash
-# 终端 1：Go API（在 my_go_study/ 目录）
-make deps-up    # 首次：PostgreSQL + Redis
-make run        # :8080
+# 方案 A（推荐联调）：Docker 统一管理 HTTP:8080 + gRPC:9090 + PG + Redis + Worker
+# cp .env.lan.example .env.lan 后：
+make lan-up                 # docs/lan-backend-host.md；改 Go 后需再执行（会 --build）
+make lan-down
+# 勿与本机 make run 同时开，会抢 :8080
 
-# 终端 2（dev 默认 queue.enabled=true）：Asynq Worker（同样在 my_go_study/）
-make run-worker
+# 方案 B：本机进程
+make deps-up                # 首次：PostgreSQL + Redis
+make run                    # HTTP :8080 + gRPC :9090（同进程）
+make run-worker             # queue.enabled=true 时另开终端
 
-# 终端 3：Flutter
+# Flutter（路径相对本仓库：../../my_ai_project）
 cd ../../my_ai_project
-flutter run --dart-define-from-file=.env   # USE_MOCK_AUTH=false
+flutter run --dart-define-from-file=.env.lan   # 真机：BACKEND_HOST=局域网IP；gRPC 默认 9090
 
 # 验证
 curl http://127.0.0.1:8080/health
-make test-realtime    # 需 make run 已启动
-make test-queue-push  # 需 make run + make run-worker
-make trigger-hourly-notify  # 手动触发定时广播
-make test-scheduled-notify  # 定时通知联调
+make test-realtime          # 需 API 已启动
+make test-queue-push        # 需 API + Worker
+make trigger-hourly-notify
+make test-scheduled-notify
 make test-single-device-login
 make test-phone-otp-login
-
-# 局域网真机（Compose）：cp .env.lan.example .env.lan 后
-make lan-up                 # docs/lan-backend-host.md
-make lan-down
 ```
 
 | 检查项 | 说明 |
@@ -88,7 +90,8 @@ make lan-down
 | Realtime | Flutter 设置 → Realtime 调试 |
 | 异步 Push | `make test-queue-push`（需 Worker） |
 | 定时通知 | `make trigger-hourly-notify` + `make test-scheduled-notify` |
-| 局域网真机 | `make lan-up` + Flutter `--dart-define-from-file=.env.lan` |
+| 局域网 / Docker | `make lan-up`：映射 **8080 + 9090**；Flutter 只需 `BACKEND_HOST`（gRPC 端口默认 9090） |
+| 数据分析 gRPC | Flutter 首页「数据分析」；冒烟见 [analytics-flutter-trial.md](./docs/grpc/analytics-flutter-trial.md) |
 | 密钥 | `make check-secrets` |
 
 ### 文档地图
@@ -110,6 +113,8 @@ make lan-down
 | [dual-end-lan-startup.md](./docs/dual-end-lan-startup.md) | **Go + Flutter 两端启动配置手册** |
 | [ios-lan-device-debug-2026-09-16.md](./docs/ios-lan-device-debug-2026-09-16.md) | iOS 真机「无法连接服务端 / 127.0.0.1」调试记录 |
 | [local-auth-postgres.md](./docs/local-auth-postgres.md) | `auth.provider=local` / 可切回 supabase |
+| [grpc/gin-http-vs-grpc.md](./docs/grpc/gin-http-vs-grpc.md) | Gin HTTP vs gRPC 概念对比 |
+| [grpc/analytics-flutter-trial.md](./docs/grpc/analytics-flutter-trial.md) | **数据分析 gRPC**：proto、`:9090`、Flutter 列表/详情联调 |
 
 **Flutter（`my_ai_project/docs/`）**
 
@@ -123,8 +128,10 @@ make lan-down
 1. **所有 `go` / `make` 在本仓库根目录执行**，不要在父目录 `my_code_study` 执行
 2. Flutter 业务**不直连** Supabase SDK，经 Go BFF
 3. `SUPABASE_SERVICE_ROLE_KEY` 仅 `.env.local`；推送前 `make check-secrets`
-4. **两套 Token 勿混用**：Flutter 用 Supabase JWT；遗留 `/api/v1/user/list` 用 Go 自建 JWT
+4. **两套 Token 勿混用**：Flutter 用业务 access token + session；遗留 `/api/v1/user/list` 用 Go 自建 JWT
 5. 两仓库**独立 git**，分别 push
+6. **HTTP `:8080` 与 gRPC `:9090` 勿混端口**；gRPC 鉴权走 metadata（`authorization` / `x-session-id` / `x-device-id`），对齐 HTTP SessionAuth
+7. `make lan-up` 后后端在 Docker 内运行（镜像构建时打入代码），**勿再本机 `make run`**；改 Go 需重新 `make lan-up`
 
 ---
 
@@ -132,32 +139,36 @@ make lan-down
 
 ### 项目定位
 
-- **框架**：Gin + GORM + PostgreSQL + Redis + Clean Architecture
+- **框架**：Gin + gRPC + GORM + PostgreSQL + Redis + Clean Architecture
 - **模块路径**：`github.com/stvenfor/my_go_study`
-- **默认端口**：`8080`
+- **默认端口**：HTTP `8080`；gRPC `9090`（`GRPC_ENABLED` / `GRPC_PORT`）
 - **配对客户端**：Flutter `my_ai_project`
 
 ### 分层结构
 
 ```text
-cmd/api/main.go                 # 依赖注入、启动 HTTP+WS
+cmd/api/main.go                 # 依赖注入、启动 HTTP+WS+gRPC
 cmd/worker/main.go              # Asynq Worker（异步 Push / SMS / JPush 占位）
+api/
+  proto/analytics/v1/           # Protobuf 契约（单一真相源）
+  gen/go/analytics/v1/          # make proto 生成的 Go stubs
 internal/
   delivery/http/
     handler/                    # 自建用户 HTTP（UserHandler）
-    controller/                 # Supabase 业务 HTTP（Profile / Transaction / Realtime）
-    middleware/                 # JWT / SupabaseAuth / CORS / Logger
+    controller/                 # 业务 HTTP（Profile / Transaction / Realtime）
+    middleware/                 # JWT / SessionAuth / CORS / Logger
     router/                     # 按模块拆分路由
     dto/request|response/       # 请求/响应 DTO
+  delivery/grpc/                # gRPC Server + AnalyticsService + 鉴权 interceptor
   delivery/ws/                  # WebSocket Hub / Handler / Client
-  usecase/                      # 业务用例
+  usecase/                      # 业务用例（含 AnalyticsUsecase）
   domain/entity|repository/     # 领域实体与仓储接口
   repository/
-    postgres/                   # 本地 PostgreSQL
+    postgres/                   # 本地 PostgreSQL（含 analytics_records）
     redis/                      # Realtime ticket / 事件 / presence
     supabase/                   # Supabase PostgREST
 pkg/
-  config/                       # Viper 配置
+  config/                       # Viper 配置（含 grpc.*）
   queue/                        # Asynq 客户端/处理器、Redis Pub/Sub 广播
   supabase/                     # Supabase 客户端封装
   auth/                         # Token 校验（/auth/v1/user）
@@ -190,12 +201,13 @@ pkg/
 
 ### 两套认证（勿混淆）
 
-| 中间件 | 路由示例 | Token 类型 | 用户 ID |
-|--------|----------|------------|---------|
-| `SupabaseSessionAuth` | `/api/v1/transactions*`、`/api/v1/realtime/*` | Supabase access token + session | UUID |
+| 中间件 / 拦截器 | 入口示例 | Token 类型 | 用户 ID |
+|----------------|----------|------------|---------|
+| `SupabaseSessionAuth` / SessionAuth | `/api/v1/transactions*`、`/api/v1/realtime/*` | access token + session | UUID |
+| gRPC unary interceptor | `AnalyticsService/*` | 同上（metadata） | UUID |
 | `Auth`（JWT） | `/api/v1/user/list` | Go 自建 JWT | `uint` |
 
-Flutter 登录返回 **Supabase token + refresh_token + session_id**，业务 API 走 `SupabaseSessionAuth`。
+Flutter 登录返回 **token + refresh_token + session_id**；HTTP 业务走 SessionAuth；gRPC 试验走同一套 session（metadata 键名小写亦可）。
 
 ### 配置与环境变量
 
@@ -220,30 +232,35 @@ cp .env.local.example .env.local   # service_role
 ```text
 1. APP_ENV → config.Load
 2. logger.Init
-3. PostgreSQL + autoMigrate（仅 API）
+3. PostgreSQL + autoMigrate（仅 API；含 AnalyticsRecord）
 4. Redis
 5. UserUsecase（遗留 JWT 路由）+ DeviceSessionUsecase（Redis session）
-6. 若 Supabase.Enabled：
+6. 若业务启用（Supabase 或 local Auth）：
      Auth / Profile / Transactions
      Realtime：Hub → Ticket/Sync/Push/Presence → WS + Controller
      若 queue.enabled：Asynq 入队 + Pub/Sub 订阅（API）；Worker 消费并入队广播
-7. router.Setup（仅 API）
-8. ListenAndServe / Asynq Server.Run
-9. SIGTERM → 优雅 Shutdown
+7. router.Setup（仅 API，HTTP）
+8. 若 grpc.enabled：AnalyticsUsecase（空表种子）→ gRPC Listen :9090（需 DeviceSession + Auth）
+9. HTTP ListenAndServe / Asynq Server.Run
+10. SIGTERM → HTTP Shutdown + gRPC GracefulStop
 ```
 
-| 组件 | 未配 Supabase | 已配 Supabase |
-|------|---------------|---------------|
-| `/api/v1/user/login` | 503 | 正常 |
+| 组件 | 未配业务后端 | 已配（Supabase 或 local） |
+|------|--------------|---------------------------|
+| `/api/v1/user/login` | 503 / 按 provider | 正常 |
 | `/api/v1/transactions*` | 未注册 | 正常 |
 | `/api/v1/realtime/*` | 未注册 | 需 Redis |
+| gRPC `AnalyticsService` | 跳过或未启 | `:9090`（需 session 鉴权） |
 
-**新增组件**：`main.go` 构造 → `router.Options` → `router/` 挂路由。
+**新增 HTTP 组件**：`main.go` 构造 → `router.Options` → `router/` 挂路由。  
+**新增 gRPC 服务**：改 `api/proto/**` → `make proto` → `internal/delivery/grpc` 实现 → `main.go` 注册；Flutter stubs 在 `my_ai_project/commons/network`（proto 仍以本仓库为源）。
 
 ### 常用命令
 
 ```bash
 make run
+make proto                  # 从 api/proto 生成 Go stubs
+make lan-up                 # Docker：8080+9090
 make test
 make test-transactions
 make test-realtime
@@ -255,12 +272,13 @@ make check-secrets
 ### Agent 修改规范
 
 1. 在本仓库根目录执行 `go` / `make`
-2. 新增 Supabase 表：entity → repository → usecase → controller → router（`SupabaseSessionAuth`）
-3. 认证错误：`mapSupabaseAuthError` + `UserHandler.handleUsecaseError`
-4. PostgREST 必须 `WithUserToken`，禁止 Admin 绕过 RLS
-5. transactions 必须 `.Eq("user_id", userID)` + RLS 迁移
-6. Flutter 兼容响应注意 snake_case / `{ items: [] }`
-7. service_role 仅 `.env.local`；推送前 `make check-secrets`
+2. 新增 Supabase/业务 HTTP 表：entity → repository → usecase → controller → router（SessionAuth）
+3. 新增 gRPC：proto（本仓库）→ `make proto` → delivery/grpc + usecase/repo；同步更新 Flutter `commons/network` codegen 与页面
+4. 认证错误：`mapSupabaseAuthError` + `UserHandler.handleUsecaseError`（HTTP）；gRPC 返回合适的 `status` 码
+5. PostgREST 必须 `WithUserToken`，禁止 Admin 绕过 RLS
+6. transactions 必须 `.Eq("user_id", userID)` + RLS 迁移
+7. Flutter 兼容响应注意 snake_case / `{ items: [] }`（HTTP）；gRPC 字段以 proto 为准
+8. service_role 仅 `.env.local`；推送前 `make check-secrets`
 
 ### 相关文档
 
@@ -272,4 +290,6 @@ make check-secrets
 - [认证初学者导读](./docs/auth-beginner-walkthrough.md)
 - [Transactions 初学者导读](./docs/transactions-beginner-walkthrough.md)
 - [Realtime 初学者导读](./docs/realtime-beginner-walkthrough.md)
+- [Gin HTTP vs gRPC](./docs/grpc/gin-http-vs-grpc.md)
+- [数据分析 gRPC 联调](./docs/grpc/analytics-flutter-trial.md)
 - Flutter [AGENTS.md](../../my_ai_project/AGENTS.md)

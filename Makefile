@@ -3,7 +3,7 @@ APP_NAME := my_go_study
 MAIN_PATH := ./cmd/api
 WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker import-supabase clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
@@ -103,6 +103,10 @@ import-supabase:
 
 import-supabase-dry:
 	./scripts/load-env.sh go run ./cmd/import-supabase --dry-run --skip-users
+
+# 强制刷新 analytics_records 图表友好种子（seed_chart_v1，约 48 条）
+seed-analytics:
+	./scripts/load-env.sh go run ./cmd/seed-analytics
 
 clean:
 	rm -rf $(BIN_DIR) tmp logs/*.log

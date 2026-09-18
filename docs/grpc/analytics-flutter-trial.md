@@ -16,15 +16,22 @@
 | 项 | 值 |
 |----|-----|
 | 表 | `analytics_records`（≥30 字段，时间为 Unix 秒） |
+| 种子 | 启动时 `EnsureSeedData`：若尚无 `seed_chart_v1` 标记则清空 `source_system=seed` 并写入约 48 条图表友好数据（漏斗递减、0–100 评分、异常/精选/零点击样例） |
 | Proto | `api/proto/analytics/v1/analytics.proto` |
 | 端口 | `grpc.port` 默认 `9090`（`GRPC_ENABLED` / `GRPC_PORT`） |
 | 鉴权 metadata | `authorization`、`x-session-id`、`x-device-id` |
 
 ```bash
 make proto   # 可选重生成
-make run     # 本机进程：HTTP :8080 + gRPC :9090；空表自动种子
+make run     # 本机进程：HTTP :8080 + gRPC :9090；自动刷新 chart-v1 种子
 # 或 Docker 统一管理（推荐联调）：
 make lan-up  # / make docker-up —— app 同时映射 8080 + 9090
+
+# 强制重刷本地库种子（已有旧数据时）：
+./scripts/load-env.sh go run ./cmd/seed-analytics
+
+# 仅手工 SQL 最小集（可选）：
+psql "$DATABASE_URL" -f scripts/seed_analytics_records_chart_v1.sql
 ```
 
 冒烟（先 HTTP 登录拿 token）：

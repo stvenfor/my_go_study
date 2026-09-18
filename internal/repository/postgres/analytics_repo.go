@@ -70,6 +70,31 @@ func (r *analyticsRepository) Count(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
+func (r *analyticsRepository) CountNotesContaining(ctx context.Context, marker string) (int64, error) {
+	var total int64
+	err := r.db.WithContext(ctx).
+		Model(&entity.AnalyticsRecord{}).
+		Where("notes LIKE ?", "%"+marker+"%").
+		Count(&total).Error
+	if err != nil {
+		return 0, fmt.Errorf("按 notes 统计 analytics_records 失败: %w", err)
+	}
+	return total, nil
+}
+
+func (r *analyticsRepository) DeleteBySourceSystem(ctx context.Context, sourceSystem string) error {
+	if sourceSystem == "" {
+		return fmt.Errorf("source_system 不能为空")
+	}
+	res := r.db.WithContext(ctx).
+		Where("source_system = ?", sourceSystem).
+		Delete(&entity.AnalyticsRecord{})
+	if res.Error != nil {
+		return fmt.Errorf("删除 analytics_records 失败: %w", res.Error)
+	}
+	return nil
+}
+
 func (r *analyticsRepository) CreateBatch(ctx context.Context, items []entity.AnalyticsRecord) error {
 	if len(items) == 0 {
 		return nil
