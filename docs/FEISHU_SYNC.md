@@ -24,6 +24,7 @@
 | **code** | [`feishu-sync-code.config.yaml`](./feishu-sync-code.config.yaml) | 精选学习文档 |
 | **daily** | [`feishu-sync-daily.config.yaml`](./feishu-sync-daily.config.yaml) | 「日常知识」文件夹下的日常笔记 |
 | **tool** | [`feishu-sync-tool.config.yaml`](./feishu-sync-tool.config.yaml) | 「grpc」文件夹下的 gRPC 学习文档 |
+| **tool** | [`feishu-sync-tool-docker.config.yaml`](./feishu-sync-tool-docker.config.yaml) | 「Docker 相关文档纪要」文件夹下的 Docker 联调运维文档 |
 
 ## 一、前置准备（一次性）
 
@@ -80,6 +81,10 @@ python3 scripts/feishu_doc_sync/main.py sync --file docs/startup-guide.md
 # 同步到知识库「tool」→ 文件夹「grpc」
 ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-tool.config.yaml
 ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-tool.config.yaml
+
+# 同步到知识库「tool」→ 文件夹「Docker 相关文档纪要」
+./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-tool-docker.config.yaml
+./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-tool-docker.config.yaml
 ```
 
 依赖：`lark-cli`（必需）、Python 3.10+ 与 `PyYAML`（脚本自动安装）。

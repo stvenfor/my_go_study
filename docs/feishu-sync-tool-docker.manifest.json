@@ -1,0 +1,14 @@
+{
+  "wiki_space_id": "7660001910010760403",
+  "wiki_space_name": "tool",
+  "project_folder_name": "Docker 相关文档纪要",
+  "project_folder_node_token": "B2XewM3LJilgD1kU2aAcIjZ5nqb",
+  "directories": {},
+  "files": {
+    "docs/docker/lan-ops-abc-beginner.md": {
+      "node_token": "DArQwkXuKih2zOkkJ7rcymhvnIh",
+      "document_id": "GfJSdOhb5oQsIZxnub6cFILcnNg",
+      "content_hash": "sha256:09c7706b4b263ddc4feb7aa2ee82e4f5daacf3b14ce2b3251fef2e991d9bc6c8"
+    }
+  }
+}

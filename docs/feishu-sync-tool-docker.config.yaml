@@ -1,0 +1,21 @@
+# 飞书知识库「tool」→「Docker 相关文档纪要」同步配置
+# 用法：
+#   ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-tool-docker.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-tool-docker.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-tool-docker.config.yaml --file docs/docker/lan-ops-abc-beginner.md
+
+wiki:
+  space_name: "tool"
+  space_description: "Migrated from Yuque"
+  project_folder: "Docker 相关文档纪要"
+
+sync:
+  include:
+    - "docs/docker/**/*.md"
+  exclude: []
+  # Feishu 路径：tool / Docker 相关文档纪要 / <doc-title>
+  strip_prefix: "docs/docker"
+
+paths:
+  manifest: "docs/feishu-sync-tool-docker.manifest.json"
+  repo_root: "."

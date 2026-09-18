@@ -115,6 +115,7 @@ make test-phone-otp-login
 | [local-auth-postgres.md](./docs/local-auth-postgres.md) | `auth.provider=local` / 可切回 supabase |
 | [grpc/gin-http-vs-grpc.md](./docs/grpc/gin-http-vs-grpc.md) | Gin HTTP vs gRPC 概念对比 |
 | [grpc/analytics-flutter-trial.md](./docs/grpc/analytics-flutter-trial.md) | **数据分析 gRPC**：proto、`:9090`、Flutter 列表/详情联调 |
+| [docker/lan-ops-abc-beginner.md](./docs/docker/lan-ops-abc-beginner.md) | **Docker 联调运维**：Flutter 对齐 / 改码生效 / 排障（飞书 tool） |
 
 **Flutter（`my_ai_project/docs/`）**
 
