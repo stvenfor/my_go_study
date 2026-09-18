@@ -3,7 +3,17 @@ APP_NAME := my_go_study
 MAIN_PATH := ./cmd/api
 WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker import-supabase clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker import-supabase clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
+
+proto:
+	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
+	@command -v protoc-gen-go >/dev/null 2>&1 || { echo "需要: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest"; exit 1; }
+	@command -v protoc-gen-go-grpc >/dev/null 2>&1 || { echo "需要: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest"; exit 1; }
+	mkdir -p api/gen/go
+	protoc --proto_path=api/proto \
+		--go_out=api/gen/go --go_opt=module=github.com/stvenfor/my_go_study/api/gen/go \
+		--go-grpc_out=api/gen/go --go-grpc_opt=module=github.com/stvenfor/my_go_study/api/gen/go \
+		api/proto/analytics/v1/analytics.proto
 
 run:
 	./scripts/load-env.sh go run $(MAIN_PATH)

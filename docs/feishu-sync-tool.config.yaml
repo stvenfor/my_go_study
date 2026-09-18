@@ -1,0 +1,22 @@
+# 飞书知识库「tool」同步配置
+# 在 tool 下创建「grpc」文件夹并同步 gRPC 学习文档
+# 用法：
+#   ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-tool.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-tool.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-tool.config.yaml --file docs/grpc/gin-http-vs-grpc.md
+
+wiki:
+  space_name: "tool"
+  space_description: "Migrated from Yuque"
+  project_folder: "grpc"
+
+sync:
+  include:
+    - "docs/grpc/**/*.md"
+  exclude: []
+  # Feishu 路径：tool / grpc / <doc-title>（去掉仓库里的 docs/grpc 前缀）
+  strip_prefix: "docs/grpc"
+
+paths:
+  manifest: "docs/feishu-sync-tool.manifest.json"
+  repo_root: "."

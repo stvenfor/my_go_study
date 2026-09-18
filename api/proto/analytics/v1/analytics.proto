@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package analytics.v1;
+
+option go_package = "github.com/stvenfor/my_go_study/api/gen/go/analytics/v1;analyticsv1";
+
+// AnalyticsService 数据分析列表 + 详情（Flutter 试验入口）。
+service AnalyticsService {
+  rpc ListAnalyticsRecords(ListAnalyticsRecordsRequest) returns (ListAnalyticsRecordsResponse);
+  rpc GetAnalyticsRecord(GetAnalyticsRecordRequest) returns (GetAnalyticsRecordResponse);
+}
+
+message ListAnalyticsRecordsRequest {
+  int32 page = 1;       // 从 1 开始
+  int32 page_size = 2;  // 默认 10，最大 50
+}
+
+message ListAnalyticsRecordsResponse {
+  repeated AnalyticsRecord items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetAnalyticsRecordRequest {
+  int64 id = 1;
+}
+
+message GetAnalyticsRecordResponse {
+  AnalyticsRecord item = 1;
+}
+
+// AnalyticsRecord 与表 analytics_records 对齐；时间为 Unix 秒。
+message AnalyticsRecord {
+  int64 id = 1;
+  string code = 2;
+  string title = 3;
+  string subtitle = 4;
+  string category = 5;
+  string sub_category = 6;
+  string status = 7;
+  int32 priority = 8;
+  string region = 9;
+  string channel = 10;
+  string owner_name = 11;
+  string owner_team = 12;
+  string source_system = 13;
+  int64 metric_pv = 14;
+  int64 metric_uv = 15;
+  int64 metric_click = 16;
+  int64 metric_convert = 17;
+  double metric_revenue = 18;
+  double metric_cost = 19;
+  double metric_roi = 20;
+  double metric_bounce_rate = 21;
+  int32 metric_avg_duration_sec = 22;
+  double score_quality = 23;
+  double score_risk = 24;
+  string tag_primary = 25;
+  string tag_secondary = 26;
+  bool flag_featured = 27;
+  bool flag_anomaly = 28;
+  string notes = 29;
+  int64 observed_at = 30;
+  int64 window_start = 31;
+  int64 window_end = 32;
+  int64 published_at = 33;
+  int64 created_at = 34;
+  int64 updated_at = 35;
+}

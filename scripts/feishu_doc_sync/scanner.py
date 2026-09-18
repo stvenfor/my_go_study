@@ -18,6 +18,9 @@ class SyncConfig:
     exclude: list[str]
     manifest_path: Path
     repo_root: Path
+    # Repo-relative prefix stripped before building Feishu directory segments.
+    # Example: "docs/grpc" + file docs/grpc/a.md → Feishu path under project folder is just "a".
+    strip_prefix: str = ""
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ def load_config(config_path: Path) -> SyncConfig:
         exclude=list(sync.get("exclude", [])),
         manifest_path=(repo_root / paths.get("manifest", "docs/feishu-sync.manifest.json")).resolve(),
         repo_root=repo_root,
+        strip_prefix=str(sync.get("strip_prefix", "") or "").strip().strip("/"),
     )
 
 
@@ -83,15 +87,31 @@ def scan_markdown_files(config: SyncConfig) -> list[MarkdownFile]:
     return sorted(files, key=lambda item: item.relative_path)
 
 
-def node_title_for_path(relative_path: str) -> str:
-    name = Path(relative_path).name
+def feishu_relative_path(relative_path: str, strip_prefix: str = "") -> str:
+    """Map a repo-relative path to the path used for Feishu folder/title layout."""
+    normalized = relative_path.replace("\\", "/").lstrip("/")
+    prefix = (strip_prefix or "").strip().strip("/")
+    if not prefix:
+        return normalized
+    if normalized == prefix:
+        return Path(normalized).name
+    head = prefix + "/"
+    if normalized.startswith(head):
+        return normalized[len(head) :]
+    return normalized
+
+
+def node_title_for_path(relative_path: str, strip_prefix: str = "") -> str:
+    mapped = feishu_relative_path(relative_path, strip_prefix)
+    name = Path(mapped).name
     if name.lower() == "readme.md":
         return "README"
-    return Path(relative_path).stem
+    return Path(mapped).stem
 
 
-def directory_segments(relative_path: str) -> list[str]:
-    parts = Path(relative_path).parts
+def directory_segments(relative_path: str, strip_prefix: str = "") -> list[str]:
+    mapped = feishu_relative_path(relative_path, strip_prefix)
+    parts = Path(mapped).parts
     if len(parts) <= 1:
         return []
     return list(parts[:-1])

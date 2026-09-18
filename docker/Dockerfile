@@ -10,6 +10,10 @@ WORKDIR /app
 
 RUN apk add --no-cache git ca-certificates tzdata
 
+# 构建机访问 proxy.golang.org 超时时可覆盖：GOPROXY=https://goproxy.cn,direct
+ARG GOPROXY=https://goproxy.cn,direct
+ENV GOPROXY=${GOPROXY}
+
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -36,7 +40,7 @@ COPY --from=builder /app/configs /app/configs
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8080 9090
 
 # 仅适合默认 CMD（api）。worker 服务在 compose 中 disable healthcheck。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

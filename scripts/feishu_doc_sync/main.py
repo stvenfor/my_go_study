@@ -118,7 +118,13 @@ def cmd_sync(args: argparse.Namespace) -> int:
             continue
 
         if entry is None or not entry.document_id:
-            entry = ensure_file_node(space_id, project_root, manifest, md_file)
+            entry = ensure_file_node(
+                space_id,
+                project_root,
+                manifest,
+                md_file,
+                strip_prefix=config.strip_prefix,
+            )
 
         sync_markdown_to_document(entry.document_id, md_file)
         entry.content_hash = md_file.content_hash

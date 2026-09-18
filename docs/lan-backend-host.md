@@ -17,7 +17,7 @@
 | 4 | 地址策略 | 路由器 DHCP 预留 / Mac 固定局域网 IPv4 |
 | 5 | 客户端 | iOS + Android 真机都要 |
 | 6 | 传输 | 先 `http`/`ws` 明文；HTTPS/`wss` 作附录预留 |
-| 7 | 端口暴露 | 默认只对局域网提供 **8080**；5432/6379 不常驻映射，查库用 `exec` 或临时映射 |
+| 7 | 端口暴露 | 默认对局域网提供 **8080**（HTTP/WS）+ **9090**（gRPC）；5432/6379 不常驻映射，查库用 `exec` 或临时映射 |
 | 8 | 配置姿态 | 独立 **LAN Profile**（`APP_ENV=lan`），不与纯 `dev`、不与 `prod` 混用 |
 | 9 | 改造范围 | Go（本仓）+ Flutter（`my_ai_project`）一起做 |
 | 10 | IP / 白名单存放 | 仅本机未入库 env；仓库只留 example |
@@ -33,10 +33,12 @@
 iOS / Android 真机（同 Wi‑Fi）
   │  http://<PINNED_LAN_IP>:8080
   │  ws://<PINNED_LAN_IP>:8080/realtime/v1/connect
+  │  grpc://<PINNED_LAN_IP>:9090（数据分析等）
   ▼
 Mac（LAN Backend Host）
   Docker Compose（或 make lan-run 本机进程）
-    ├── app      :8080 → 宿主机 8080（唯一常驻对外端口）
+    ├── app      :8080 → 宿主机 8080（HTTP/WS）
+    │            :9090 → 宿主机 9090（gRPC）
     ├── worker   （队列 / 推送消费，不对局域网暴露端口）
     ├── postgres （127.0.0.1:5432；业务 + local auth）
     └── redis    （127.0.0.1:6379；session / realtime / queue）

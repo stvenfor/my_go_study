@@ -13,15 +13,16 @@ import (
 
 // Config 聚合所有运行时配置项。
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
-	Auth     AuthConfig     `mapstructure:"auth"`
-	Log      LogConfig      `mapstructure:"log"`
-	Supabase SupabaseConfig `mapstructure:"supabase"`
-	Realtime RealtimeConfig `mapstructure:"realtime"`
-	Queue    QueueConfig    `mapstructure:"queue"`
+	Server    ServerConfig    `mapstructure:"server"`
+	GRPC      GRPCConfig      `mapstructure:"grpc"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	Auth      AuthConfig      `mapstructure:"auth"`
+	Log       LogConfig       `mapstructure:"log"`
+	Supabase  SupabaseConfig  `mapstructure:"supabase"`
+	Realtime  RealtimeConfig  `mapstructure:"realtime"`
+	Queue     QueueConfig     `mapstructure:"queue"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
 }
 
@@ -29,6 +30,12 @@ type Config struct {
 type ServerConfig struct {
 	Port int    `mapstructure:"port"`
 	Mode string `mapstructure:"mode"`
+}
+
+// GRPCConfig gRPC 服务配置（与 HTTP 同进程双端口）。
+type GRPCConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Port    int  `mapstructure:"port"`
 }
 
 // DatabaseConfig PostgreSQL 连接配置。
@@ -354,6 +361,8 @@ func Load(configPath, env string) (*Config, error) {
 
 	// 常用环境变量映射
 	_ = v.BindEnv("server.port", "SERVER_PORT")
+	_ = v.BindEnv("grpc.enabled", "GRPC_ENABLED")
+	_ = v.BindEnv("grpc.port", "GRPC_PORT")
 	_ = v.BindEnv("database.host", "DATABASE_HOST")
 	_ = v.BindEnv("database.port", "DATABASE_PORT")
 	_ = v.BindEnv("database.user", "DATABASE_USER")
@@ -398,6 +407,13 @@ func Load(configPath, env string) (*Config, error) {
 	}
 	if cfg.Database.ConnMaxLifetimeMinutes <= 0 {
 		cfg.Database.ConnMaxLifetimeMinutes = 30
+	}
+	if cfg.GRPC.Port <= 0 {
+		cfg.GRPC.Port = 9090
+	}
+	// 未显式配置时默认启用（dev/lan 试验）；可用 GRPC_ENABLED=false 关闭。
+	if !v.IsSet("grpc.enabled") && os.Getenv("GRPC_ENABLED") == "" {
+		cfg.GRPC.Enabled = true
 	}
 	if cfg.Realtime.WsPath == "" {
 		cfg.Realtime.WsPath = "/realtime/v1/connect"

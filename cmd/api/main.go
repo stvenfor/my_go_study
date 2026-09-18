@@ -19,6 +19,8 @@ import (
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/router"
+	grpcdelivery "github.com/stvenfor/my_go_study/internal/delivery/grpc"
+	grpcauth "github.com/stvenfor/my_go_study/internal/delivery/grpc/interceptor"
 	wshandler "github.com/stvenfor/my_go_study/internal/delivery/ws"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
 	redisrepo "github.com/stvenfor/my_go_study/internal/repository/redis"
@@ -174,6 +176,15 @@ func run() error {
 
 	userHandler := handler.NewUserHandler(userUC, sessionAuthUC, deviceSessionUC, phoneOTPUC)
 
+	var analyticsUC *usecase.AnalyticsUsecase
+	analyticsRepo := postgres.NewAnalyticsRepository(db)
+	analyticsUC = usecase.NewAnalyticsUsecase(analyticsRepo)
+	if err := analyticsUC.EnsureSeedData(context.Background()); err != nil {
+		log.Warn("analytics 种子数据写入失败", zap.Error(err))
+	} else {
+		log.Info("analytics 数据表已就绪（含种子数据）")
+	}
+
 	engine := router.Setup(router.Options{
 		Log:                   log,
 		Mode:                  cfg.Server.Mode,
@@ -200,6 +211,35 @@ func run() error {
 		}
 	}()
 
+	var grpcServer *grpcdelivery.Server
+	if cfg.GRPC.Enabled && analyticsUC != nil && deviceSessionUC != nil && businessEnabled {
+		var authenticator *grpcauth.Authenticator
+		if cfg.Auth.IsLocalProvider() {
+			authenticator = grpcauth.NewLocal(jwtMgr, deviceSessionUC)
+		} else if cfg.Supabase.Enabled() {
+			authenticator = grpcauth.NewSupabase(cfg.Supabase, deviceSessionUC)
+		}
+		if authenticator != nil {
+			gs, err := grpcdelivery.NewServer(grpcdelivery.Options{
+				Port:          cfg.GRPC.Port,
+				Log:           log,
+				Authenticator: authenticator,
+				AnalyticsUC:   analyticsUC,
+			})
+			if err != nil {
+				return fmt.Errorf("初始化 gRPC 失败: %w", err)
+			}
+			grpcServer = gs
+			go func() {
+				if err := grpcServer.Serve(); err != nil {
+					log.Fatal("gRPC 服务异常退出", zap.Error(err))
+				}
+			}()
+		} else {
+			log.Warn("gRPC 已启用但缺少鉴权后端，跳过启动")
+		}
+	}
+
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
@@ -207,6 +247,11 @@ func run() error {
 	log.Info("收到关机信号，开始优雅关闭...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if grpcServer != nil {
+		grpcServer.GracefulStop()
+		log.Info("gRPC 已关闭")
+	}
 
 	if queueClient != nil {
 		if err := queueClient.Close(); err != nil {
@@ -242,6 +287,7 @@ func autoMigrate(db *gorm.DB) error {
 		&entity.Profile{},
 		&entity.Transaction{},
 		&entity.TransactionRecord{},
+		&entity.AnalyticsRecord{},
 	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}

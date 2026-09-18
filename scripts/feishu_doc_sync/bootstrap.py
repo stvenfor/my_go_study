@@ -115,18 +115,19 @@ def ensure_file_node(
     project_root_token: str,
     manifest: Manifest,
     md_file: MarkdownFile,
+    strip_prefix: str = "",
 ) -> FileEntry:
     existing = manifest.get_file(md_file.relative_path)
     if existing and existing.node_token and existing.document_id:
         return existing
 
-    segments = directory_segments(md_file.relative_path)
+    segments = directory_segments(md_file.relative_path, strip_prefix=strip_prefix)
     if segments:
         parent_token = ensure_directory_node(space_id, project_root_token, manifest, segments)
     else:
         parent_token = project_root_token
 
-    title = node_title_for_path(md_file.relative_path)
+    title = node_title_for_path(md_file.relative_path, strip_prefix=strip_prefix)
     node = lark_cli.create_wiki_node(
         space_id,
         title,
@@ -164,7 +165,13 @@ def bootstrap_all(
     print(f"Project folder: {manifest.project_folder_name} ({project_root})")
 
     for md_file in markdown_files:
-        entry = ensure_file_node(space_id, project_root, manifest, md_file)
+        entry = ensure_file_node(
+            space_id,
+            project_root,
+            manifest,
+            md_file,
+            strip_prefix=config.strip_prefix,
+        )
         sync_markdown_to_document(entry.document_id, md_file)
         entry.content_hash = md_file.content_hash
         manifest.set_file(md_file.relative_path, entry)

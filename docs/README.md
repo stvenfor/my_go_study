@@ -16,6 +16,8 @@
 | 认证导读 | [auth-beginner-walkthrough.md](./auth-beginner-walkthrough.md) | ✅ |
 | Transactions | [transactions-beginner-walkthrough.md](./transactions-beginner-walkthrough.md) | ✅ |
 | Realtime | [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md) · [realtime-websocket.md](./realtime-websocket.md) | ✅ |
+| **Gin HTTP vs gRPC** | [grpc/gin-http-vs-grpc.md](./grpc/gin-http-vs-grpc.md) | ✅ 飞书 tool / grpc |
+| **数据分析 gRPC 联调** | [grpc/analytics-flutter-trial.md](./grpc/analytics-flutter-trial.md) | ✅ 列表/详情试验 |
 | 消息队列 | [message-queue.md](./message-queue.md) | ✅ |
 | 飞书同步 | [FEISHU_SYNC.md](./FEISHU_SYNC.md) | ✅ |
 | **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ `make lan-up`（现为本地 Auth） |

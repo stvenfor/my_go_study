@@ -3,7 +3,7 @@
 # （脚本会 source .env.lan / supabase.env / .env / .env.local，供 ${VAR} 替换）
 #
 # 端口策略：基础 compose 将 Postgres/Redis 绑到 127.0.0.1（仅本机调试）；
-# 本 overlay 不向局域网额外暴露 DB/Redis；API 仍为 8080:8080。
+# 本 overlay 不向局域网额外暴露 DB/Redis；API 暴露 8080（HTTP/WS）+ 9090（gRPC）。
 #
 # 默认 AUTH_PROVIDER=local。若要切回 Cloud Auth：在 .env.lan 设 AUTH_PROVIDER=supabase
 #（并保证 SUPABASE_* 已由 source-env / supabase.env 注入）。
@@ -14,6 +14,8 @@ services:
       APP_ENV: lan
       AUTH_PROVIDER: ${AUTH_PROVIDER:-local}
       SERVER_PORT: 8080
+      GRPC_ENABLED: ${GRPC_ENABLED:-true}
+      GRPC_PORT: ${GRPC_PORT:-9090}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: postgres
