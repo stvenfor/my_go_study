@@ -3,7 +3,7 @@ APP_NAME := my_go_study
 MAIN_PATH := ./cmd/api
 WORKER_PATH := ./cmd/worker
 BIN_DIR := ./bin
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
+.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
@@ -72,8 +72,13 @@ deps-up:
 docker-down:
 	./scripts/docker-compose.sh down
 
+# 按当前网卡同步 Go REALTIME_PUBLIC_WS_HOST 与 Flutter BACKEND_HOST / LanHost.fallback
+sync-lan-ip:
+	./scripts/sync-lan-ip.sh
+
 # 本机局域网后端（真机联调）：需 .env.lan，见 docs/dual-end-lan-startup.md
 # Compose（需 Docker Desktop）；改 Go 代码后需重新 make lan-up（会 --build）
+# lan-up / lan-run 会先 sync-lan-ip，IP 切换后环境跟着变
 lan-up:
 	@command -v docker >/dev/null 2>&1 || { \
 		echo "错误: 未安装 Docker Desktop。"; \

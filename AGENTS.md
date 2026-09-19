@@ -57,6 +57,7 @@ Supabase Cloud 或 local Auth + 本地 Postgres
 ```bash
 # 方案 A（推荐联调）：Docker 统一管理 HTTP:8080 + gRPC:9090 + PG + Redis + Worker
 # cp .env.lan.example .env.lan 后：
+# 不用手改 IP：启动时按 scripts/lan-ip.clients 自动写 Go 与全部客户端（Flutter / KMP / RN / Kuikly / uni-app）
 make lan-up                 # docs/lan-backend-host.md；改 Go 后需再执行（会 --build）
 make lan-down
 # 勿与本机 make run 同时开，会抢 :8080

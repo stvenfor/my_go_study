@@ -11,9 +11,15 @@ cd "$ROOT"
 source "$ROOT/scripts/source-env.sh"
 
 if [[ ! -f "$ROOT/.env.lan" ]]; then
-  echo "错误: 缺少 .env.lan。请先: cp .env.lan.example .env.lan 并填写 REALTIME_PUBLIC_WS_HOST"
+  echo "错误: 缺少 .env.lan。请先: cp .env.lan.example .env.lan"
   exit 1
 fi
+
+# up/build 前按当前网卡刷新 IP；down/logs 不改环境。
+case "${1:-}" in
+  down|stop|logs|ps|exec|top) ;;
+  *) SYNC_LAN_IP_SKIP_DOCKER=1 "$ROOT/scripts/sync-lan-ip.sh" ;;
+esac
 
 set -a
 # shellcheck disable=SC1091

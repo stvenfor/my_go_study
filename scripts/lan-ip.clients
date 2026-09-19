@@ -1,0 +1,13 @@
+# 局域网 IP 同步清单。路径相对 my_go_study 根目录。
+# kind: env（KEY=值）或 quote（前缀含开引号，脚本替换引号内的 IP）
+# 新增客户端：加一行即可，不必改脚本。
+env	../../my_ai_project	.env.lan	BACKEND_HOST
+quote	../../my_ai_project	commons/network/lib/http/lan_host.dart	static const fallback = '
+env	../../my_kmp_project	.env.lan	BACKEND_HOST
+quote	../../my_kmp_project	core/network/src/commonMain/kotlin/com.example.my_kmp_project/core/network/LanHost.kt	const val fallback: String = "
+env	../../my_rn_project	.env.lan	BACKEND_HOST
+quote	../../my_rn_project	packages/core/config/src/lanHost.ts	export const fallback = '
+env	../../kmp_kuikly	.env.lan	BACKEND_HOST
+quote	../../kmp_kuikly	feature-home/src/commonMain/kotlin/com/example/kuikly/feature/home/pages/LanHost.kt	const val fallback: String = "
+env	../../uni_ai_project	.env.lan	BACKEND_HOST
+quote	../../uni_ai_project	src/lan-host.ts	export const fallback = '

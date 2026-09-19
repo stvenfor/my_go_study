@@ -9,9 +9,11 @@ cd "$ROOT"
 TARGET="${1:-api}"
 
 if [[ ! -f "$ROOT/.env.lan" ]]; then
-  echo "错误: 缺少 .env.lan。请先: cp .env.lan.example .env.lan 并填写 REALTIME_PUBLIC_WS_HOST"
+  echo "错误: 缺少 .env.lan。请先: cp .env.lan.example .env.lan"
   exit 1
 fi
+
+"$ROOT/scripts/sync-lan-ip.sh"
 
 # shellcheck disable=SC1091
 source "$ROOT/scripts/source-env.sh"
