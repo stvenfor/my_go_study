@@ -76,3 +76,19 @@ scheduler:
     action:
       type: deeplink
       route: /home
+
+# AI 小石头 SSE 生成流（与 Realtime WS 分离，见 docs/sse-streaming.md）
+sse:
+  enabled: true
+  provider: mock          # mock | openai_compatible
+  max_prompt_bytes: 8192
+  max_tokens: 2048
+  keepalive_seconds: 15
+  request_timeout_seconds: 120
+  rate_limit_per_user_per_minute: 20
+  conversation_ttl_seconds: 1800   # 停留会话滑动 TTL（30 分钟）
+  max_turns: 10
+  openai:
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-4o-mini"
+    # api_key 仅环境变量 SSE_OPENAI_API_KEY；勿写入仓库

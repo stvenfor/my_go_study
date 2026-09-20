@@ -16,6 +16,7 @@
 | 认证导读 | [auth-beginner-walkthrough.md](./auth-beginner-walkthrough.md) | ✅ |
 | Transactions | [transactions-beginner-walkthrough.md](./transactions-beginner-walkthrough.md) | ✅ |
 | Realtime | [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md) · [realtime-websocket.md](./realtime-websocket.md) | ✅ |
+| **SSE 流式 / AI 小石头** | [sse-streaming.md](./sse-streaming.md) · Flutter [sse-streaming-design.md](../../my_ai_project/docs/sse-streaming-design.md) · SPEC `.scratch/ai-little-stone/SPEC.md` · ADR 0005 | ✅ Accepted |
 | **Gin HTTP vs gRPC** | [grpc/gin-http-vs-grpc.md](./grpc/gin-http-vs-grpc.md) | ✅ 飞书 tool / grpc |
 | **数据分析 gRPC 联调** | [grpc/analytics-flutter-trial.md](./grpc/analytics-flutter-trial.md) | ✅ 列表/详情试验 |
 | **Docker 联调运维（A/B/C）** | [docker/lan-ops-abc-beginner.md](./docker/lan-ops-abc-beginner.md) | ✅ Flutter 对齐 · 改码生效 · 排障；飞书 tool / Docker 相关文档纪要 |

@@ -13,26 +13,29 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	grpcdelivery "github.com/stvenfor/my_go_study/internal/delivery/grpc"
+	grpcauth "github.com/stvenfor/my_go_study/internal/delivery/grpc/interceptor"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/router"
-	grpcdelivery "github.com/stvenfor/my_go_study/internal/delivery/grpc"
-	grpcauth "github.com/stvenfor/my_go_study/internal/delivery/grpc/interceptor"
 	wshandler "github.com/stvenfor/my_go_study/internal/delivery/ws"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
+	"github.com/stvenfor/my_go_study/internal/domain/provider"
+	llmrepo "github.com/stvenfor/my_go_study/internal/repository/llm"
+	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	redisrepo "github.com/stvenfor/my_go_study/internal/repository/redis"
 	sbrepo "github.com/stvenfor/my_go_study/internal/repository/supabase"
-	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	"github.com/stvenfor/my_go_study/internal/usecase"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	"github.com/stvenfor/my_go_study/pkg/database"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 	"github.com/stvenfor/my_go_study/pkg/logger"
-	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
 	"github.com/stvenfor/my_go_study/pkg/queue"
+	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -101,6 +104,7 @@ func run() error {
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
+	var sseController *controller.SseController
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
@@ -172,6 +176,19 @@ func run() error {
 			zap.String("ws_path", cfg.Realtime.WsPath),
 			zap.String("ws_url", cfg.Realtime.WSURL(cfg.Server.Port)),
 		)
+
+		if cfg.SSE.Enabled {
+			streamProvider := buildSSEProvider(cfg.SSE, log)
+			convRepo := redisrepo.NewConversationRepository(redisClient)
+			limiter := usecase.NewMemoryRateLimiter(cfg.SSE.RateLimitPerUserPerMinute)
+			completionUC := usecase.NewCompletionUsecase(streamProvider, convRepo, limiter, cfg.SSE)
+			sseController = controller.NewSseController(completionUC, cfg.SSE)
+			log.Info("SSE completions 已启用",
+				zap.String("provider", cfg.SSE.ProviderName()),
+				zap.Int("conversation_ttl_seconds", cfg.SSE.ConversationTTLSeconds),
+				zap.Int("max_turns", cfg.SSE.MaxTurnsOrDefault()),
+			)
+		}
 	}
 
 	userHandler := handler.NewUserHandler(userUC, sessionAuthUC, deviceSessionUC, phoneOTPUC)
@@ -193,6 +210,7 @@ func run() error {
 		ProfileController:     profileController,
 		TransactionController: transactionController,
 		RealtimeController:    realtimeController,
+		SseController:         sseController,
 		WSHandler:             wsGateway,
 		Config:                *cfg,
 		Supabase:              cfg.Supabase,
@@ -264,6 +282,27 @@ func run() error {
 	}
 	log.Info("服务已关闭")
 	return nil
+}
+
+// buildSSEProvider 按配置装配 StreamProvider；openai_compatible 无 key 时回退 mock 并打日志。
+func buildSSEProvider(sseCfg config.SSEConfig, log *zap.Logger) provider.StreamProvider {
+	switch sseCfg.ProviderName() {
+	case config.SSEProviderOpenAICompatible:
+		p := llmrepo.NewOpenAICompatibleProvider(llmrepo.OpenAICompatibleConfig{
+			BaseURL: sseCfg.OpenAI.BaseURL,
+			APIKey:  sseCfg.OpenAI.APIKey,
+			Model:   sseCfg.OpenAI.Model,
+			Timeout: sseCfg.RequestTimeout(),
+		})
+		if strings.TrimSpace(sseCfg.OpenAI.APIKey) == "" {
+			log.Warn("sse.provider=openai_compatible 但未配置 SSE_OPENAI_API_KEY，回退 mock")
+			return llmrepo.NewMockStreamProvider()
+		}
+		log.Info("SSE Provider=openai_compatible", zap.String("model", sseCfg.OpenAI.Model))
+		return p
+	default:
+		return llmrepo.NewMockStreamProvider()
+	}
 }
 
 // autoMigrate 自动迁移数据库表结构。

@@ -24,6 +24,7 @@ type Config struct {
 	Realtime  RealtimeConfig  `mapstructure:"realtime"`
 	Queue     QueueConfig     `mapstructure:"queue"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
+	SSE       SSEConfig       `mapstructure:"sse"`
 }
 
 // ServerConfig HTTP 服务配置。
@@ -260,13 +261,13 @@ type SchedulerConfig struct {
 
 // HourlyNotifyConfig 每天 10:00–19:00 每小时系统通知。
 type HourlyNotifyConfig struct {
-	Enabled         bool                      `mapstructure:"enabled"`
-	Cron            string                    `mapstructure:"cron"`
-	TitleTemplate   string                    `mapstructure:"title_template"`
-	BodyTemplate    string                    `mapstructure:"body_template"`
-	DefaultMessage  string                    `mapstructure:"default_message"`
-	ExpiresMinutes  int                       `mapstructure:"expires_minutes"`
-	Action          HourlyNotifyActionConfig  `mapstructure:"action"`
+	Enabled        bool                     `mapstructure:"enabled"`
+	Cron           string                   `mapstructure:"cron"`
+	TitleTemplate  string                   `mapstructure:"title_template"`
+	BodyTemplate   string                   `mapstructure:"body_template"`
+	DefaultMessage string                   `mapstructure:"default_message"`
+	ExpiresMinutes int                      `mapstructure:"expires_minutes"`
+	Action         HourlyNotifyActionConfig `mapstructure:"action"`
 }
 
 // HourlyNotifyActionConfig 通知点击行为配置。
@@ -308,12 +309,12 @@ func (h HourlyNotifyConfig) CronSpec() string {
 
 // RealtimeConfig WebSocket Realtime 网关配置。
 type RealtimeConfig struct {
-	WsPath                 string `mapstructure:"ws_path"`
-	TicketTTLSeconds       int    `mapstructure:"ticket_ttl_seconds"`
-	HeartbeatIntervalSec   int    `mapstructure:"heartbeat_interval_seconds"`
-	MaxConnectionsPerUser  int    `mapstructure:"max_connections_per_user"`
-	EventRetention         int    `mapstructure:"event_retention"`
-	PublicWSHost           string `mapstructure:"public_ws_host"`
+	WsPath                string `mapstructure:"ws_path"`
+	TicketTTLSeconds      int    `mapstructure:"ticket_ttl_seconds"`
+	HeartbeatIntervalSec  int    `mapstructure:"heartbeat_interval_seconds"`
+	MaxConnectionsPerUser int    `mapstructure:"max_connections_per_user"`
+	EventRetention        int    `mapstructure:"event_retention"`
+	PublicWSHost          string `mapstructure:"public_ws_host"`
 }
 
 // TicketTTL 返回 ticket 有效期。
@@ -335,6 +336,91 @@ func (r RealtimeConfig) WSURL(httpPort int) string {
 		host = "127.0.0.1"
 	}
 	return fmt.Sprintf("ws://%s:%d%s", host, httpPort, path)
+}
+
+// SSEProviderMock / SSEProviderOpenAICompatible Provider 开关。
+const (
+	SSEProviderMock             = "mock"
+	SSEProviderOpenAICompatible = "openai_compatible"
+)
+
+// SSEConfig AI 小石头 HTTP SSE 生成流配置。
+type SSEConfig struct {
+	Enabled                   bool            `mapstructure:"enabled"`
+	Provider                  string          `mapstructure:"provider"` // mock | openai_compatible
+	MaxPromptBytes            int             `mapstructure:"max_prompt_bytes"`
+	MaxTokens                 int             `mapstructure:"max_tokens"`
+	KeepaliveSeconds          int             `mapstructure:"keepalive_seconds"`
+	RequestTimeoutSeconds     int             `mapstructure:"request_timeout_seconds"`
+	RateLimitPerUserPerMinute int             `mapstructure:"rate_limit_per_user_per_minute"`
+	ConversationTTLSeconds    int             `mapstructure:"conversation_ttl_seconds"`
+	MaxTurns                  int             `mapstructure:"max_turns"`
+	OpenAI                    SSEOpenAIConfig `mapstructure:"openai"`
+}
+
+// SSEOpenAIConfig OpenAI 兼容上游（密钥优先环境变量）。
+type SSEOpenAIConfig struct {
+	BaseURL string `mapstructure:"base_url"`
+	Model   string `mapstructure:"model"`
+	APIKey  string `mapstructure:"api_key"` // 建议仅 env：SSE_OPENAI_API_KEY
+}
+
+// ProviderName 归一化 Provider。
+func (s SSEConfig) ProviderName() string {
+	switch strings.ToLower(strings.TrimSpace(s.Provider)) {
+	case SSEProviderOpenAICompatible:
+		return SSEProviderOpenAICompatible
+	default:
+		return SSEProviderMock
+	}
+}
+
+// ConversationTTL 停留会话滑动 TTL。
+func (s SSEConfig) ConversationTTL() time.Duration {
+	if s.ConversationTTLSeconds <= 0 {
+		return 30 * time.Minute
+	}
+	return time.Duration(s.ConversationTTLSeconds) * time.Second
+}
+
+// MaxTurnsOrDefault 上下文最大轮数。
+func (s SSEConfig) MaxTurnsOrDefault() int {
+	if s.MaxTurns <= 0 {
+		return 10
+	}
+	return s.MaxTurns
+}
+
+// MaxPromptBytesOrDefault prompt 字节上限。
+func (s SSEConfig) MaxPromptBytesOrDefault() int {
+	if s.MaxPromptBytes <= 0 {
+		return 8192
+	}
+	return s.MaxPromptBytes
+}
+
+// MaxTokensOrDefault 生成 token 上限。
+func (s SSEConfig) MaxTokensOrDefault() int {
+	if s.MaxTokens <= 0 {
+		return 2048
+	}
+	return s.MaxTokens
+}
+
+// KeepaliveOrDefault keepalive 注释帧间隔。
+func (s SSEConfig) KeepaliveOrDefault() time.Duration {
+	if s.KeepaliveSeconds <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(s.KeepaliveSeconds) * time.Second
+}
+
+// RequestTimeout 单次生成超时。
+func (s SSEConfig) RequestTimeout() time.Duration {
+	if s.RequestTimeoutSeconds <= 0 {
+		return 120 * time.Second
+	}
+	return time.Duration(s.RequestTimeoutSeconds) * time.Second
 }
 
 // Load 读取配置文件并解析为 Config。
@@ -388,6 +474,18 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
 	_ = v.BindEnv("scheduler.hourly_notify.enabled", "SCHEDULER_HOURLY_NOTIFY_ENABLED")
 	_ = v.BindEnv("realtime.public_ws_host", "REALTIME_PUBLIC_WS_HOST")
+	_ = v.BindEnv("sse.enabled", "SSE_ENABLED")
+	_ = v.BindEnv("sse.provider", "SSE_PROVIDER")
+	_ = v.BindEnv("sse.max_prompt_bytes", "SSE_MAX_PROMPT_BYTES")
+	_ = v.BindEnv("sse.max_tokens", "SSE_MAX_TOKENS")
+	_ = v.BindEnv("sse.keepalive_seconds", "SSE_KEEPALIVE_SECONDS")
+	_ = v.BindEnv("sse.request_timeout_seconds", "SSE_REQUEST_TIMEOUT_SECONDS")
+	_ = v.BindEnv("sse.rate_limit_per_user_per_minute", "SSE_RATE_LIMIT_PER_USER_PER_MINUTE")
+	_ = v.BindEnv("sse.conversation_ttl_seconds", "SSE_CONVERSATION_TTL_SECONDS")
+	_ = v.BindEnv("sse.max_turns", "SSE_MAX_TURNS")
+	_ = v.BindEnv("sse.openai.base_url", "SSE_OPENAI_BASE_URL")
+	_ = v.BindEnv("sse.openai.model", "SSE_OPENAI_MODEL")
+	_ = v.BindEnv("sse.openai.api_key", "SSE_OPENAI_API_KEY")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -457,9 +555,50 @@ func Load(configPath, env string) (*Config, error) {
 	if cfg.Scheduler.HourlyNotify.Action.Route == "" {
 		cfg.Scheduler.HourlyNotify.Action.Route = "/home"
 	}
+	applySSEDefaults(&cfg)
 	applyAuthWhitelistEnv(&cfg.Auth)
 
 	return &cfg, nil
+}
+
+func applySSEDefaults(cfg *Config) {
+	// 未配置时默认启用 mock（与 Spec 一期一致）
+	if !cfg.SSE.Enabled && cfg.SSE.Provider == "" && cfg.SSE.MaxPromptBytes == 0 {
+		cfg.SSE.Enabled = true
+	}
+	if strings.TrimSpace(cfg.SSE.Provider) == "" {
+		cfg.SSE.Provider = SSEProviderMock
+	}
+	if cfg.SSE.MaxPromptBytes <= 0 {
+		cfg.SSE.MaxPromptBytes = 8192
+	}
+	if cfg.SSE.MaxTokens <= 0 {
+		cfg.SSE.MaxTokens = 2048
+	}
+	if cfg.SSE.KeepaliveSeconds <= 0 {
+		cfg.SSE.KeepaliveSeconds = 15
+	}
+	if cfg.SSE.RequestTimeoutSeconds <= 0 {
+		cfg.SSE.RequestTimeoutSeconds = 120
+	}
+	if cfg.SSE.RateLimitPerUserPerMinute <= 0 {
+		cfg.SSE.RateLimitPerUserPerMinute = 20
+	}
+	if cfg.SSE.ConversationTTLSeconds <= 0 {
+		cfg.SSE.ConversationTTLSeconds = 1800
+	}
+	if cfg.SSE.MaxTurns <= 0 {
+		cfg.SSE.MaxTurns = 10
+	}
+	if strings.TrimSpace(cfg.SSE.OpenAI.BaseURL) == "" {
+		cfg.SSE.OpenAI.BaseURL = "https://api.openai.com/v1"
+	}
+	if strings.TrimSpace(cfg.SSE.OpenAI.Model) == "" {
+		cfg.SSE.OpenAI.Model = "gpt-4o-mini"
+	}
+	if key := strings.TrimSpace(os.Getenv("SSE_OPENAI_API_KEY")); key != "" {
+		cfg.SSE.OpenAI.APIKey = key
+	}
 }
 
 // ResolveConfigDir 定位 configs 目录（支持从子目录或 IDE 非根目录启动）。

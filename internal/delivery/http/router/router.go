@@ -21,6 +21,7 @@ type Options struct {
 	ProfileController     *controller.ProfileController
 	TransactionController *controller.TransactionController
 	RealtimeController    *controller.RealtimeController
+	SseController         *controller.SseController
 	WSHandler             *wshandler.Handler
 	Config                config.Config
 	Supabase              config.SupabaseConfig
@@ -63,6 +64,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {
 		registerRealtimeRoutes(v1, sessionAuth, opts.RealtimeController)
+	}
+
+	if businessAuth && opts.SseController != nil && sessionAuth != nil && opts.Config.SSE.Enabled {
+		registerSseRoutes(v1, sessionAuth, opts.SseController)
 	}
 
 	if opts.WSHandler != nil {
