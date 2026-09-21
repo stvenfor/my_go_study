@@ -58,7 +58,17 @@ BEGIN
   END IF;
 END $$;
 
-UPDATE users SET user_id = id::text WHERE user_id IS NULL OR btrim(user_id) = '';
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = CURRENT_SCHEMA()
+      AND table_name = 'users'
+      AND column_name = 'id'
+  ) THEN
+    UPDATE users SET user_id = id::text WHERE user_id IS NULL OR btrim(user_id) = '';
+  END IF;
+END $$;
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS current_store_id integer;
 
@@ -69,6 +79,11 @@ BEGIN
     WHERE table_schema = CURRENT_SCHEMA()
       AND table_name = 'profiles'
       AND column_name = 'current_store_id'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = CURRENT_SCHEMA()
+      AND table_name = 'users'
+      AND column_name = 'id'
   ) THEN
     UPDATE users u
     SET current_store_id = p.current_store_id
@@ -123,6 +138,12 @@ BEGIN
        WHERE table_schema = CURRENT_SCHEMA()
          AND table_name = 'auth_refresh_tokens'
          AND column_name = 'account_id'
+     )
+     AND EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = CURRENT_SCHEMA()
+         AND table_name = 'users'
+         AND column_name = 'id'
      ) THEN
     ALTER TABLE auth_refresh_tokens DROP CONSTRAINT IF EXISTS auth_refresh_tokens_account_id_fkey;
     ALTER TABLE auth_refresh_tokens

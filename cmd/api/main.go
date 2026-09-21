@@ -102,6 +102,8 @@ func run() error {
 	var phoneOTPUC usecase.PhoneOTPAuth
 	var profileController *controller.ProfileController
 	var accessController *controller.AccessController
+	var mallController *controller.MallController
+	var addressController *controller.AddressController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
@@ -124,6 +126,17 @@ func run() error {
 		accessRepo := postgres.NewAccessRepository(db)
 		accessUC := usecase.NewAccessUsecase(accessRepo)
 		accessController = controller.NewAccessController(accessUC)
+		mallRepo := postgres.NewMallRepository(db)
+		mallUC := usecase.NewMallUsecase(mallRepo, accessUC)
+		mallController = controller.NewMallController(mallUC)
+		addressRepo := postgres.NewAddressRepository(db)
+		addressUC := usecase.NewAddressUsecase(addressRepo)
+		addressController = controller.NewAddressController(addressUC)
+		if err := postgres.EnsureMallSeed(db); err != nil {
+			log.Warn("商城种子商品写入失败", zap.Error(err))
+		} else {
+			log.Info("商城种子商品已就绪（门店1 ≥35 条）")
+		}
 		transactionRepo := postgres.NewTransactionRepository(db)
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
@@ -217,6 +230,8 @@ func run() error {
 		UserHandler:           userHandler,
 		ProfileController:     profileController,
 		AccessController:      accessController,
+		MallController:        mallController,
+		AddressController:     addressController,
 		TransactionController: transactionController,
 		RealtimeController:    realtimeController,
 		SseController:         sseController,

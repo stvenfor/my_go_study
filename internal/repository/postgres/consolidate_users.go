@@ -16,6 +16,12 @@ var redesignUsersSQL string
 //go:embed sql/access_control.sql
 var accessControlSQL string
 
+//go:embed sql/mall_schema.sql
+var mallSchemaSQL string
+
+//go:embed sql/user_address_schema.sql
+var userAddressSchemaSQL string
+
 // ConsolidateLocalUsers 把遗留用户表收成 user_id 主键的 users，并补上账号状态列。可重复执行。
 func ConsolidateLocalUsers(db *gorm.DB) error {
 	if err := db.Exec(consolidateUsersSQL).Error; err != nil {
@@ -26,6 +32,12 @@ func ConsolidateLocalUsers(db *gorm.DB) error {
 	}
 	if err := db.Exec(accessControlSQL).Error; err != nil {
 		return fmt.Errorf("建立门店与权限表失败: %w", err)
+	}
+	if err := db.Exec(mallSchemaSQL).Error; err != nil {
+		return fmt.Errorf("建立商城表失败: %w", err)
+	}
+	if err := db.Exec(userAddressSchemaSQL).Error; err != nil {
+		return fmt.Errorf("建立用户地址表失败: %w", err)
 	}
 	return nil
 }

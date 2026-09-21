@@ -16,9 +16,9 @@ const (
 	PermRoleAssignStore    = "role.assign_store"
 	PermRoleAssignPlatform = "role.assign_platform"
 	PermProfileRead        = "profile.read"
-	PermTxnReadOwn         = "transaction.read_own"
-	PermTxnWriteOwn        = "transaction.write_own"
-	PermTxnReadStore       = "transaction.read_store"
+	PermTxnReadOwn   = "transaction.read_own"
+	PermTxnWriteOwn  = "transaction.write_own"
+	PermTxnReadStore = "transaction.read_store"
 )
 
 const (
@@ -82,7 +82,7 @@ func (UserRole) TableName() string { return UserRoleTable }
 // PermissionNeedsStore 该能力是否必须带目标门店。
 func PermissionNeedsStore(code string) bool {
 	switch code {
-	case PermMemberWrite, PermRoleAssignStore:
+	case PermMemberWrite, PermRoleAssignStore, PermMallCatalogWrite:
 		return true
 	default:
 		return false

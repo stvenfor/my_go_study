@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""在提交说明定稿前去掉 Cursor 共同作者行。"""
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+
+banned = "Co-authored-by: Cursor <cursoragent@cursor.com>"
+lines = [ln for ln in text.splitlines() if ln.strip() != banned]
+while lines and not lines[-1].strip():
+    lines.pop()
+
+with open(path, "w", encoding="utf-8") as f:
+    f.write(("\n".join(lines) + "\n") if lines else "")

@@ -249,6 +249,11 @@ func (u *AccessUsecase) ListEffectivePermissions(ctx context.Context, userID str
 	return out, nil
 }
 
+// RequirePermission 对外暴露权限校验（商城写目录等）。
+func (u *AccessUsecase) RequirePermission(ctx context.Context, actorID, permission string, targetStoreID *int) error {
+	return u.require(ctx, actorID, permission, targetStoreID)
+}
+
 func (u *AccessUsecase) require(ctx context.Context, actorID, permission string, targetStoreID *int) error {
 	ok, err := u.can(ctx, actorID, permission, targetStoreID)
 	if err != nil {

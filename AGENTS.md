@@ -2,6 +2,10 @@
 
 Go BFF 后端 Agent 指南，并包含与 Flutter **`my_ai_project`** 协作的工作区总览。
 
+### Ponytail
+
+写代码默认走 **Ponytail**（最短可用解）：规则见 [`.cursor/rules/ponytail.mdc`](./.cursor/rules/ponytail.mdc)（`alwaysApply`）。与 Cursor hooks 二选一；本仓库用 rule，不开项目级 hooks（要 `/ponytail lite|full|ultra|off` 再装 hooks 并删掉该 rule）。
+
 ### Agent 编排（`.harness`）
 
 多角色 / 多会话任务默认走编排层，**不要**跳过 Brief 与验证直接自称完成：

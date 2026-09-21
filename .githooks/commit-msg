@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""提交说明：去掉 Cursor 共同作者行，并要求首行含中文。"""
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    text = f.read()
+
+banned = "Co-authored-by: Cursor <cursoragent@cursor.com>"
+lines = [ln for ln in text.splitlines() if ln.strip() != banned]
+while lines and not lines[-1].strip():
+    lines.pop()
+
+new = ("\n".join(lines) + "\n") if lines else ""
+with open(path, "w", encoding="utf-8") as f:
+    f.write(new)
+
+subject = lines[0] if lines else ""
+if not re.search(r"[\u4e00-\u9fff]", subject):
+    sys.stderr.write("提交说明首行必须包含中文。\n")
+    sys.exit(1)

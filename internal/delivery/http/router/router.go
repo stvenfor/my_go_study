@@ -20,6 +20,8 @@ type Options struct {
 	UserHandler           *handler.UserHandler
 	ProfileController     *controller.ProfileController
 	AccessController      *controller.AccessController
+	MallController        *controller.MallController
+	AddressController     *controller.AddressController
 	TransactionController *controller.TransactionController
 	RealtimeController    *controller.RealtimeController
 	SseController         *controller.SseController
@@ -54,7 +56,7 @@ func Setup(opts Options) *gin.Engine {
 		}
 	}
 
-	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sessionAuth, opts.AccountGate)
+	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sessionAuth, opts.AccountGate, opts.AddressController)
 
 	if businessAuth && opts.TransactionController != nil && sessionAuth != nil {
 		registerTransactionRoutes(v1, sessionAuth, opts.TransactionController, opts.AccountGate)
@@ -66,6 +68,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if businessAuth && opts.AccessController != nil && sessionAuth != nil {
 		registerAccessRoutes(v1, sessionAuth, opts.AccessController, opts.AccountGate)
+	}
+
+	if opts.Config.Auth.IsLocalProvider() && opts.MallController != nil && sessionAuth != nil {
+		registerMallRoutes(v1, sessionAuth, opts.MallController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {

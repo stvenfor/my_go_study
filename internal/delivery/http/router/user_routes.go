@@ -3,13 +3,14 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/middleware"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 )
 
 // registerUserRoutes 注册 /api/v1/user 路由（自建 JWT 用户体系 + Supabase 认证）。
-func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, userHandler *handler.UserHandler, sbAuth gin.HandlerFunc, accountGate gin.HandlerFunc) {
+func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, userHandler *handler.UserHandler, sbAuth gin.HandlerFunc, accountGate gin.HandlerFunc, addressCtrl *controller.AddressController) {
 	userGroup := v1.Group("/user")
 	{
 		userGroup.POST("/register", userHandler.Register)
@@ -24,6 +25,15 @@ func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, use
 			}
 			userGroup.POST("/logout", append(chain, userHandler.Logout)...)
 			userGroup.POST("/deactivate", append(chain, userHandler.Deactivate)...)
+			if addressCtrl != nil {
+				addrs := userGroup.Group("/addresses", chain...)
+				addrs.GET("", addressCtrl.List)
+				addrs.POST("", addressCtrl.Create)
+				addrs.GET("/:address_id", addressCtrl.Get)
+				addrs.PATCH("/:address_id", addressCtrl.Update)
+				addrs.POST("/:address_id/default", addressCtrl.SetDefault)
+				addrs.DELETE("/:address_id", addressCtrl.Delete)
+			}
 		}
 	}
 }

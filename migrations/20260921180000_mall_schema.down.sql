@@ -1,0 +1,13 @@
+DROP TABLE IF EXISTS wys_mall_audit_log;
+DROP TABLE IF EXISTS wys_mall_refund;
+DROP TABLE IF EXISTS wys_mall_payment;
+DROP TABLE IF EXISTS wys_mall_order_log;
+DROP TABLE IF EXISTS wys_mall_order_item;
+DROP TABLE IF EXISTS wys_mall_order;
+DROP TABLE IF EXISTS wys_mall_cart_item;
+DROP TABLE IF EXISTS wys_mall_virtual_code;
+DROP TABLE IF EXISTS wys_mall_sku;
+DROP TABLE IF EXISTS wys_mall_product;
+DROP TABLE IF EXISTS wys_mall_category;
+DELETE FROM role_permission WHERE permission_code = 'mall.catalog.write';
+DELETE FROM permission WHERE code = 'mall.catalog.write';
