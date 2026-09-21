@@ -19,6 +19,7 @@ type Options struct {
 	JWTManager            *jwtmanager.Manager
 	UserHandler           *handler.UserHandler
 	ProfileController     *controller.ProfileController
+	AccessController      *controller.AccessController
 	TransactionController *controller.TransactionController
 	RealtimeController    *controller.RealtimeController
 	SseController         *controller.SseController
@@ -26,6 +27,7 @@ type Options struct {
 	Config                config.Config
 	Supabase              config.SupabaseConfig
 	DeviceSessionUC       *usecase.DeviceSessionUsecase
+	AccountGate           gin.HandlerFunc
 }
 
 // Setup 构建 Gin 路由引擎。
@@ -52,22 +54,26 @@ func Setup(opts Options) *gin.Engine {
 		}
 	}
 
-	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sessionAuth)
+	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sessionAuth, opts.AccountGate)
 
 	if businessAuth && opts.TransactionController != nil && sessionAuth != nil {
-		registerTransactionRoutes(v1, sessionAuth, opts.TransactionController)
+		registerTransactionRoutes(v1, sessionAuth, opts.TransactionController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.ProfileController != nil && sessionAuth != nil {
-		registerProfileRoutes(v1, sessionAuth, opts.ProfileController)
+		registerProfileRoutes(v1, sessionAuth, opts.ProfileController, opts.AccountGate)
+	}
+
+	if businessAuth && opts.AccessController != nil && sessionAuth != nil {
+		registerAccessRoutes(v1, sessionAuth, opts.AccessController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {
-		registerRealtimeRoutes(v1, sessionAuth, opts.RealtimeController)
+		registerRealtimeRoutes(v1, sessionAuth, opts.RealtimeController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.SseController != nil && sessionAuth != nil && opts.Config.SSE.Enabled {
-		registerSseRoutes(v1, sessionAuth, opts.SseController)
+		registerSseRoutes(v1, sessionAuth, opts.SseController, opts.AccountGate)
 	}
 
 	if opts.WSHandler != nil {

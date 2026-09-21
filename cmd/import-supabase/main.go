@@ -2,8 +2,9 @@
 // import-supabase — 从 Supabase Cloud 导入用户 / profiles / transactions 到本地 Postgres
 //
 // 用法（在仓库根目录）：
-//   ./scripts/load-env.sh go run ./cmd/import-supabase --default-password='ChangeMe123!'
-//   make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
+//
+//	./scripts/load-env.sh go run ./cmd/import-supabase --default-password='ChangeMe123!'
+//	make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
 //
 // 说明：
 // - Cloud 密码哈希无法经 Admin API 导出；导入用户使用 --default-password（bcrypt）
@@ -20,12 +21,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/supabase-community/gotrue-go/types"
-	postgrest "github.com/supabase-community/postgrest-go"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
+	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	"github.com/stvenfor/my_go_study/pkg/database"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
+	"github.com/supabase-community/gotrue-go/types"
+	postgrest "github.com/supabase-community/postgrest-go"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -34,7 +36,7 @@ import (
 func main() {
 	defaultPassword := flag.String("default-password", "", "导入用户的临时登录密码（必填，Cloud 密码无法导出）")
 	dryRun := flag.Bool("dry-run", false, "只拉取并统计，不写本地库")
-	skipUsers := flag.Bool("skip-users", false, "跳过 auth_users")
+	skipUsers := flag.Bool("skip-users", false, "跳过 users")
 	skipProfiles := flag.Bool("skip-profiles", false, "跳过 profiles")
 	skipTransactions := flag.Bool("skip-transactions", false, "跳过 transactions")
 	flag.Parse()
@@ -98,7 +100,7 @@ func main() {
 			if err != nil {
 				fatalf("导入用户: %v", err)
 			}
-			fmt.Printf("  写入/更新 auth_users: %d\n", n)
+			fmt.Printf("  写入/更新 users: %d\n", n)
 		}
 	}
 
@@ -113,7 +115,7 @@ func main() {
 			if err != nil {
 				fatalf("导入 profiles: %v", err)
 			}
-			fmt.Printf("  写入/更新 profiles: %d\n", n)
+			fmt.Printf("  写入/更新 users 资料: %d\n", n)
 		}
 	}
 
@@ -155,16 +157,17 @@ func importUsers(db *gorm.DB, users []types.User, defaultPassword string) (int, 
 		}
 		display := displayNameFromUser(u)
 		phone := strings.TrimSpace(u.Phone)
-		row := entity.AuthUser{
-			ID:           id,
+		row := entity.User{
+			UserID:       id,
+			UserName:     display,
 			Email:        email,
 			Phone:        phone,
 			PasswordHash: hashStr,
-			DisplayName:  display,
+			Status:       entity.UserStatusActive,
 		}
 		if err := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"email", "phone", "password_hash", "display_name", "updated_at"}),
+			Columns:   []clause.Column{{Name: "user_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"user_name", "email", "phone", "password_hash", "updated_at"}),
 		}).Create(&row).Error; err != nil {
 			return n, fmt.Errorf("user %s: %w", id, err)
 		}
@@ -218,15 +221,26 @@ func importProfiles(db *gorm.DB, profiles []entity.Profile) (int, error) {
 		if id == "" {
 			continue
 		}
-		row := p
-		row.ID = id
-		if err := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"display_name", "avatar_url", "phone", "updated_at"}),
-		}).Create(&row).Error; err != nil {
-			return n, fmt.Errorf("profile %s: %w", id, err)
+		updates := map[string]any{"updated_at": time.Now().UTC()}
+		if p.DisplayName != nil {
+			updates["user_name"] = *p.DisplayName
 		}
-		n++
+		if p.AvatarURL != nil {
+			updates["avatar_url"] = *p.AvatarURL
+		}
+		if p.Phone != nil {
+			updates["phone"] = *p.Phone
+		}
+		if p.CurrentStoreID != nil {
+			updates["current_store_id"] = *p.CurrentStoreID
+		}
+		res := db.Model(&entity.User{}).Where("user_id = ?", id).Updates(updates)
+		if res.Error != nil {
+			return n, fmt.Errorf("profile %s: %w", id, res.Error)
+		}
+		if res.RowsAffected > 0 {
+			n++
+		}
 	}
 	return n, nil
 }
@@ -296,16 +310,18 @@ func prepareLocalSchema(db *gorm.DB) error {
 		  AND table_name = 'transactions'
 		  AND column_name = 'user_id'
 	`).Scan(&dataType).Error
-	if dataType != "" && dataType != "uuid" {
+	if dataType == "bigint" || dataType == "integer" {
 		fmt.Printf("检测到旧 transactions.user_id=%s，重命名为 transactions_legacy_uint\n", dataType)
 		if err := db.Exec(`ALTER TABLE transactions RENAME TO transactions_legacy_uint`).Error; err != nil {
 			return fmt.Errorf("重命名旧 transactions: %w", err)
 		}
 	}
+	if err := postgres.ConsolidateLocalUsers(db); err != nil {
+		return err
+	}
 	return db.AutoMigrate(
-		&entity.AuthUser{},
+		&entity.User{},
 		&entity.AuthRefreshToken{},
-		&entity.Profile{},
 		&entity.Transaction{},
 	)
 }

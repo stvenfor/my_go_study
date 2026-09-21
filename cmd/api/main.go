@@ -17,10 +17,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	grpcdelivery "github.com/stvenfor/my_go_study/internal/delivery/grpc"
 	grpcauth "github.com/stvenfor/my_go_study/internal/delivery/grpc/interceptor"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
+	"github.com/stvenfor/my_go_study/internal/delivery/http/middleware"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/router"
 	wshandler "github.com/stvenfor/my_go_study/internal/delivery/ws"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
@@ -94,13 +96,12 @@ func run() error {
 	}()
 
 	jwtMgr := jwtmanager.NewManager(cfg.JWT)
-	userRepo := postgres.NewUserRepository(db)
-	userUC := usecase.NewUserUsecase(userRepo, jwtMgr)
 	sessionRepo := redisrepo.NewSessionRepository(redisClient)
 	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth)
 	var sessionAuthUC usecase.SessionAuth
 	var phoneOTPUC usecase.PhoneOTPAuth
 	var profileController *controller.ProfileController
+	var accessController *controller.AccessController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
@@ -109,14 +110,20 @@ func run() error {
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
 
+	var accountGate gin.HandlerFunc
 	businessEnabled := cfg.Auth.IsLocalProvider() || cfg.Supabase.Enabled()
 	if cfg.Auth.IsLocalProvider() {
 		localAuth := usecase.NewLocalAuthUsecase(db, jwtMgr, cfg.Auth, cfg.Server.Mode)
 		sessionAuthUC = localAuth
 		phoneOTPUC = localAuth
+		accountGate = middleware.RequireActiveAccount(localAuth)
 		profileRepo := postgres.NewProfileRepository(db)
-		profileUC := usecase.NewProfileUsecase(profileRepo)
+		storeStatsRepo := postgres.NewStoreStatsRepository(db)
+		profileUC := usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
+		accessRepo := postgres.NewAccessRepository(db)
+		accessUC := usecase.NewAccessUsecase(accessRepo)
+		accessController = controller.NewAccessController(accessUC)
 		transactionRepo := postgres.NewTransactionRepository(db)
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
@@ -131,7 +138,8 @@ func run() error {
 		sessionAuthUC = supabaseAuthUC
 		phoneOTPUC = usecase.NewPhoneOTPUsecase(sbClient, cfg.Auth, cfg.Server.Mode)
 		profileRepo := sbrepo.NewProfileRepository(sbClient)
-		profileUC := usecase.NewProfileUsecase(profileRepo)
+		storeStatsRepo := postgres.NewStoreStatsRepository(db)
+		profileUC := usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
 		transactionRepo := sbrepo.NewTransactionRepository(sbClient)
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
@@ -191,7 +199,7 @@ func run() error {
 		}
 	}
 
-	userHandler := handler.NewUserHandler(userUC, sessionAuthUC, deviceSessionUC, phoneOTPUC)
+	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC)
 
 	var analyticsUC *usecase.AnalyticsUsecase
 	analyticsRepo := postgres.NewAnalyticsRepository(db)
@@ -208,6 +216,7 @@ func run() error {
 		JWTManager:            jwtMgr,
 		UserHandler:           userHandler,
 		ProfileController:     profileController,
+		AccessController:      accessController,
 		TransactionController: transactionController,
 		RealtimeController:    realtimeController,
 		SseController:         sseController,
@@ -215,6 +224,7 @@ func run() error {
 		Config:                *cfg,
 		Supabase:              cfg.Supabase,
 		DeviceSessionUC:       deviceSessionUC,
+		AccountGate:           accountGate,
 	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
@@ -314,19 +324,21 @@ func autoMigrate(db *gorm.DB) error {
 		  AND table_name = 'transactions'
 		  AND column_name = 'user_id'
 	`).Scan(&dataType).Error
-	if dataType != "" && dataType != "uuid" {
+	if dataType == "bigint" || dataType == "integer" {
 		if err := db.Exec(`ALTER TABLE transactions RENAME TO transactions_legacy_uint`).Error; err != nil {
 			return fmt.Errorf("重命名旧 transactions 失败: %w", err)
 		}
 	}
+	if err := postgres.ConsolidateLocalUsers(db); err != nil {
+		return err
+	}
 	if err := db.AutoMigrate(
 		&entity.User{},
-		&entity.AuthUser{},
 		&entity.AuthRefreshToken{},
-		&entity.Profile{},
 		&entity.Transaction{},
 		&entity.TransactionRecord{},
 		&entity.AnalyticsRecord{},
+		&entity.WysUserStoreStats{},
 	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}

@@ -48,7 +48,10 @@ Supabase Cloud 或 local Auth + 本地 Postgres
 | 收支/二手车 | `TransactionApi` | `TransactionController` | PostgREST + RLS |
 | 实时消息 | `AppRealtimeClient` | `RealtimeController` + WS Hub | Redis |
 | 用户资料 | — | `ProfileController` | PostgREST |
+| 门店统计 | Mine 统计栏 | `Profile` + `wys_user_store_stats`（数字列 + role 0/1/2） | 本地 Postgres |
 | 数据分析 | `AnalyticsGrpcApi`（gRPC） | `AnalyticsService` → `AnalyticsUsecase` | 本地表 `analytics_records` |
+
+**表命名**：新建业务表一律 `wys_` 前缀（规范见 [docs/local-auth-postgres.md](./docs/local-auth-postgres.md) §3）。
 
 ### 本地联调
 

@@ -1,6 +1,6 @@
 // =============================================================================
 // 文件：transaction.go
-// 层级：Domain —— 与 Supabase / 本地 transactions 表字段对齐（user_id = UUID）
+// 层级：Domain —— 本地 transactions.user_id 为 users.user_id 字符串。
 // =============================================================================
 package entity
 
@@ -10,7 +10,7 @@ const TransactionsTable = "transactions"
 
 type Transaction struct {
 	ID        int64      `json:"id" gorm:"primaryKey"`
-	UserID    *string    `json:"user_id,omitempty" gorm:"type:uuid;index;column:user_id"`
+	UserID    *string    `json:"user_id,omitempty" gorm:"size:64;index;column:user_id"`
 	Type      string     `json:"type" gorm:"size:32;not null"`
 	Category  string     `json:"category" gorm:"size:64;not null"`
 	Amount    float64    `json:"amount" gorm:"not null"`

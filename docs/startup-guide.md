@@ -282,14 +282,76 @@ curl -X POST http://localhost:8080/api/v1/user/logout \
 
 从 `data.token` 复制 token，用于下一步。
 
-### 5.4 获取个人信息（需 Supabase JWT）
+### 5.4 获取个人信息与切换店铺（需业务 access token）
+
+本地登录还需带 `X-Session-ID` / `X-Device-ID`（与登录时 `device_id` 一致）。`store_id` 为正整数（1=沃德龙鼎，2=腾远）。
 
 ```bash
-curl http://localhost:8080/api/v1/me/profile \
-  -H "Authorization: Bearer <你的token>"
+# 读资料（可选 ?store_id=1；省略则用 users.current_store_id）
+curl "http://localhost:8080/api/v1/profiles/me?store_id=1" \
+  -H "Authorization: Bearer <你的token>" \
+  -H "X-Session-ID: <session_id>" \
+  -H "X-Device-ID: <device_id>"
+
+# 切换店铺，响应为该店 stats
+curl -X POST "http://localhost:8080/api/v1/profiles/me/store" \
+  -H "Authorization: Bearer <你的token>" \
+  -H "X-Session-ID: <session_id>" \
+  -H "X-Device-ID: <device_id>" \
+  -H "Content-Type: application/json" \
+  -d '{"store_id":2}'
 ```
 
-> `/api/v1/user/profile` 使用自建 JWT 中间件，与 Supabase 登录 token **不兼容**。Flutter 请走 `/api/v1/me/profile`。
+响应 `data.stats`（snake_case）：`store_id` / `store_name` / `days_joined` / `employee_count` / `store_days` / `total_customers` / `role` / `role_label`。数字来自 `wys_user_store_stats`。`role` 来自 `wys_store_member.position`（0 销售顾问，1 销售经理，2 总经理）；还不是该店成员时 `role` 为 null，`role_label` 为空，不再默认成销售顾问。
+
+门店与权限（仅 `auth.provider=local`；需登录且 `user_id` 与会话一致）：
+
+```bash
+# 有效权限（可选 ?store_id=）
+curl "http://localhost:8080/api/v1/me/permissions" \
+  -H "Authorization: Bearer <token>" -H "X-Session-ID: <s>" -H "X-Device-ID: <d>" \
+  -H "Content-Type: application/json" -G --data-urlencode "user_id=<uid>"
+
+# 建店（需 store.create）
+curl -X POST "http://localhost:8080/api/v1/stores?user_id=<uid>" \
+  -H "Authorization: Bearer <token>" -H "X-Session-ID: <s>" -H "X-Device-ID: <d>" \
+  -H "Content-Type: application/json" \
+  -d '{"store_id":3,"name":"新店"}'
+
+# 加成员 / 改职务（需 member.write；平台可管任意店，店内角色只能管当前店）
+curl -X POST "http://localhost:8080/api/v1/stores/3/members?user_id=<uid>" \
+  -H "Authorization: Bearer <token>" -H "X-Session-ID: <s>" -H "X-Device-ID: <d>" \
+  -H "Content-Type: application/json" \
+  -d '{"target_user_id":"<target>","position":1}'
+
+# 分配角色（平台角色不带 store_id；店内角色必须带）
+curl -X POST "http://localhost:8080/api/v1/roles/assignments?user_id=<uid>" \
+  -H "Authorization: Bearer <token>" -H "X-Session-ID: <s>" -H "X-Device-ID: <d>" \
+  -H "Content-Type: application/json" \
+  -d '{"target_user_id":"<target>","role_code":"store_admin","store_id":3}'
+```
+
+演示种子 `scripts/navicat_seed_store_stats.sql` 会给 `demo@example.com` 写门店、成员、统计，并授 `platform_admin`。
+
+核对 SQL：
+
+```sql
+SELECT store_id, user_id, store_name, role, days_joined, employee_count, store_days, total_customers
+FROM wys_user_store_stats
+ORDER BY store_id;
+
+SELECT email, current_store_id FROM users WHERE email = 'demo@example.com';
+```
+
+本地建表 + 种子（Navicat / psql）：
+
+```bash
+# 1) 若未 AutoMigrate：执行 scripts/navicat_local_schema.sql
+# 2) 演示账号：scripts/navicat_seed_demo_data.sql（demo@example.com / 123456）
+# 3) 门店统计：scripts/navicat_seed_store_stats.sql
+```
+
+> `/api/v1/user/profile` 使用自建 JWT 中间件，与业务登录 token **不兼容**。Flutter 请走 `/api/v1/profiles/me` 或 `/api/v1/me/profile`。
 
 ---
 
@@ -313,7 +375,7 @@ curl http://localhost:8080/api/v1/me/profile \
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/me/profile` | 读取 profiles |
+| GET | `/api/v1/me/profile` | 读取 profiles（含 `stats`；可选 `?store_id=`） |
 | PATCH | `/api/v1/me/profile` | 更新 display_name / avatar_url |
 | GET | `/api/v1/transactions` | 列表 `?type=&limit=&offset=` → `{ "items": [...] }` |
 | POST | `/api/v1/transactions` | 创建收支 |
@@ -325,8 +387,9 @@ curl http://localhost:8080/api/v1/me/profile \
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/profiles/me` | 获取当前用户资料 |
+| GET | `/api/v1/profiles/me` | 获取当前用户资料（含 `stats`；可选 `?store_id=` 正整数） |
 | PATCH | `/api/v1/profiles/me` | 更新资料 |
+| POST | `/api/v1/profiles/me/store` | 切换当前店铺，body `{"store_id":N}`，返回该店 stats |
 | GET | `/api/v1/transactions/manage` | 分页列表 `?page=1&size=20&type=` |
 | POST | `/api/v1/transactions/manage` | 创建收支 |
 | GET | `/api/v1/transactions/manage/:id` | 单条详情 |

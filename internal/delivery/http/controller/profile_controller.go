@@ -2,6 +2,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ func NewProfileController(profileUC *usecase.ProfileUsecase) *ProfileController 
 }
 
 // GetMe 获取当前用户资料（统一响应格式）。
-// GET /api/v1/profiles/me
+// GET /api/v1/profiles/me?store_id=
 func (ctrl *ProfileController) GetMe(c *gin.Context) {
 	user, token, ok := supabaseAuthContext(c)
 	if !ok {
@@ -29,12 +30,46 @@ func (ctrl *ProfileController) GetMe(c *gin.Context) {
 		return
 	}
 
-	profile, err := ctrl.profileUC.GetProfile(c.Request.Context(), token, user.ID)
+	profile, stats, err := ctrl.profileUC.GetProfile(c.Request.Context(), token, user.ID, c.Query("store_id"))
 	if err != nil {
-		response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())
+		writeProfileError(c, err)
 		return
 	}
-	response.Success(c, response.FromProfile(profile))
+	response.Success(c, response.FromProfile(profile, stats))
+}
+
+// SwitchStore 切换当前店铺并返回该店铺资料。
+// POST /api/v1/profiles/me/store  body: {"store_id":1}
+func (ctrl *ProfileController) SwitchStore(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	var body struct {
+		StoreID int `json:"store_id"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误")
+		return
+	}
+	stats, err := ctrl.profileUC.SwitchStore(c.Request.Context(), user.ID, body.StoreID)
+	if err != nil {
+		writeProfileError(c, err)
+		return
+	}
+	response.Success(c, response.FromUserStoreStats(stats))
+}
+
+func writeProfileError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidStoreID):
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
+	case errors.Is(err, usecase.ErrStoreNotFound):
+		response.Error(c, http.StatusNotFound, response.CodeNotFound, err.Error())
+	default:
+		response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())
+	}
 }
 
 // UpdateMe 更新当前用户资料（统一响应格式）。
@@ -57,11 +92,12 @@ func (ctrl *ProfileController) UpdateMe(c *gin.Context) {
 		response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())
 		return
 	}
-	response.Success(c, response.FromProfile(profile))
+	_, stats, _ := ctrl.profileUC.GetProfile(c.Request.Context(), token, user.ID, c.Query("store_id"))
+	response.Success(c, response.FromProfile(profile, stats))
 }
 
 // GetMeLegacy 获取当前用户资料（Flutter BackendApiClient 兼容，snake_case 直出）。
-// GET /api/v1/me/profile
+// GET /api/v1/me/profile?store_id=
 func (ctrl *ProfileController) GetMeLegacy(c *gin.Context) {
 	user, token, ok := supabaseAuthContext(c)
 	if !ok {
@@ -69,12 +105,12 @@ func (ctrl *ProfileController) GetMeLegacy(c *gin.Context) {
 		return
 	}
 
-	profile, err := ctrl.profileUC.GetProfile(c.Request.Context(), token, user.ID)
+	profile, stats, err := ctrl.profileUC.GetProfile(c.Request.Context(), token, user.ID, c.Query("store_id"))
 	if err != nil {
 		response.BackendError(c, http.StatusBadGateway, err.Error())
 		return
 	}
-	response.BackendJSON(c, http.StatusOK, profile)
+	response.BackendJSON(c, http.StatusOK, response.FromProfileLegacy(profile, stats))
 }
 
 // UpdateMeLegacy 更新当前用户资料（Flutter 兼容）。
@@ -97,5 +133,6 @@ func (ctrl *ProfileController) UpdateMeLegacy(c *gin.Context) {
 		response.BackendError(c, http.StatusBadGateway, err.Error())
 		return
 	}
-	response.BackendJSON(c, http.StatusOK, profile)
+	_, stats, _ := ctrl.profileUC.GetProfile(c.Request.Context(), token, user.ID, c.Query("store_id"))
+	response.BackendJSON(c, http.StatusOK, response.FromProfileLegacy(profile, stats))
 }

@@ -9,7 +9,7 @@ import (
 )
 
 // registerUserRoutes 注册 /api/v1/user 路由（自建 JWT 用户体系 + Supabase 认证）。
-func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, userHandler *handler.UserHandler, sbAuth gin.HandlerFunc) {
+func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, userHandler *handler.UserHandler, sbAuth gin.HandlerFunc, accountGate gin.HandlerFunc) {
 	userGroup := v1.Group("/user")
 	{
 		userGroup.POST("/register", userHandler.Register)
@@ -18,9 +18,12 @@ func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, use
 		userGroup.POST("/phone/otp/send", userHandler.SendPhoneOTP)
 		userGroup.POST("/phone/otp/verify", userHandler.VerifyPhoneOTP)
 		if sbAuth != nil {
-			userGroup.POST("/logout", sbAuth, userHandler.Logout)
+			chain := []gin.HandlerFunc{sbAuth, middleware.RequireUserID()}
+			if accountGate != nil {
+				chain = append(chain, accountGate)
+			}
+			userGroup.POST("/logout", append(chain, userHandler.Logout)...)
+			userGroup.POST("/deactivate", append(chain, userHandler.Deactivate)...)
 		}
-		userGroup.GET("/list", middleware.Auth(jwtManager), userHandler.List)
-		userGroup.GET("/profile", middleware.Auth(jwtManager), userHandler.Profile)
 	}
 }

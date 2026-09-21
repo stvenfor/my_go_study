@@ -8,6 +8,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -21,7 +22,6 @@ import (
 
 // UserHandler 用户 API 处理器。
 type UserHandler struct {
-	userUsecase     *usecase.UserUsecase
 	sessionAuthUC   usecase.SessionAuth
 	deviceSessionUC *usecase.DeviceSessionUsecase
 	phoneOTPUC      usecase.PhoneOTPAuth
@@ -29,13 +29,11 @@ type UserHandler struct {
 
 // NewUserHandler 创建用户处理器。
 func NewUserHandler(
-	userUsecase *usecase.UserUsecase,
 	sessionAuthUC usecase.SessionAuth,
 	deviceSessionUC *usecase.DeviceSessionUsecase,
 	phoneOTPUC usecase.PhoneOTPAuth,
 ) *UserHandler {
 	return &UserHandler{
-		userUsecase:     userUsecase,
 		sessionAuthUC:   sessionAuthUC,
 		deviceSessionUC: deviceSessionUC,
 		phoneOTPUC:      phoneOTPUC,
@@ -67,6 +65,9 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	user := response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email)
+	user.Status = result.Status
+	user.Phone = result.Phone
+	user.AvatarURL = result.AvatarURL
 	if result.Token != "" {
 		sessionID, err := h.issueDeviceSession(c, result.UserID, result.Email, req.DeviceID, req.Platform)
 		if err != nil {
@@ -140,6 +141,28 @@ func (h *UserHandler) Logout(c *gin.Context) {
 		_ = h.sessionAuthUC.Logout(c.Request.Context(), accessToken)
 	}
 
+	response.Success(c, gin.H{"ok": true})
+}
+
+// Deactivate POST /api/v1/user/deactivate
+// 只把当前账号 deleted_at 写上，并撤销 refresh token。不提供把 status 设为停用的接口。
+func (h *UserHandler) Deactivate(c *gin.Context) {
+	user, ok := middleware.GetSupabaseUser(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	closer, ok := h.sessionAuthUC.(interface {
+		Deactivate(ctx context.Context, userID string) error
+	})
+	if !ok || closer == nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "当前认证方式不支持注销")
+		return
+	}
+	if err := closer.Deactivate(c.Request.Context(), user.ID); err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
 	response.Success(c, gin.H{"ok": true})
 }
 
@@ -232,40 +255,6 @@ func (h *UserHandler) issueDeviceSession(c *gin.Context, userID, email, deviceID
 	})
 }
 
-// Profile 获取当前登录用户信息。
-func (h *UserHandler) Profile(c *gin.Context) {
-	userID, ok := middleware.GetUserID(c)
-	if !ok {
-		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
-		return
-	}
-
-	user, err := h.userUsecase.GetProfile(c.Request.Context(), userID)
-	if err != nil {
-		h.handleUsecaseError(c, err)
-		return
-	}
-
-	response.Success(c, response.FromUserProfile(user))
-}
-
-// List 分页获取用户列表。
-func (h *UserHandler) List(c *gin.Context) {
-	page := response.ParsePageQuery(c, 20)
-
-	users, total, err := h.userUsecase.ListUsers(c.Request.Context(), page.Page, page.Size)
-	if err != nil {
-		h.handleUsecaseError(c, err)
-		return
-	}
-
-	list := make([]response.UserItem, 0, len(users))
-	for i := range users {
-		list = append(list, response.FromUser(&users[i]))
-	}
-	response.SuccessList(c, list, page.Page, page.Size, total)
-}
-
 // handleUsecaseError 业务错误 → HTTP 状态码 + 中文提示（Flutter _mapFailure 依赖这些文案）。
 func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 	switch {
@@ -275,6 +264,10 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "用户已存在")
 	case errors.Is(err, usecase.ErrAccountNotRegistered):
 		response.Error(c, http.StatusNotFound, response.CodeForbidden, "账号未注册，请先注册")
+	case errors.Is(err, usecase.ErrAccountDisabled):
+		response.Error(c, http.StatusForbidden, response.CodeForbidden, "账号已停用")
+	case errors.Is(err, usecase.ErrAccountLocked):
+		response.Error(c, http.StatusForbidden, response.CodeForbidden, "账号已锁定，请稍后再试")
 	case errors.Is(err, usecase.ErrInvalidCredentials):
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "密码错误")
 	case errors.Is(err, usecase.ErrUserNotFound):
@@ -312,6 +305,6 @@ func loginDataFrom(result *usecase.SupabaseAuthOutput, sessionID string) respons
 		Token:        result.Token,
 		RefreshToken: result.RefreshToken,
 		SessionID:    sessionID,
-		User:         response.FromSupabaseAuthUser(result.UserID, result.Username, result.Email),
+		User:         response.AuthUserFromOutput(result.UserID, result.Username, result.Email, result.Phone, result.AvatarURL, result.Status),
 	}
 }

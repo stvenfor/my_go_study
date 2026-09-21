@@ -48,8 +48,8 @@ func (r *ProfileRepository) UpdateByUserID(ctx context.Context, accessToken, use
 	payload := map[string]any{
 		"updated_at": time.Now().UTC().Format(time.RFC3339),
 	}
-	if input.DisplayName != nil {
-		payload["display_name"] = *input.DisplayName
+	if name := input.ResolvedUserName(); name != nil {
+		payload["display_name"] = *name
 	}
 	if input.AvatarURL != nil {
 		payload["avatar_url"] = *input.AvatarURL

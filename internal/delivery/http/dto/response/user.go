@@ -3,8 +3,6 @@ package response
 
 import (
 	"time"
-
-	"github.com/stvenfor/my_go_study/internal/domain/entity"
 )
 
 // UserItem 用户基础信息。
@@ -25,11 +23,16 @@ type UserProfile struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// AuthUserItem 认证接口返回的用户信息（Supabase UUID 为字符串 id）。
+// AuthUserItem 认证接口返回的用户信息。id 与 user_id 相同。
 type AuthUserItem struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	UserName  string `json:"user_name"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Status    int16  `json:"status"`
+	Phone     string `json:"phone,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
 }
 
 // LoginData 登录成功响应 data。
@@ -51,29 +54,18 @@ type RefreshTokenData struct {
 func FromSupabaseAuthUser(userID, username, email string) AuthUserItem {
 	return AuthUserItem{
 		ID:       userID,
+		UserID:   userID,
+		UserName: username,
 		Username: username,
 		Email:    email,
 	}
 }
 
-// FromUser 从领域实体转换为用户响应项。
-func FromUser(user *entity.User) UserItem {
-	return UserItem{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	}
-}
-
-// FromUserProfile 从领域实体转换为用户详情。
-func FromUserProfile(user *entity.User) UserProfile {
-	return UserProfile{
-		ID:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	}
+// AuthUserFromOutput 用登录结果组装用户对象。id 等于 user_id。
+func AuthUserFromOutput(userID, username, email, phone, avatarURL string, status int16) AuthUserItem {
+	item := FromSupabaseAuthUser(userID, username, email)
+	item.Status = status
+	item.Phone = phone
+	item.AvatarURL = avatarURL
+	return item
 }

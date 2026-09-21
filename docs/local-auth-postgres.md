@@ -11,13 +11,13 @@
 | # | 决策 | 选择 |
 |---|------|------|
 | 1 | 离开 Cloud 的方式 | 本机 Postgres + 代码实现等价能力（不自托管 GoTrue/PostgREST） |
-| 2 | 以后迁 Supabase | 保留 `auth.provider=supabase` + 现有 PostgREST 仓储；表/用户 ID 用 **UUID** 对齐 |
+| 2 | 以后迁 Supabase | 保留 `auth.provider=supabase` + 现有 PostgREST 仓储；本地主键是字符串 `user_id` |
 | 3 | Auth | **双模式** `local` \| `supabase`；`lan` 默认 `local` |
 | 4 | 数据 | 先空库；Cloud 导入后置 |
-| 5 | 表与隔离 | `auth_users` / `profiles` / `transactions(user_id uuid)`；应用层按 user_id 过滤；本地暂不上 RLS |
+| 5 | 表与隔离 | 统一 `users.user_id` 主键；业务数据按该字段关联；登录后请求默认必带且须匹配 |
 | 6 | 环境 | `dev` 仍可连 Cloud；**升级 `lan`** 为本地全栈+局域网 |
 | 7 | lan 与 Cloud | 不做 LAN+Cloud；Cloud 用 `dev` + `make run` |
-| 8 | Flutter | API 形状不变：`token` / `refresh_token` / `session_id` / `user.id`(UUID 字符串) |
+| 8 | Flutter | 路径不变。注册/登录多返回 `user.user_id`。除注册、登录、刷新、手机 OTP 外，请求必须带 `user_id` |
 
 ---
 
@@ -29,8 +29,8 @@ Flutter（真机 / 模拟器）
   ▼
 Go BFF
   ├─ auth.provider=local（lan 默认）
-  │    Auth → auth_users + 本地 JWT(sub=UUID) + refresh 表
-  │    Data → GORM/SQL profiles & transactions（忽略 accessToken）
+  │    Auth → users（user_id 主键）+ 本地 JWT(sub=user_id) + refresh 表(user_id)
+  │    Data → GORM/SQL users & transactions（按字符串 user_id 过滤）
   │    Session → 现有 Redis device session（userID=UUID 字符串）
   │
   └─ auth.provider=supabase（dev 可选）
@@ -64,14 +64,25 @@ auth:
 
 | 表 | 要点 |
 |----|------|
-| `auth_users` | `id UUID PK`, email, phone, password_hash, display_name, timestamps |
-| `profiles` | `id UUID PK` = user id；display_name, avatar_url, phone |
-| `transactions` | `id BIGSERIAL`, `user_id UUID` FK, type/category/amount/date/note |
-| `auth_refresh_tokens` | opaque refresh → user_id + expires |
+| `users` | 主键 `user_id`。同一行：`user_name`、`email`、`phone`、`password_hash`、`status`（0 正常 / 1 停用 / 2 锁定）、验证时间、`failed_login_count`、`locked_until`、`password_changed_at`、`last_login_at`、`avatar_url`、`current_store_id`、`deleted_at`。`email` 与非空 `phone` 仅在 `deleted_at IS NULL` 时唯一。接口不返回 `password_hash`、`failed_login_count`、`locked_until` |
+| `transactions` | `user_id varchar` → `users.user_id` |
+| `auth_refresh_tokens` | `user_id` → `users.user_id`；不把 token 塞进用户行 |
+| `wys_user_store_stats` | 每人每店一行展示数字。`role` 列遗留，不参与接口放行 |
 
-**冲突处理：** 停止对遗留 `TransactionRecord`（uint `user_id`）的 AutoMigrate；旧 `users` uint 表可保留给遗留 `/user/list`，与 Flutter 主路径无关。
+注册、登录、刷新、`POST /api/v1/user/phone/otp/send`、`POST /api/v1/user/phone/otp/verify` **不要求**请求里的 `user_id`。其余已登录接口必须在 query 或 JSON body 带 `user_id`，且必须与当前会话一致，否则 400。账号已注销或 `status = 1` 时拒绝业务请求。连续 5 次密码错误锁定 15 分钟。`POST /api/v1/user/deactivate` 写 `deleted_at` 并撤销 refresh token，不删除行。没有把 `status` 设为停用的接口。
 
-迁移：`migrations/` 新增 up/down SQL；lan/local 启动时 migrate 或 AutoMigrate 新 entity。
+**冒烟：** 注册（请求不带 `user_id`，响应有 `user_id`、`user_name`、`email`、`status=0`）→ 登录 → 连续 5 次错误密码后锁定 → `PATCH /api/v1/profiles/me` 改 `user_name` 且不能改 `status` → 注销 → 同一邮箱可再注册出新的 `user_id`。
+
+**冲突处理：** 遗留 BIGSERIAL `users` 在迁移时改名为 `users_legacy_uint`。不再提供 `/api/v1/user/list` 与 `/api/v1/user/profile`。本地不再使用 `auth_users` / `profiles`。
+
+### 表命名规范（`wys_` 前缀）
+
+- **身份表** `role` / `permission` / `role_permission` / `user_role` 跟 `users` 一样不加 `wys_`。门店组织用 `wys_store`、`wys_store_member`。
+- **Mine 统计**在 `wys_user_store_stats`，每人每店一行。职务在 `wys_store_member.position`（0 销售顾问 / 1 销售经理 / 2 总经理），不是统计卡上的 `role`，也不参与接口放行。
+- **已有无前缀表**（`users` / `transactions` / `auth_refresh_tokens` 以及上面的身份表）保持现名。新的业务表仍用 `wys_`。
+- GORM `TableName()` / 迁移 SQL / Navicat 脚本三者表名必须一致。
+
+迁移：`migrations/20260921120000_consolidate_users.up.sql` 与 `migrations/20260921140000_users_account_status.up.sql`；启动时 `ConsolidateLocalUsers`（含 redesign SQL）后再 AutoMigrate。
 
 ---
 
@@ -88,7 +99,7 @@ auth:
 
 ## 5. 以后迁回 Supabase Cloud
 
-1. 导出本地 `auth_users` / `profiles` / `transactions`（用户密码需按 GoTrue 要求另行处理或请用户重置）  
+1. 导出本地 `users` / `transactions`（用户密码需按 GoTrue 要求另行处理或请用户重置）  
 2. 在 Cloud 建表 + 跑 `supabase/migrations` RLS  
 3. `AUTH_PROVIDER=supabase` + `SUPABASE_*`  
 4. Flutter 仍打同一 BFF
@@ -116,7 +127,7 @@ make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
 
 | 标志 | 含义 |
 |------|------|
-| `--default-password` | 写入 `auth_users` 的 bcrypt 临时密码（≥6） |
+| `--default-password` | 写入 `users.password_hash` 的 bcrypt 临时密码（≥6） |
 | `--dry-run` | 只拉取统计 |
 | `--skip-users` / `--skip-profiles` / `--skip-transactions` | 跳过对应表 |
 

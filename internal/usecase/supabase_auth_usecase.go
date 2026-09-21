@@ -5,8 +5,10 @@
 // 数据流：UserHandler → 本文件 → pkg/supabase (gotrue-go) → Supabase Cloud
 //
 // 【初学者】Register 与 Login 区别：
-//   Register → Auth.Signup，可能需邮箱验证才返回 token
-//   Login    → SignInWithEmailPassword，成功必有 access_token
+//
+//	Register → Auth.Signup，可能需邮箱验证才返回 token
+//	Login    → SignInWithEmailPassword，成功必有 access_token
+//
 // =============================================================================
 package usecase
 
@@ -17,24 +19,27 @@ import (
 	"strings"
 	"time"
 
-	"github.com/supabase-community/gotrue-go/types"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
+	"github.com/supabase-community/gotrue-go/types"
 )
 
 const supabaseAuthTimeout = 20 * time.Second
 
 var (
 	ErrEmailConfirmationRequired = errors.New("email confirmation required")
-	ErrAccountNotRegistered        = errors.New("account not registered")
-	ErrSupabaseUnavailable         = errors.New("supabase unavailable")
+	ErrAccountNotRegistered      = errors.New("account not registered")
+	ErrSupabaseUnavailable       = errors.New("supabase unavailable")
 )
 
 type SupabaseAuthOutput struct {
-	Token        string // Supabase access_token，Flutter 存本地
-	RefreshToken string // Supabase refresh_token，用于静默续期
-	UserID       string // UUID
-	Username     string // 展示名
+	Token        string
+	RefreshToken string
+	UserID       string
+	Username     string
 	Email        string
+	Status       int16
+	Phone        string
+	AvatarURL    string
 }
 
 type SupabaseAuthUsecase struct {
