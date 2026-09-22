@@ -38,6 +38,7 @@ func NewHomeTodoUsecase(repo repository.HomeTodoRepository, access *AccessUsecas
 }
 
 // ListTodoCards GET 聚合：按类型优先级，省略 count=0 / 无权限。
+// 若门店启用装箱演示规格，则按 大/中/小张数展开（同尺寸可多张，便于 UI 联调）。
 func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]entity.HomeTodoCard, error) {
 	storeID, err := u.currentStore(ctx, actorID)
 	if err != nil {
@@ -49,81 +50,165 @@ func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]
 	now := u.now()
 	today := shanghaiDate(now)
 
+	var joinN, followN, apptN, orderN int64
+
+	okMember, err := u.can(ctx, actorID, entity.PermMemberWrite, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if okMember {
+		joinN, err = u.repo.CountPendingJoinApplications(ctx, storeID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	okAdmin, err := u.can(ctx, actorID, todoStoreAdminPerm, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if okAdmin {
+		followN, err = u.repo.CountOverdueCustomers(ctx, storeID, now)
+		if err != nil {
+			return nil, err
+		}
+		apptN, err = u.repo.CountPendingAppointments(ctx, storeID, today)
+		if err != nil {
+			return nil, err
+		}
+		orderN, err = u.repo.CountPendingReviewOrders(ctx, storeID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	spec, err := u.repo.GetPackingDemoSpec(ctx, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if spec != nil && (spec.LargeN > 0 || spec.MediumN > 0 || spec.SmallN > 0) {
+		return buildPackingDemoCards(spec, okMember, okAdmin, joinN, followN, apptN, orderN), nil
+	}
+
 	out := make([]entity.HomeTodoCard, 0, 4)
-
-	ok, err := u.can(ctx, actorID, entity.PermMemberWrite, storeID)
-	if err != nil {
-		return nil, err
+	if okMember && joinN > 0 {
+		out = append(out, entity.HomeTodoCard{
+			Type:        entity.TodoTypePartnerPending,
+			Title:       "新伙伴待确认",
+			Subtitle:    fmt.Sprintf("%d 位新成员等待审核", joinN),
+			ActionLabel: "去处理",
+			ActionRoute: "/home/todo/partner-pending",
+			Count:       joinN,
+		})
 	}
-	if ok {
-		n, err := u.repo.CountPendingJoinApplications(ctx, storeID)
-		if err != nil {
-			return nil, err
-		}
-		if n > 0 {
-			out = append(out, entity.HomeTodoCard{
-				Type:        entity.TodoTypePartnerPending,
-				Title:       "新伙伴待确认",
-				Subtitle:    fmt.Sprintf("%d 位新成员等待审核", n),
-				ActionLabel: "去处理",
-				ActionRoute: "/home/todo/partner-pending",
-				Count:       n,
-			})
-		}
-	}
-
-	ok, err = u.can(ctx, actorID, todoStoreAdminPerm, storeID)
-	if err != nil {
-		return nil, err
-	}
-	if ok {
-		n, err := u.repo.CountOverdueCustomers(ctx, storeID, now)
-		if err != nil {
-			return nil, err
-		}
-		if n > 0 {
+	if okAdmin {
+		if followN > 0 {
 			out = append(out, entity.HomeTodoCard{
 				Type:        entity.TodoTypeFollowUpCustomer,
 				Title:       "待跟进客户",
-				Subtitle:    fmt.Sprintf("%d 位客户待跟进", n),
+				Subtitle:    fmt.Sprintf("%d 位客户待跟进", followN),
 				ActionLabel: "去查看",
 				ActionRoute: "/home/todo/follow-up-customers",
-				Count:       n,
+				Count:       followN,
 			})
 		}
-
-		n, err = u.repo.CountPendingAppointments(ctx, storeID, today)
-		if err != nil {
-			return nil, err
-		}
-		if n > 0 {
+		if apptN > 0 {
 			out = append(out, entity.HomeTodoCard{
 				Type:        entity.TodoTypeAfterSalesAppointment,
 				Title:       "售后预约",
-				Subtitle:    fmt.Sprintf("%d 条待处理预约", n),
+				Subtitle:    fmt.Sprintf("%d 条待处理预约", apptN),
 				ActionLabel: "去查看",
 				ActionRoute: "/home/todo/after-sales-appointments",
-				Count:       n,
+				Count:       apptN,
 			})
 		}
-
-		n, err = u.repo.CountPendingReviewOrders(ctx, storeID)
-		if err != nil {
-			return nil, err
-		}
-		if n > 0 {
+		if orderN > 0 {
 			out = append(out, entity.HomeTodoCard{
 				Type:        entity.TodoTypeOrderPendingReview,
 				Title:       "订单待审核",
-				Subtitle:    fmt.Sprintf("%d 笔订单待审核", n),
+				Subtitle:    fmt.Sprintf("%d 笔订单待审核", orderN),
 				ActionLabel: "去处理",
 				ActionRoute: "/home/todo/order-pending-review",
-				Count:       n,
+				Count:       orderN,
 			})
 		}
 	}
-
 	return out, nil
+}
+
+func buildPackingDemoCards(
+	spec *repository.HomeTodoPackingDemoSpec,
+	okMember, okAdmin bool,
+	joinN, followN, apptN, orderN int64,
+) []entity.HomeTodoCard {
+	out := make([]entity.HomeTodoCard, 0, spec.LargeN+spec.MediumN+spec.SmallN)
+
+	for i := 0; i < spec.LargeN; i++ {
+		if !okMember || joinN <= 0 {
+			break
+		}
+		out = append(out, entity.HomeTodoCard{
+			Type:        entity.TodoTypePartnerPending,
+			Title:       "新伙伴待确认",
+			Subtitle:    fmt.Sprintf("%d 位新成员等待审核", joinN),
+			ActionLabel: "去处理",
+			ActionRoute: "/home/todo/partner-pending",
+			Count:       joinN,
+		})
+	}
+
+	mediums := []entity.HomeTodoCard{
+		{
+			Type:        entity.TodoTypeFollowUpCustomer,
+			Title:       "待跟进客户",
+			Subtitle:    fmt.Sprintf("%d 位客户待跟进", followN),
+			ActionLabel: "去查看",
+			ActionRoute: "/home/todo/follow-up-customers",
+			Count:       followN,
+		},
+		{
+			Type:        entity.TodoTypeAfterSalesAppointment,
+			Title:       "售后预约",
+			Subtitle:    fmt.Sprintf("%d 条待处理预约", apptN),
+			ActionLabel: "去查看",
+			ActionRoute: "/home/todo/after-sales-appointments",
+			Count:       apptN,
+		},
+		{
+			Type:        entity.TodoTypeFollowUpCustomer,
+			Title:       "高意向回访",
+			Subtitle:    fmt.Sprintf("%d 位需今日回访", followN),
+			ActionLabel: "去查看",
+			ActionRoute: "/home/todo/follow-up-customers",
+			Count:       followN,
+		},
+	}
+	for i := 0; i < spec.MediumN && i < len(mediums); i++ {
+		if !okAdmin {
+			break
+		}
+		c := mediums[i]
+		if c.Count <= 0 {
+			c.Count = 1
+			c.Subtitle = c.Title
+		}
+		out = append(out, c)
+	}
+
+	for i := 0; i < spec.SmallN; i++ {
+		if !okAdmin || orderN <= 0 {
+			break
+		}
+		out = append(out, entity.HomeTodoCard{
+			Type:        entity.TodoTypeOrderPendingReview,
+			Title:       fmt.Sprintf("订单待审核·%d", i+1),
+			Subtitle:    fmt.Sprintf("共 %d 笔待审", orderN),
+			ActionLabel: "去处理",
+			ActionRoute: "/home/todo/order-pending-review",
+			Count:       1,
+		})
+	}
+	return out
 }
 
 // ApplyToStore 提交入店申请。

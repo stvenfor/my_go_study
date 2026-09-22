@@ -149,6 +149,11 @@ func run() error {
 		} else {
 			log.Info("首页待办种子已就绪（门店1）")
 		}
+		if err := postgres.EnsureHomeTodoPackingDemo(db); err != nil {
+			log.Warn("首页待办装箱演示种子失败", zap.Error(err))
+		} else {
+			log.Info("首页待办装箱演示已就绪（13400000000 / 1大3中4小）")
+		}
 		if err := postgres.EnsureMallSeed(db); err != nil {
 			log.Warn("商城种子商品写入失败", zap.Error(err))
 		} else {

@@ -54,3 +54,12 @@ CREATE TABLE IF NOT EXISTS wys_store_review_order (
 CREATE INDEX IF NOT EXISTS idx_wys_store_review_order_store_status
   ON wys_store_review_order (store_id, status);
 COMMENT ON TABLE wys_store_review_order IS '店务审核单（非商城）。0=pending 1=approved 2=rejected';
+
+CREATE TABLE IF NOT EXISTS wys_home_todo_packing_demo (
+  store_id integer PRIMARY KEY,
+  large_n integer NOT NULL DEFAULT 1,
+  medium_n integer NOT NULL DEFAULT 3,
+  small_n integer NOT NULL DEFAULT 4,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE wys_home_todo_packing_demo IS '首页待办装箱演示规格：大/中/小卡目标张数';

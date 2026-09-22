@@ -122,6 +122,10 @@ func (m *memHomeTodoRepo) CountPendingReviewOrders(ctx context.Context, storeID 
 
 func (m *memHomeTodoRepo) EnsureSeed(context.Context, int, string) error { return nil }
 
+func (m *memHomeTodoRepo) GetPackingDemoSpec(context.Context, int) (*repository.HomeTodoPackingDemoSpec, error) {
+	return nil, nil
+}
+
 // --- access mock for home todo ---
 
 type homeTodoAccessRepo struct {

@@ -37,6 +37,14 @@ type HomeTodoRepository interface {
 	ListPendingReviewOrders(ctx context.Context, storeID int) ([]entity.WysStoreReviewOrder, error)
 	CountPendingReviewOrders(ctx context.Context, storeID int) (int64, error)
 
-	// 种子
+	// 种子 / 装箱演示
 	EnsureSeed(ctx context.Context, storeID int, applicantUserID string) error
+	GetPackingDemoSpec(ctx context.Context, storeID int) (*HomeTodoPackingDemoSpec, error)
+}
+
+// HomeTodoPackingDemoSpec 装箱演示目标：大/中/小卡张数。
+type HomeTodoPackingDemoSpec struct {
+	LargeN  int
+	MediumN int
+	SmallN  int
 }
