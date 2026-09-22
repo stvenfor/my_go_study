@@ -25,8 +25,9 @@ type Options struct {
 	CommunityController   *controller.CommunityController
 	ShortVideoController  *controller.ShortVideoController
 	AddressController     *controller.AddressController
-	HomeTodoController    *controller.HomeTodoController
-	TransactionController *controller.TransactionController
+	HomeTodoController     *controller.HomeTodoController
+	DealInvoiceController  *controller.DealInvoiceController
+	TransactionController  *controller.TransactionController
 	RealtimeController    *controller.RealtimeController
 	SseController         *controller.SseController
 	WSHandler             *wshandler.Handler
@@ -92,6 +93,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if opts.Config.Auth.IsLocalProvider() && opts.HomeTodoController != nil && sessionAuth != nil {
 		registerHomeTodoRoutes(v1, sessionAuth, opts.HomeTodoController, opts.AccountGate)
+	}
+
+	if opts.Config.Auth.IsLocalProvider() && opts.DealInvoiceController != nil && sessionAuth != nil {
+		registerDealInvoiceRoutes(v1, sessionAuth, opts.DealInvoiceController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {

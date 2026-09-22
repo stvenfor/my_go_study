@@ -41,12 +41,13 @@ func (WysStoreJoinApplication) TableName() string { return WysStoreJoinApplicati
 
 // WysStoreCustomer 门店客户。
 type WysStoreCustomer struct {
-	CustomerID      int64      `json:"customer_id" gorm:"primaryKey"`
-	StoreID         int        `json:"store_id"`
-	DisplayName     string     `json:"display_name" gorm:"size:128"`
-	NextFollowUpAt  *time.Time `json:"next_follow_up_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	CustomerID     int64      `json:"customer_id" gorm:"primaryKey"`
+	StoreID        int        `json:"store_id"`
+	DisplayName    string     `json:"display_name" gorm:"size:128"`
+	Phone          string     `json:"phone" gorm:"size:32"`
+	NextFollowUpAt *time.Time `json:"next_follow_up_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 func (WysStoreCustomer) TableName() string { return WysStoreCustomerTable }

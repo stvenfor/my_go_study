@@ -168,6 +168,7 @@ func (r *HomeTodoRepository) EnsureSeed(ctx context.Context, storeID int, applic
 			row := entity.WysStoreCustomer{
 				StoreID:        storeID,
 				DisplayName:    "种子客户-待跟进",
+				Phone:          "13800001111",
 				NextFollowUpAt: &past,
 			}
 			if err := tx.Create(&row).Error; err != nil {

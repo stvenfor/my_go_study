@@ -108,6 +108,7 @@ func run() error {
 	var shortVideoController *controller.ShortVideoController
 	var addressController *controller.AddressController
 	var homeTodoController *controller.HomeTodoController
+	var dealInvoiceController *controller.DealInvoiceController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
@@ -162,6 +163,17 @@ func run() error {
 			log.Warn("首页待办装箱演示种子失败", zap.Error(err))
 		} else {
 			log.Info("首页待办装箱演示已就绪（13400000000 / 1大3中4小）")
+		}
+		dealInvoiceRepo := postgres.NewDealInvoiceRepository(db)
+		if err := postgres.EnsureDealInvoiceSchema(db); err != nil {
+			log.Warn("成交发票表准备失败", zap.Error(err))
+		}
+		dealInvoiceUC := usecase.NewDealInvoiceUsecase(dealInvoiceRepo, accessUC)
+		dealInvoiceController = controller.NewDealInvoiceController(dealInvoiceUC)
+		if err := postgres.EnsureDealInvoiceSeed(db); err != nil {
+			log.Warn("成交发票种子写入失败", zap.Error(err))
+		} else {
+			log.Info("成交发票种子已就绪（13400000000）")
 		}
 		if err := postgres.EnsureMallSeed(db); err != nil {
 			log.Warn("商城种子商品写入失败", zap.Error(err))
@@ -276,6 +288,7 @@ func run() error {
 		ShortVideoController:  shortVideoController,
 		AddressController:     addressController,
 		HomeTodoController:    homeTodoController,
+		DealInvoiceController: dealInvoiceController,
 		TransactionController: transactionController,
 		RealtimeController:    realtimeController,
 		SseController:         sseController,

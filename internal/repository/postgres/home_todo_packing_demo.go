@@ -106,6 +106,7 @@ func EnsureHomeTodoPackingDemo(db *gorm.DB) error {
 			row := entity.WysStoreCustomer{
 				StoreID:        storeID,
 				DisplayName:    fmt.Sprintf("待跟进客户-%d", i),
+				Phone:          fmt.Sprintf("1380000000%d", i),
 				NextFollowUpAt: &past,
 			}
 			if err := tx.Create(&row).Error; err != nil {
