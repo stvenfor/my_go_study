@@ -18,4 +18,6 @@ func registerCommunityRoutes(v1 *gin.RouterGroup, sessionAuth gin.HandlerFunc, c
 	g.DELETE("/posts/:id/like", ctrl.UnlikePost)
 	g.GET("/posts/:id/comments", ctrl.ListComments)
 	g.POST("/posts/:id/comments", ctrl.AddComment)
+	g.POST("/users/:id/follow", ctrl.FollowUser)
+	g.DELETE("/users/:id/follow", ctrl.UnfollowUser)
 }

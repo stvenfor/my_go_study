@@ -82,11 +82,12 @@ DEFAULT_VIDEO_COVER_URL = "https://picsum.photos/seed/wys_post_video/640/360"
 | source | text NOT NULL DEFAULT '' | 如 `来自 iPhone` |
 | like_count | int NOT NULL DEFAULT 0 | 冗余计数 |
 | comment_count | int NOT NULL DEFAULT 0 | 冗余计数 |
+| heat | bigint NOT NULL DEFAULT 0 | 热门排序；`heat = like_count*2 + comment_count`，点赞/评论写路径维护 |
 | deleted_at | timestamptz NULL | 软删 |
 | created_at | timestamptz | |
 | updated_at | timestamptz | |
 
-索引：`(deleted_at, created_at DESC)` 列表；`(user_id)`；`(topic_id)`。
+索引：`(deleted_at, created_at DESC)` 最新；`(deleted_at, heat DESC, created_at DESC)` 热门；`(user_id)`；`(topic_id)`。
 
 ### 3.3 `wys_post_likes`
 
@@ -109,7 +110,19 @@ DEFAULT_VIDEO_COVER_URL = "https://picsum.photos/seed/wys_post_video/640/360"
 | deleted_at | timestamptz NULL | 可选；MVP 可硬删评论 |
 | created_at | timestamptz | |
 
-### 3.5 作者展示（不新表）
+### 3.5 `wys_user_follows`（关注关系）
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| follower_id | text NOT NULL | 关注者（当前用户） |
+| followee_id | text NOT NULL | 被关注作者 |
+| created_at | timestamptz | |
+| PRIMARY KEY (follower_id, followee_id) | | |
+| INDEX (followee_id) | | |
+
+用于社区页「关注」Tab：只返回作者在我关注列表中的动态。
+
+### 3.6 作者展示（不新表）
 
 列表 JOIN / 二次查询本地用户或 profile：
 
@@ -122,6 +135,7 @@ DEFAULT_VIDEO_COVER_URL = "https://picsum.photos/seed/wys_post_video/640/360"
 
 ```text
 media_type: 0 = none | 1 = image | 2 = video
+post_tab: latest | hot | following   # 对齐 UI「最新 / 热门 / 关注」
 ```
 
 写接口也可接受字符串 `"none"|"image"|"video"`，服务端归一成 smallint。
@@ -237,7 +251,7 @@ Flutter 侧后续接 Banner → 定位该帖；本设计只定 payload。
 
 ### 6.4 `GET /posts` — 动态流（读模型 ↔ PostModel）
 
-Query：`page`、`size`（默认 10，对齐 Mock）
+Query：`page`、`size`、`tab=latest|hot|following`（默认 `latest`）。
 
 单条 `list[]` 字段（与 Flutter 对齐）：
 
@@ -321,7 +335,15 @@ Query：`page`、`size`（默认 10，对齐 Mock）
 }
 ```
 
-过滤：`deleted_at IS NULL`；`ORDER BY created_at DESC`。
+过滤 / 排序（`?tab=`，默认 `latest`）：
+
+| tab | 过滤 | 排序 |
+|-----|------|------|
+| `latest` | `deleted_at IS NULL` | `created_at DESC` |
+| `hot` | 同上 | `heat DESC, created_at DESC` |
+| `following` | 作者 ∈ `wys_user_follows`（当前用户作 follower） | `created_at DESC` |
+
+未关注任何人时 `following` 返回空列表。
 
 ### 6.5 `DELETE /posts/:id`
 
@@ -329,8 +351,8 @@ Query：`page`、`size`（默认 10，对齐 Mock）
 
 ### 6.6 点赞
 
-`POST /posts/:id/like`：幂等插入 like，`like_count++`（未赞过时）。  
-`DELETE /posts/:id/like`：删除 like，`like_count--`（有赞时）。
+`POST /posts/:id/like`：幂等插入 like，`like_count++`、`heat+=2`（未赞过时）。  
+`DELETE /posts/:id/like`：删除 like，`like_count--`、`heat-=2`（有赞时）。
 
 `data`：返回更新后的读模型片段即可：
 
@@ -351,7 +373,18 @@ Query：`page`、`size`（默认 10，对齐 Mock）
 }
 ```
 
-成功返回完整评论对象；`posts.comment_count++`。
+成功返回完整评论对象；`posts.comment_count++`、`heat+=1`。
+
+### 6.8 关注
+
+`POST /users/:id/follow`：幂等关注；不可关注自己。  
+`DELETE /users/:id/follow`：取消关注。
+
+`data`：
+
+```json
+{ "followee_id": "…", "is_followed": true }
+```
 
 ---
 

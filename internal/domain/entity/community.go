@@ -38,12 +38,28 @@ type WysPost struct {
 	Source        string     `gorm:"size:64;not null;default:''"`
 	LikeCount     int        `gorm:"not null;default:0"`
 	CommentCount  int        `gorm:"not null;default:0"`
+	// Heat = like_count*2 + comment_count；热门 Tab 排序用。
+	Heat          int64      `gorm:"not null;default:0;index"`
 	DeletedAt     *time.Time `gorm:"index"`
 	CreatedAt     time.Time  `gorm:"autoCreateTime;index"`
 	UpdatedAt     time.Time  `gorm:"autoUpdateTime"`
 }
 
 func (WysPost) TableName() string { return "wys_posts" }
+
+// PostHeat 热度公式（写路径与回填共用）。
+func PostHeat(likeCount, commentCount int) int64 {
+	return int64(likeCount)*2 + int64(commentCount)
+}
+
+// WysUserFollow 社区关注关系（关注 Tab 过滤作者）。
+type WysUserFollow struct {
+	FollowerID string    `gorm:"column:follower_id;size:64;primaryKey"`
+	FolloweeID string    `gorm:"column:followee_id;size:64;primaryKey;index"`
+	CreatedAt  time.Time `gorm:"autoCreateTime"`
+}
+
+func (WysUserFollow) TableName() string { return "wys_user_follows" }
 
 // WysPostLike 动态点赞。
 type WysPostLike struct {

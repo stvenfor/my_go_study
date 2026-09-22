@@ -75,12 +75,38 @@ func (ctrl *CommunityController) ListPosts(c *gin.Context) {
 		return
 	}
 	pq := response.ParsePageQuery(c, 10)
-	list, total, err := ctrl.uc.ListPosts(c.Request.Context(), user.ID, pq.Page, pq.Size)
+	list, total, err := ctrl.uc.ListPosts(c.Request.Context(), user.ID, c.Query("tab"), pq.Page, pq.Size)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "获取动态失败")
 		return
 	}
 	response.SuccessList(c, list, pq.Page, pq.Size, total)
+}
+
+func (ctrl *CommunityController) FollowUser(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	if err := ctrl.uc.FollowUser(c.Request.Context(), user.ID, c.Param("id")); err != nil {
+		writeCommunityError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"followee_id": c.Param("id"), "is_followed": true})
+}
+
+func (ctrl *CommunityController) UnfollowUser(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	if err := ctrl.uc.UnfollowUser(c.Request.Context(), user.ID, c.Param("id")); err != nil {
+		writeCommunityError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"followee_id": c.Param("id"), "is_followed": false})
 }
 
 func (ctrl *CommunityController) DeletePost(c *gin.Context) {

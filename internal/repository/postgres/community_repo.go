@@ -74,14 +74,30 @@ func (r *CommunityRepository) SoftDeletePost(ctx context.Context, id uuid.UUID, 
 	return res.RowsAffected > 0, nil
 }
 
-func (r *CommunityRepository) ListPosts(ctx context.Context, offset, limit int) ([]entity.WysPost, int64, error) {
+func (r *CommunityRepository) ListPosts(ctx context.Context, viewerID, tab string, offset, limit int) ([]entity.WysPost, int64, error) {
 	tx := r.db.WithContext(ctx).Model(&entity.WysPost{}).Where("deleted_at IS NULL")
+	switch tab {
+	case repository.PostTabFollowing:
+		tx = tx.Where(
+			"user_id IN (SELECT followee_id FROM wys_user_follows WHERE follower_id = ?)",
+			viewerID,
+		)
+	case repository.PostTabHot, repository.PostTabLatest, "":
+		// no extra filter
+	default:
+		// unknown tab treated as latest by caller; keep unfiltered
+	}
+
 	var total int64
 	if err := tx.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	order := "created_at DESC"
+	if tab == repository.PostTabHot {
+		order = "heat DESC, created_at DESC"
+	}
 	var list []entity.WysPost
-	err := tx.Order("created_at DESC").Offset(offset).Limit(limit).Find(&list).Error
+	err := tx.Order(order).Offset(offset).Limit(limit).Find(&list).Error
 	return list, total, err
 }
 
@@ -97,7 +113,10 @@ func (r *CommunityRepository) AddLike(ctx context.Context, postID uuid.UUID, use
 			return nil
 		}
 		upd := tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL", postID).
-			UpdateColumn("like_count", gorm.Expr("like_count + 1"))
+			Updates(map[string]any{
+				"like_count": gorm.Expr("like_count + 1"),
+				"heat":       gorm.Expr("heat + 2"),
+			})
 		if upd.Error != nil {
 			return upd.Error
 		}
@@ -121,7 +140,10 @@ func (r *CommunityRepository) RemoveLike(ctx context.Context, postID uuid.UUID, 
 			return nil
 		}
 		upd := tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL AND like_count > 0", postID).
-			UpdateColumn("like_count", gorm.Expr("like_count - 1"))
+			Updates(map[string]any{
+				"like_count": gorm.Expr("like_count - 1"),
+				"heat":       gorm.Expr("GREATEST(heat - 2, 0)"),
+			})
 		if upd.Error != nil {
 			return upd.Error
 		}
@@ -161,7 +183,10 @@ func (r *CommunityRepository) CreateComment(ctx context.Context, c *entity.WysPo
 			return err
 		}
 		return tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL", c.PostID).
-			UpdateColumn("comment_count", gorm.Expr("comment_count + 1")).Error
+			Updates(map[string]any{
+				"comment_count": gorm.Expr("comment_count + 1"),
+				"heat":          gorm.Expr("heat + 1"),
+			}).Error
 	})
 }
 
@@ -204,6 +229,44 @@ func (r *CommunityRepository) AuthorsByIDs(ctx context.Context, ids []string) (m
 		}
 	}
 	return out, nil
+}
+
+func (r *CommunityRepository) FollowUser(ctx context.Context, followerID, followeeID string) (bool, error) {
+	var added bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row := entity.WysUserFollow{FollowerID: followerID, FolloweeID: followeeID}
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		if res.Error != nil {
+			return res.Error
+		}
+		added = res.RowsAffected > 0
+		return nil
+	})
+	return added, err
+}
+
+func (r *CommunityRepository) UnfollowUser(ctx context.Context, followerID, followeeID string) (bool, error) {
+	res := r.db.WithContext(ctx).
+		Where("follower_id = ? AND followee_id = ?", followerID, followeeID).
+		Delete(&entity.WysUserFollow{})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+func (r *CommunityRepository) IsFollowing(ctx context.Context, followerID, followeeID string) (bool, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&entity.WysUserFollow{}).
+		Where("follower_id = ? AND followee_id = ?", followerID, followeeID).
+		Count(&n).Error
+	return n > 0, err
+}
+
+func (r *CommunityRepository) BackfillPostHeat(ctx context.Context) error {
+	return r.db.WithContext(ctx).Exec(
+		`UPDATE wys_posts SET heat = (like_count * 2 + comment_count) WHERE deleted_at IS NULL`,
+	).Error
 }
 
 func (r *CommunityRepository) EnsureSeed(ctx context.Context) error {

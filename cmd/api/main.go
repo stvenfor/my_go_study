@@ -105,6 +105,7 @@ func run() error {
 	var mallController *controller.MallController
 	var pointsController *controller.PointsController
 	var communityController *controller.CommunityController
+	var shortVideoController *controller.ShortVideoController
 	var addressController *controller.AddressController
 	var homeTodoController *controller.HomeTodoController
 	var sbClient *pkgsb.Client
@@ -138,6 +139,14 @@ func run() error {
 		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC)
 		mallController = controller.NewMallController(mallUC)
 		communityRepo = postgres.NewCommunityRepository(db)
+		shortVideoRepo := postgres.NewShortVideoRepository(db)
+		shortVideoUC := usecase.NewShortVideoUsecase(shortVideoRepo, cfg.ShortVideo.ReviewDelayOrDefault())
+		shortVideoController = controller.NewShortVideoController(shortVideoUC)
+		if err := postgres.EnsureShortVideoSeed(db); err != nil {
+			log.Warn("小视频种子写入失败", zap.Error(err))
+		} else {
+			log.Info("小视频种子已就绪（13400000000 / 16 条）")
+		}
 		addressRepo := postgres.NewAddressRepository(db)
 		addressUC := usecase.NewAddressUsecase(addressRepo)
 		addressController = controller.NewAddressController(addressUC)
@@ -264,6 +273,7 @@ func run() error {
 		MallController:        mallController,
 		PointsController:      pointsController,
 		CommunityController:   communityController,
+		ShortVideoController:  shortVideoController,
 		AddressController:     addressController,
 		HomeTodoController:    homeTodoController,
 		TransactionController: transactionController,
@@ -393,6 +403,8 @@ func autoMigrate(db *gorm.DB) error {
 		&entity.WysPostLike{},
 		&entity.WysPostComment{},
 		&entity.WysUserFollow{},
+		&entity.WysShortVideo{},
+		&entity.WysShortVideoLike{},
 	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}

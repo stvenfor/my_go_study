@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,12 +26,26 @@ type Config struct {
 	Queue     QueueConfig     `mapstructure:"queue"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
 	SSE       SSEConfig       `mapstructure:"sse"`
-	Community CommunityConfig `mapstructure:"community"`
+	Community  CommunityConfig  `mapstructure:"community"`
+	ShortVideo ShortVideoConfig `mapstructure:"short_video"`
 }
 
 // CommunityConfig 社区动态。
 type CommunityConfig struct {
 	AskEveryoneInviteUserIDs []string `mapstructure:"ask_everyone_invite_user_ids"`
+}
+
+// ShortVideoConfig 小视频。
+type ShortVideoConfig struct {
+	ReviewDelaySeconds int `mapstructure:"review_delay_seconds"`
+}
+
+// ReviewDelayOrDefault 审核时延秒数，默认 30。
+func (c ShortVideoConfig) ReviewDelayOrDefault() int {
+	if c.ReviewDelaySeconds <= 0 {
+		return 30
+	}
+	return c.ReviewDelaySeconds
 }
 
 // ServerConfig HTTP 服务配置。
@@ -565,6 +580,7 @@ func Load(configPath, env string) (*Config, error) {
 	applySSEDefaults(&cfg)
 	applyAuthWhitelistEnv(&cfg.Auth)
 	applyCommunityEnv(&cfg.Community)
+	applyShortVideoEnv(&cfg.ShortVideo)
 
 	return &cfg, nil
 }
@@ -685,6 +701,14 @@ func applyAuthWhitelistEnv(auth *AuthConfig) {
 func applyCommunityEnv(c *CommunityConfig) {
 	if raw := strings.TrimSpace(os.Getenv("COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")); raw != "" {
 		c.AskEveryoneInviteUserIDs = splitCommaTrimmed(raw)
+	}
+}
+
+func applyShortVideoEnv(c *ShortVideoConfig) {
+	if raw := strings.TrimSpace(os.Getenv("SHORT_VIDEO_REVIEW_DELAY_SECONDS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			c.ReviewDelaySeconds = n
+		}
 	}
 }
 

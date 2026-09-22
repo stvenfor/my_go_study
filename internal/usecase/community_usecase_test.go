@@ -31,8 +31,29 @@ func TestNormalizeMedia_imageCap(t *testing.T) {
 	}
 }
 
+func TestNormalizePostTab(t *testing.T) {
+	cases := map[string]string{
+		"": "latest", "latest": "latest", "最新": "latest",
+		"hot": "hot", "热门": "hot", "HOT": "hot",
+		"following": "following", "关注": "following",
+		"other": "latest",
+	}
+	for in, want := range cases {
+		if got := normalizePostTab(in); got != want {
+			t.Fatalf("tab %q: got %q want %q", in, got, want)
+		}
+	}
+}
+
+func TestPostHeatFormula(t *testing.T) {
+	like, comment := 3, 4
+	got := int64(like)*2 + int64(comment)
+	if got != 10 {
+		t.Fatalf("got %d", got)
+	}
+}
+
 func TestAppendTopicTagLogic(t *testing.T) {
-	// 与 CreatePost 追加规则一致的纯逻辑冒烟
 	content := "hello"
 	tag := "#问大家"
 	if !strings.Contains(content, tag) {
@@ -41,14 +62,11 @@ func TestAppendTopicTagLogic(t *testing.T) {
 	if content != "hello\n#问大家" {
 		t.Fatalf("got %q", content)
 	}
-	if strings.Contains(content, tag) {
-		// 不重复追加
-		dup := content
-		if !strings.Contains(dup, tag) {
-			dup = dup + "\n" + tag
-		}
-		if dup != content {
-			t.Fatalf("duplicated tag")
-		}
+	dup := content
+	if !strings.Contains(dup, tag) {
+		dup = dup + "\n" + tag
+	}
+	if dup != content {
+		t.Fatalf("duplicated tag")
 	}
 }

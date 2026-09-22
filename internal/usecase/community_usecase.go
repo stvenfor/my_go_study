@@ -41,7 +41,10 @@ func NewCommunityUsecase(repo repository.CommunityRepository, push *RealtimePush
 }
 
 func (u *CommunityUsecase) EnsureSeed(ctx context.Context) error {
-	return u.repo.EnsureSeed(ctx)
+	if err := u.repo.EnsureSeed(ctx); err != nil {
+		return err
+	}
+	return u.repo.BackfillPostHeat(ctx)
 }
 
 // CreatePostInput 发帖写模型。
@@ -206,14 +209,44 @@ func (u *CommunityUsecase) notifyAskEveryone(ctx context.Context, authorID, post
 	}
 }
 
-func (u *CommunityUsecase) ListPosts(ctx context.Context, viewerID string, page, size int) ([]PostDTO, int64, error) {
+func (u *CommunityUsecase) ListPosts(ctx context.Context, viewerID, tab string, page, size int) ([]PostDTO, int64, error) {
+	tab = normalizePostTab(tab)
 	offset := (page - 1) * size
-	list, total, err := u.repo.ListPosts(ctx, offset, size)
+	list, total, err := u.repo.ListPosts(ctx, viewerID, tab, offset, size)
 	if err != nil {
 		return nil, 0, err
 	}
 	out, err := u.mapPosts(ctx, list, viewerID)
 	return out, total, err
+}
+
+func normalizePostTab(tab string) string {
+	switch strings.ToLower(strings.TrimSpace(tab)) {
+	case repository.PostTabHot, "热门":
+		return repository.PostTabHot
+	case repository.PostTabFollowing, "关注":
+		return repository.PostTabFollowing
+	default:
+		return repository.PostTabLatest
+	}
+}
+
+func (u *CommunityUsecase) FollowUser(ctx context.Context, followerID, followeeID string) error {
+	followeeID = strings.TrimSpace(followeeID)
+	if followeeID == "" || followeeID == followerID {
+		return fmt.Errorf("%w: followee_id", ErrCommunityInvalid)
+	}
+	_, err := u.repo.FollowUser(ctx, followerID, followeeID)
+	return err
+}
+
+func (u *CommunityUsecase) UnfollowUser(ctx context.Context, followerID, followeeID string) error {
+	followeeID = strings.TrimSpace(followeeID)
+	if followeeID == "" || followeeID == followerID {
+		return fmt.Errorf("%w: followee_id", ErrCommunityInvalid)
+	}
+	_, err := u.repo.UnfollowUser(ctx, followerID, followeeID)
+	return err
 }
 
 func (u *CommunityUsecase) SoftDelete(ctx context.Context, viewerID, postID string) error {
