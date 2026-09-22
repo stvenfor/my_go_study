@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
-# 可选：git config core.hooksPath .githooks
-exec "$(dirname "$0")/../scripts/check-secrets.sh"
+# 推送前检查密钥。兼容 core.hooksPath=.githooks 与复制到 .git/hooks。
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+exec "$root/scripts/check-secrets.sh"
