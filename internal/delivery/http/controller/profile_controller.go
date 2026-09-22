@@ -61,6 +61,32 @@ func (ctrl *ProfileController) SwitchStore(c *gin.Context) {
 	response.Success(c, response.FromUserStoreStats(stats))
 }
 
+// ListMyStores 当前用户可切换的经销商列表。
+// GET /api/v1/me/stores
+func (ctrl *ProfileController) ListMyStores(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	items, err := ctrl.profileUC.ListMyStores(c.Request.Context(), user.ID)
+	if err != nil {
+		writeProfileError(c, err)
+		return
+	}
+	if items == nil {
+		items = []entity.UserStoreListItem{}
+	}
+	current := 0
+	for _, it := range items {
+		if it.IsCurrent {
+			current = it.StoreID
+			break
+		}
+	}
+	response.Success(c, response.FromUserStoreList(items, current))
+}
+
 func writeProfileError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidStoreID):

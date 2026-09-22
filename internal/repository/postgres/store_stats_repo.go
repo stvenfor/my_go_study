@@ -69,6 +69,44 @@ func (r *storeStatsRepository) Switch(ctx context.Context, userID string, storeI
 	return stats.WithPosition(position), nil
 }
 
+func (r *storeStatsRepository) ListMyStores(ctx context.Context, userID string) ([]entity.UserStoreListItem, error) {
+	uid := strings.TrimSpace(userID)
+	if uid == "" {
+		return nil, nil
+	}
+	type row struct {
+		StoreID   int
+		StoreName string
+		Position  int16
+		IsCurrent bool
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Raw(`
+		SELECT m.store_id, s.name AS store_name, m.position,
+		       (u.current_store_id IS NOT NULL AND u.current_store_id = m.store_id) AS is_current
+		FROM wys_store_member m
+		JOIN wys_store s ON s.store_id = m.store_id
+		JOIN users u ON u.user_id = m.user_id
+		WHERE m.user_id = ?
+		ORDER BY CASE WHEN u.current_store_id = m.store_id THEN 0 ELSE 1 END, m.store_id
+	`, uid).Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询经销商列表失败: %w", err)
+	}
+	out := make([]entity.UserStoreListItem, 0, len(rows))
+	for _, row := range rows {
+		p := row.Position
+		out = append(out, entity.UserStoreListItem{
+			StoreID:   row.StoreID,
+			StoreName: row.StoreName,
+			Role:      &p,
+			RoleLabel: entity.StoreRoleLabel(p),
+			IsCurrent: row.IsCurrent,
+		})
+	}
+	return out, nil
+}
+
 func (r *storeStatsRepository) resolveStoreID(ctx context.Context, userID string, storeID int) (int, error) {
 	if storeID > 0 {
 		return storeID, nil

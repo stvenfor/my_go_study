@@ -54,6 +54,15 @@ type UserStoreStats struct {
 	RoleLabel      string `json:"role_label,omitempty"`
 }
 
+// UserStoreListItem 当前用户可切换的经销商（成员店）。
+type UserStoreListItem struct {
+	StoreID   int    `json:"store_id"`
+	StoreName string `json:"store_name"`
+	Role      *int16 `json:"role"`
+	RoleLabel string `json:"role_label"`
+	IsCurrent bool   `json:"is_current"`
+}
+
 // ZeroUserStoreStats 没有统计、也没有职务。0 不是销售顾问。
 func ZeroUserStoreStats() UserStoreStats {
 	return UserStoreStats{}

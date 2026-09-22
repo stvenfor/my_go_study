@@ -43,7 +43,9 @@ type MallRepository interface {
 	FindOrderByIdempotency(ctx context.Context, buyerUserID, key string) (*entity.WysMallOrder, error)
 	CreateOrder(ctx context.Context, order *entity.WysMallOrder, items []entity.WysMallOrderItem) error
 	GetOrder(ctx context.Context, orderID int64) (*entity.WysMallOrder, error)
+	ListOrdersByBuyer(ctx context.Context, buyerUserID string, statuses []int16, offset, limit int) ([]entity.WysMallOrder, int64, error)
 	ListOrderItems(ctx context.Context, orderID int64) ([]entity.WysMallOrderItem, error)
+	ListOrderItemsByOrderIDs(ctx context.Context, orderIDs []int64) ([]entity.WysMallOrderItem, error)
 	ListPayments(ctx context.Context, orderID int64) ([]entity.WysMallPayment, error)
 
 	// PayOrderLocal 本地模拟支付：任意渠道成功落库并履约。已支付则幂等返回。

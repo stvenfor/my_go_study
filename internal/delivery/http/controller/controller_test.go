@@ -31,6 +31,7 @@ func (m *mockProfileRepo) UpdateByUserID(_ context.Context, accessToken, userID 
 type mockStoreStatsRepo struct {
 	loadFn   func(userID string, storeID int) (entity.UserStoreStats, error)
 	switchFn func(userID string, storeID int) (entity.UserStoreStats, error)
+	listFn   func(userID string) ([]entity.UserStoreListItem, error)
 }
 
 func (m *mockStoreStatsRepo) Load(_ context.Context, userID string, storeID int) (entity.UserStoreStats, error) {
@@ -45,6 +46,13 @@ func (m *mockStoreStatsRepo) Switch(_ context.Context, userID string, storeID in
 		return entity.ZeroUserStoreStats(), nil
 	}
 	return m.switchFn(userID, storeID)
+}
+
+func (m *mockStoreStatsRepo) ListMyStores(_ context.Context, userID string) ([]entity.UserStoreListItem, error) {
+	if m.listFn == nil {
+		return nil, nil
+	}
+	return m.listFn(userID)
 }
 
 type mockTransactionRepo struct {

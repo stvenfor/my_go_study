@@ -15,7 +15,10 @@ const (
 	CodeUnauthorized  = 10002
 	CodeForbidden     = 10003
 	CodeNotFound      = 10004
-	CodeInternalError = 50000
+	// 单设备 session：与登录 10002（密码错误）区分，客户端按 code 分支勿依赖文案。
+	CodeSessionReplaced = 10021
+	CodeSessionInvalid  = 10022
+	CodeInternalError  = 50000
 )
 
 // Response 统一 API 响应格式。

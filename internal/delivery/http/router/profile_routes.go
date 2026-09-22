@@ -4,16 +4,12 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
-	"github.com/stvenfor/my_go_study/internal/delivery/http/middleware"
 )
 
 // registerProfileRoutes 注册 Profile 相关路由。
-// 已登录请求必须带与会话一致的 user_id。本地模式再拒绝注销或停用账号。
+// 身份只认 Session Auth；本地模式再拒绝注销或停用账号。
 func registerProfileRoutes(v1 *gin.RouterGroup, sbAuth gin.HandlerFunc, profileCtrl *controller.ProfileController, accountGate gin.HandlerFunc) {
-	chain := []gin.HandlerFunc{sbAuth, middleware.RequireUserID()}
-	if accountGate != nil {
-		chain = append(chain, accountGate)
-	}
+	chain := sessionAuthChain(sbAuth, accountGate)
 	profilesGroup := v1.Group("/profiles")
 	profilesGroup.Use(chain...)
 	{
@@ -27,5 +23,6 @@ func registerProfileRoutes(v1 *gin.RouterGroup, sbAuth gin.HandlerFunc, profileC
 	{
 		meGroup.GET("/profile", profileCtrl.GetMeLegacy)
 		meGroup.PATCH("/profile", profileCtrl.UpdateMeLegacy)
+		meGroup.GET("/stores", profileCtrl.ListMyStores)
 	}
 }

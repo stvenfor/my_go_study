@@ -17,4 +17,6 @@ type StoreStatsRepository interface {
 	Load(ctx context.Context, userID string, storeID int) (entity.UserStoreStats, error)
 	// Switch 仅当他是该店成员时写入 users.current_store_id。
 	Switch(ctx context.Context, userID string, storeID int) (entity.UserStoreStats, error)
+	// ListMyStores 返回该用户作为成员的门店；is_current 对齐 users.current_store_id。
+	ListMyStores(ctx context.Context, userID string) ([]entity.UserStoreListItem, error)
 }

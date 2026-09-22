@@ -37,13 +37,7 @@ func SupabaseSessionAuth(cfg config.SupabaseConfig, sessionUC *usecase.DeviceSes
 		deviceID := strings.TrimSpace(c.GetHeader(HeaderDeviceID))
 		if sessionUC != nil {
 			if err := sessionUC.Validate(c.Request.Context(), user.ID, user.Email, sessionID, deviceID); err != nil {
-				switch {
-				case err == usecase.ErrSessionReplaced:
-					response.BackendError(c, 401, usecase.MsgSessionReplaced)
-				default:
-					response.BackendError(c, 401, usecase.MsgSessionInvalid)
-				}
-				c.Abort()
+				abortDeviceSessionError(c, err)
 				return
 			}
 		}

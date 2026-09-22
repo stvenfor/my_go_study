@@ -292,9 +292,9 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 func (h *UserHandler) handleSessionError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrSessionReplaced):
-		response.BackendError(c, http.StatusUnauthorized, usecase.MsgSessionReplaced)
+		response.Error(c, http.StatusUnauthorized, response.CodeSessionReplaced, usecase.MsgSessionReplaced)
 	case errors.Is(err, usecase.ErrSessionInvalid):
-		response.BackendError(c, http.StatusUnauthorized, usecase.MsgSessionInvalid)
+		response.Error(c, http.StatusUnauthorized, response.CodeSessionInvalid, usecase.MsgSessionInvalid)
 	default:
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}

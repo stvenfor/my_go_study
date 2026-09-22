@@ -201,8 +201,8 @@ Go 用例层错误 → HTTP 响应 → Flutter `AuthFailure`：
 | `ErrInvalidCredentials` | 401 | 密码错误 | `InvalidCredentialsFailure` |
 | `ErrEmailConfirmationRequired` | 400 | 验证邮件 | `EmailConfirmationRequiredFailure` |
 | `ErrSupabaseUnavailable` | 502 | 无法连接 Supabase | `UnknownAuthFailure` |
-| `ErrSessionReplaced` | 401 | 账号已在其他设备登录 | 清凭证并跳登录页 |
-| `ErrSessionInvalid` | 401 | 会话无效 | 清凭证并跳登录页 |
+| `ErrSessionReplaced` | 401 / code **10021** | 账号已在其他设备登录 | 清凭证并跳登录页 |
+| `ErrSessionInvalid` | 401 / code **10022** | 会话无效 | 清凭证并跳登录页 |
 
 `ErrAccountNotRegistered` 仅在配置了 `SUPABASE_SERVICE_ROLE_KEY` 时可用：`refineInvalidCredentials` 通过 Admin API 查邮箱是否已注册。
 

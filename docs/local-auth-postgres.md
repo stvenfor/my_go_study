@@ -17,7 +17,7 @@
 | 5 | 表与隔离 | 统一 `users.user_id` 主键；业务数据按该字段关联；登录后请求默认必带且须匹配 |
 | 6 | 环境 | `dev` 仍可连 Cloud；**升级 `lan`** 为本地全栈+局域网 |
 | 7 | lan 与 Cloud | 不做 LAN+Cloud；Cloud 用 `dev` + `make run` |
-| 8 | Flutter | 路径不变。注册/登录多返回 `user.user_id`。除注册、登录、刷新、手机 OTP 外，请求必须带 `user_id` |
+| 8 | Flutter | 路径不变。注册/登录多返回 `user.user_id`。受保护接口身份只认 Session（Authorization + X-Session-ID + X-Device-ID），**不必**再传 `user_id` |
 
 ---
 
@@ -68,7 +68,7 @@ auth:
 | `transactions` | `user_id varchar` → `users.user_id` |
 | `auth_refresh_tokens` | `user_id` → `users.user_id`；不把 token 塞进用户行 |
 | `wys_user_store_stats` | 每人每店一行展示数字。`role` 列遗留，不参与接口放行 |
-| `wys_mall_*` | 门店商城：类目、SPU/SKU、兑换码、购物车、订单快照、支付/退款/审计。金额 `numeric(10,2)`。无物理外键。`payment_channel`：1 支付宝 / 2 微信 / 3 苹果内购 / 4 华为内购。本地 `POST /api/v1/mall/orders/:id/pay` 任意合法渠道直接成功落库，不调渠道 SDK。启动时门店 1 种子 ≥35 条在售；`GET /api/v1/mall/stores/:store_id/products?page=&size=` 默认每页 10；`GET .../products/:product_id` 返回在售 SPU 与上架规格（不含发放地址） |
+| `wys_mall_*` | 门店商城：类目、SPU/SKU、兑换码、购物车、订单快照、支付/退款/审计。金额 `numeric(10,2)`。无物理外键。`payment_channel`：1 支付宝 / 2 微信 / 3 苹果内购 / 4 华为内购。本地 `POST /api/v1/mall/orders/:id/pay` 任意合法渠道直接成功落库，不调渠道 SDK。待支付订单自 `created_at` 起 **15 分钟**支付窗口；列表/详情/支付时惰性超时取消，响应含 `pay_deadline_at`。启动时门店 1 种子 ≥35 条在售；`GET /api/v1/mall/stores/:store_id/products?page=&size=` 默认每页 10；`GET .../products/:product_id` 返回在售 SPU 与上架规格（不含发放地址）；`GET /api/v1/mall/orders?page=&size=&status=` 买家自己的订单列表（`status` 可省略或 `0–4`，逗号多值如 `1,2`；含行快照） |
 | `wys_user_address` | 用户收货地址簿。软删；每人至多一条默认（偏唯一索引）。订单只快照 `receiver_*`，不引用 `address_id`。`GET/POST/PATCH/DELETE /api/v1/user/addresses*`（local SessionAuth） |
 
 注册、登录、刷新、`POST /api/v1/user/phone/otp/send`、`POST /api/v1/user/phone/otp/verify` **不要求**请求里的 `user_id`。其余已登录接口必须在 query 或 JSON body 带 `user_id`，且必须与当前会话一致，否则 400。账号已注销或 `status = 1` 时拒绝业务请求。连续 5 次密码错误锁定 15 分钟。`POST /api/v1/user/deactivate` 写 `deleted_at` 并撤销 refresh token，不删除行。没有把 `status` 设为停用的接口。

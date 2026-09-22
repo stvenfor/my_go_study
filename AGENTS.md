@@ -285,7 +285,7 @@ make check-secrets
 3. 新增 gRPC：proto（本仓库）→ `make proto` → delivery/grpc + usecase/repo；同步更新 Flutter `commons/network` codegen 与页面
 4. 认证错误：`mapSupabaseAuthError` + `UserHandler.handleUsecaseError`（HTTP）；gRPC 返回合适的 `status` 码
 5. PostgREST 必须 `WithUserToken`，禁止 Admin 绕过 RLS
-6. transactions 必须 `.Eq("user_id", userID)` + RLS 迁移
+6. transactions 必须用会话中的 `userID` 做 `.Eq("user_id", userID)` + RLS 迁移（勿信任客户端传的 user_id）
 7. Flutter 兼容响应注意 snake_case / `{ items: [] }`（HTTP）；gRPC 字段以 proto 为准
 8. service_role 仅 `.env.local`；推送前 `make check-secrets`
 

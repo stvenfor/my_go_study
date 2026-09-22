@@ -293,6 +293,12 @@ curl "http://localhost:8080/api/v1/profiles/me?store_id=1" \
   -H "X-Session-ID: <session_id>" \
   -H "X-Device-ID: <device_id>"
 
+# 经销商列表（我作为成员的店；含 is_current）
+curl "http://localhost:8080/api/v1/me/stores?user_id=<uid>" \
+  -H "Authorization: Bearer <你的token>" \
+  -H "X-Session-ID: <session_id>" \
+  -H "X-Device-ID: <device_id>"
+
 # 切换店铺，响应为该店 stats
 curl -X POST "http://localhost:8080/api/v1/profiles/me/store" \
   -H "Authorization: Bearer <你的token>" \
@@ -303,6 +309,8 @@ curl -X POST "http://localhost:8080/api/v1/profiles/me/store" \
 ```
 
 响应 `data.stats`（snake_case）：`store_id` / `store_name` / `days_joined` / `employee_count` / `store_days` / `total_customers` / `role` / `role_label`。数字来自 `wys_user_store_stats`。`role` 来自 `wys_store_member.position`（0 销售顾问，1 销售经理，2 总经理）；还不是该店成员时 `role` 为 null，`role_label` 为空，不再默认成销售顾问。
+
+`GET /me/stores` 的 `data`：`list[]`（`store_id` / `store_name` / `role` / `role_label` / `is_current`）+ `current_store_id`。
 
 门店与权限（仅 `auth.provider=local`；需登录且 `user_id` 与会话一致）：
 

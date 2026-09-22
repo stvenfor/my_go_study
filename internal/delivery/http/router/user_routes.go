@@ -5,7 +5,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/handler"
-	"github.com/stvenfor/my_go_study/internal/delivery/http/middleware"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 )
 
@@ -19,10 +18,8 @@ func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, use
 		userGroup.POST("/phone/otp/send", userHandler.SendPhoneOTP)
 		userGroup.POST("/phone/otp/verify", userHandler.VerifyPhoneOTP)
 		if sbAuth != nil {
-			chain := []gin.HandlerFunc{sbAuth, middleware.RequireUserID()}
-			if accountGate != nil {
-				chain = append(chain, accountGate)
-			}
+			// 身份只认 Session Auth 写入的 user_id，不要求客户端再传。
+			chain := sessionAuthChain(sbAuth, accountGate)
 			userGroup.POST("/logout", append(chain, userHandler.Logout)...)
 			userGroup.POST("/deactivate", append(chain, userHandler.Deactivate)...)
 			if addressCtrl != nil {

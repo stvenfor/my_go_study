@@ -83,11 +83,16 @@ if [[ "$HTTP_A2" != "401" ]]; then
   echo "$MSG_A"
   exit 1
 fi
-if ! echo "$MSG_A" | grep -q "其他设备登录"; then
-  echo "失败: 401 响应应包含「其他设备登录」"
+if ! echo "$MSG_A" | grep -q '"code":10021'; then
+  echo "失败: 401 响应应含 code=10021 (SESSION_REPLACED)"
   echo "$MSG_A"
   exit 1
 fi
-echo "OK (401 + 其他设备登录)"
+if ! echo "$MSG_A" | grep -q "其他设备登录"; then
+  echo "失败: 401 响应 message 应包含「其他设备登录」"
+  echo "$MSG_A"
+  exit 1
+fi
+echo "OK (401 + code=10021)"
 
 echo ">>> 单设备登录联调通过"

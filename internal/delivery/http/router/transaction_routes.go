@@ -4,15 +4,11 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/controller"
-	"github.com/stvenfor/my_go_study/internal/delivery/http/middleware"
 )
 
 // registerTransactionRoutes 注册 Transaction 相关路由。
 func registerTransactionRoutes(v1 *gin.RouterGroup, sbAuth gin.HandlerFunc, txCtrl *controller.TransactionController, accountGate gin.HandlerFunc) {
-	chain := []gin.HandlerFunc{sbAuth, middleware.RequireUserID()}
-	if accountGate != nil {
-		chain = append(chain, accountGate)
-	}
+	chain := sessionAuthChain(sbAuth, accountGate)
 	flutterGroup := v1.Group("/transactions")
 	flutterGroup.Use(chain...)
 	{

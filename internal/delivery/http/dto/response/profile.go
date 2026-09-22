@@ -37,6 +37,40 @@ func FromUserStoreStats(s entity.UserStoreStats) ProfileStatsItem {
 	}
 }
 
+// UserStoreListBody GET /me/stores 响应 data。
+type UserStoreListBody struct {
+	List           []UserStoreListItem `json:"list"`
+	CurrentStoreID int                 `json:"current_store_id"`
+}
+
+// UserStoreListItem 可切换经销商一项。
+type UserStoreListItem struct {
+	StoreID   int    `json:"store_id"`
+	StoreName string `json:"store_name"`
+	Role      *int16 `json:"role"`
+	RoleLabel string `json:"role_label"`
+	IsCurrent bool   `json:"is_current"`
+}
+
+// FromUserStoreList 组装经销商列表。
+func FromUserStoreList(items []entity.UserStoreListItem, currentStoreID int) UserStoreListBody {
+	out := make([]UserStoreListItem, 0, len(items))
+	for _, it := range items {
+		label := it.RoleLabel
+		if it.Role != nil && label == "" {
+			label = entity.StoreRoleLabel(*it.Role)
+		}
+		out = append(out, UserStoreListItem{
+			StoreID:   it.StoreID,
+			StoreName: it.StoreName,
+			Role:      it.Role,
+			RoleLabel: label,
+			IsCurrent: it.IsCurrent,
+		})
+	}
+	return UserStoreListBody{List: out, CurrentStoreID: currentStoreID}
+}
+
 // ProfileItem 用户资料响应项。id 等于 user_id。
 type ProfileItem struct {
 	ID          string           `json:"id"`

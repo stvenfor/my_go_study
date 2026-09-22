@@ -71,6 +71,14 @@ func (u *ProfileUsecase) SwitchStore(ctx context.Context, userID string, storeID
 	return stats, nil
 }
 
+// ListMyStores 当前用户作为成员的经销商列表。
+func (u *ProfileUsecase) ListMyStores(ctx context.Context, userID string) ([]entity.UserStoreListItem, error) {
+	if u.stats == nil {
+		return nil, nil
+	}
+	return u.stats.ListMyStores(ctx, userID)
+}
+
 func parseStoreID(raw string) (int, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
