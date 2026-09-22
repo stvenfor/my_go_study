@@ -50,7 +50,7 @@ func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]
 	now := u.now()
 	today := shanghaiDate(now)
 
-	var joinN, followN, apptN, orderN int64
+	var joinN, followN, apptN, orderN, usedCarN int64
 
 	okMember, err := u.can(ctx, actorID, entity.PermMemberWrite, storeID)
 	if err != nil {
@@ -80,6 +80,10 @@ func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]
 		if err != nil {
 			return nil, err
 		}
+		usedCarN, err = u.repo.CountPendingUsedCarOrders(ctx, storeID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	spec, err := u.repo.GetPackingDemoSpec(ctx, storeID)
@@ -87,10 +91,10 @@ func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]
 		return nil, err
 	}
 	if spec != nil && (spec.LargeN > 0 || spec.MediumN > 0 || spec.SmallN > 0) {
-		return buildPackingDemoCards(spec, okMember, okAdmin, joinN, followN, apptN, orderN), nil
+		return buildPackingDemoCards(spec, okMember, okAdmin, joinN, followN, apptN, orderN, usedCarN), nil
 	}
 
-	out := make([]entity.HomeTodoCard, 0, 4)
+	out := make([]entity.HomeTodoCard, 0, 5)
 	if okMember && joinN > 0 {
 		out = append(out, entity.HomeTodoCard{
 			Type:        entity.TodoTypePartnerPending,
@@ -132,6 +136,16 @@ func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]
 				Count:       orderN,
 			})
 		}
+		if usedCarN > 0 {
+			out = append(out, entity.HomeTodoCard{
+				Type:        entity.TodoTypeUsedCarPendingReview,
+				Title:       "二手车待审",
+				Subtitle:    fmt.Sprintf("%d 笔二手车业务单待审核", usedCarN),
+				ActionLabel: "去查看",
+				ActionRoute: "/home/used_car",
+				Count:       usedCarN,
+			})
+		}
 	}
 	return out, nil
 }
@@ -139,7 +153,7 @@ func (u *HomeTodoUsecase) ListTodoCards(ctx context.Context, actorID string) ([]
 func buildPackingDemoCards(
 	spec *repository.HomeTodoPackingDemoSpec,
 	okMember, okAdmin bool,
-	joinN, followN, apptN, orderN int64,
+	joinN, followN, apptN, orderN, usedCarN int64,
 ) []entity.HomeTodoCard {
 	out := make([]entity.HomeTodoCard, 0, spec.LargeN+spec.MediumN+spec.SmallN)
 
@@ -195,18 +209,46 @@ func buildPackingDemoCards(
 		out = append(out, c)
 	}
 
+	smallSlots := 0
 	for i := 0; i < spec.SmallN; i++ {
-		if !okAdmin || orderN <= 0 {
+		if !okAdmin {
 			break
 		}
-		out = append(out, entity.HomeTodoCard{
-			Type:        entity.TodoTypeOrderPendingReview,
-			Title:       fmt.Sprintf("订单待审核·%d", i+1),
-			Subtitle:    fmt.Sprintf("共 %d 笔待审", orderN),
-			ActionLabel: "去处理",
-			ActionRoute: "/home/todo/order-pending-review",
-			Count:       1,
-		})
+		if smallSlots%2 == 0 && orderN > 0 {
+			out = append(out, entity.HomeTodoCard{
+				Type:        entity.TodoTypeOrderPendingReview,
+				Title:       fmt.Sprintf("订单待审核·%d", i+1),
+				Subtitle:    fmt.Sprintf("共 %d 笔待审", orderN),
+				ActionLabel: "去处理",
+				ActionRoute: "/home/todo/order-pending-review",
+				Count:       1,
+			})
+			smallSlots++
+			continue
+		}
+		if usedCarN > 0 {
+			out = append(out, entity.HomeTodoCard{
+				Type:        entity.TodoTypeUsedCarPendingReview,
+				Title:       fmt.Sprintf("二手车待审·%d", i+1),
+				Subtitle:    fmt.Sprintf("共 %d 笔待审", usedCarN),
+				ActionLabel: "去查看",
+				ActionRoute: "/home/used_car",
+				Count:       1,
+			})
+			smallSlots++
+			continue
+		}
+		if orderN > 0 {
+			out = append(out, entity.HomeTodoCard{
+				Type:        entity.TodoTypeOrderPendingReview,
+				Title:       fmt.Sprintf("订单待审核·%d", i+1),
+				Subtitle:    fmt.Sprintf("共 %d 笔待审", orderN),
+				ActionLabel: "去处理",
+				ActionRoute: "/home/todo/order-pending-review",
+				Count:       1,
+			})
+			smallSlots++
+		}
 	}
 	return out
 }

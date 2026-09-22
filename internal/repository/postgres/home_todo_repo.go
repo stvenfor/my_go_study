@@ -131,6 +131,14 @@ func (r *HomeTodoRepository) CountPendingReviewOrders(ctx context.Context, store
 	return n, err
 }
 
+func (r *HomeTodoRepository) CountPendingUsedCarOrders(ctx context.Context, storeID int) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&entity.WysUsedCarOrder{}).
+		Where("store_id = ? AND status = ?", storeID, entity.UsedCarOrderPendingReview).
+		Count(&n).Error
+	return n, err
+}
+
 func (r *HomeTodoRepository) EnsureSeed(ctx context.Context, storeID int, applicantUserID string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 仅当申请人真实存在时才种入店申请，避免确认时 UserExists 失败。

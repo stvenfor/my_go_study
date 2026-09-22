@@ -109,6 +109,7 @@ func run() error {
 	var addressController *controller.AddressController
 	var homeTodoController *controller.HomeTodoController
 	var dealInvoiceController *controller.DealInvoiceController
+	var usedCarOrderController *controller.UsedCarOrderController
 	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
@@ -175,6 +176,17 @@ func run() error {
 			log.Warn("成交发票种子写入失败", zap.Error(err))
 		} else {
 			log.Info("成交发票种子已就绪（13400000000）")
+		}
+		usedCarOrderRepo := postgres.NewUsedCarOrderRepository(db)
+		if err := postgres.EnsureUsedCarOrderSchema(db); err != nil {
+			log.Warn("二手车业务单表准备失败", zap.Error(err))
+		}
+		usedCarOrderUC := usecase.NewUsedCarOrderUsecase(usedCarOrderRepo, accessUC)
+		usedCarOrderController = controller.NewUsedCarOrderController(usedCarOrderUC)
+		if err := postgres.EnsureUsedCarOrderSeed(db); err != nil {
+			log.Warn("二手车业务单种子写入失败", zap.Error(err))
+		} else {
+			log.Info("二手车业务单种子已就绪（13400000000）")
 		}
 		financeRepo := postgres.NewAutoFinanceRepository(db)
 		purchaseQuoteUC := usecase.NewPurchaseQuoteUsecase(financeRepo)
@@ -298,6 +310,7 @@ func run() error {
 		AddressController:            addressController,
 		HomeTodoController:           homeTodoController,
 		DealInvoiceController:        dealInvoiceController,
+		UsedCarOrderController:       usedCarOrderController,
 		PurchaseCalculatorController: purchaseCalculatorController,
 		TransactionController:        transactionController,
 		RealtimeController:           realtimeController,

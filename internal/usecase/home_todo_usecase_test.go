@@ -10,11 +10,12 @@ import (
 )
 
 type memHomeTodoRepo struct {
-	joins        []entity.WysStoreJoinApplication
-	customers    []entity.WysStoreCustomer
-	appointments []entity.WysAfterSalesAppointment
-	orders       []entity.WysStoreReviewOrder
-	nextID       int64
+	joins          []entity.WysStoreJoinApplication
+	customers      []entity.WysStoreCustomer
+	appointments   []entity.WysAfterSalesAppointment
+	orders         []entity.WysStoreReviewOrder
+	usedCarPending int64
+	nextID         int64
 }
 
 func (m *memHomeTodoRepo) CreateJoinApplication(_ context.Context, app *entity.WysStoreJoinApplication) error {
@@ -120,6 +121,10 @@ func (m *memHomeTodoRepo) CountPendingReviewOrders(ctx context.Context, storeID 
 	return int64(len(rows)), err
 }
 
+func (m *memHomeTodoRepo) CountPendingUsedCarOrders(_ context.Context, _ int) (int64, error) {
+	return m.usedCarPending, nil
+}
+
 func (m *memHomeTodoRepo) EnsureSeed(context.Context, int, string) error { return nil }
 
 func (m *memHomeTodoRepo) GetPackingDemoSpec(context.Context, int) (*repository.HomeTodoPackingDemoSpec, error) {
@@ -197,6 +202,7 @@ func TestHomeTodoUsecase_ListTodoCards_OrderAndOmit(t *testing.T) {
 		orders: []entity.WysStoreReviewOrder{
 			{OrderID: 1, StoreID: storeID, Title: "O", Status: entity.ReviewOrderStatusPending},
 		},
+		usedCarPending: 2,
 	}
 	accessRepo := &homeTodoAccessRepo{
 		currentStore: &storeID,
@@ -220,6 +226,7 @@ func TestHomeTodoUsecase_ListTodoCards_OrderAndOmit(t *testing.T) {
 		entity.TodoTypeFollowUpCustomer,
 		entity.TodoTypeAfterSalesAppointment,
 		entity.TodoTypeOrderPendingReview,
+		entity.TodoTypeUsedCarPendingReview,
 	}
 	if len(cards) != len(want) {
 		t.Fatalf("len=%d cards=%v", len(cards), cards)
