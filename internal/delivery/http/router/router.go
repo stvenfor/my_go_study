@@ -21,6 +21,7 @@ type Options struct {
 	ProfileController     *controller.ProfileController
 	AccessController      *controller.AccessController
 	MallController        *controller.MallController
+	PointsController      *controller.PointsController
 	CommunityController   *controller.CommunityController
 	AddressController     *controller.AddressController
 	TransactionController *controller.TransactionController
@@ -73,6 +74,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if opts.Config.Auth.IsLocalProvider() && opts.MallController != nil && sessionAuth != nil {
 		registerMallRoutes(v1, sessionAuth, opts.MallController, opts.AccountGate)
+	}
+
+	if opts.Config.Auth.IsLocalProvider() && opts.PointsController != nil && sessionAuth != nil {
+		registerPointsRoutes(v1, sessionAuth, opts.PointsController, opts.AccountGate)
 	}
 
 	if opts.Config.Auth.IsLocalProvider() && opts.CommunityController != nil && sessionAuth != nil {

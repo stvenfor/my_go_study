@@ -24,7 +24,7 @@ func EnsureMallSeed(db *gorm.DB) error {
 		return fmt.Errorf("统计商城商品失败: %w", err)
 	}
 	if count >= 35 {
-		return nil
+		return ensurePointsRedeemSeed(db)
 	}
 
 	need := 35 - int(count)
@@ -66,6 +66,49 @@ func EnsureMallSeed(db *gorm.DB) error {
 		}
 		if err := db.Create(&sku).Error; err != nil {
 			return fmt.Errorf("写入 SKU %d 失败: %w", n, err)
+		}
+	}
+	return ensurePointsRedeemSeed(db)
+}
+
+// ensurePointsRedeemSeed 补纯积分 / 混合支付演示商品（可重复）。
+func ensurePointsRedeemSeed(db *gorm.DB) error {
+	type spec struct {
+		code   string
+		title  string
+		cny    string
+		points int64
+	}
+	seeds := []spec{
+		{"SEED-PTS-ONLY", "签到积分兑换券", "0.00", 100},
+		{"SEED-PTS-MIX", "积分加价礼包", "9.90", 50},
+	}
+	for _, s := range seeds {
+		var n int64
+		if err := db.Model(&entity.WysMallSKU{}).
+			Where("sku_code = ? AND deleted_at IS NULL", s.code).Count(&n).Error; err != nil {
+			return err
+		}
+		if n > 0 {
+			continue
+		}
+		cover := "https://picsum.photos/seed/" + s.code + "/400/400"
+		p := entity.WysMallProduct{
+			StoreID: 1, Kind: entity.MallKindVirtual, Title: s.title,
+			CoverURL: &cover, CoverAspect: 1, Status: entity.MallProductOnShelf,
+		}
+		if err := db.Create(&p).Error; err != nil {
+			return err
+		}
+		dt := entity.MallDeliverContentURL
+		url := "https://example.com/points/" + s.code
+		sku := entity.WysMallSKU{
+			ProductID: p.ProductID, SKUCode: s.code, Title: "默认规格",
+			Specs: []byte(`{}`), Price: s.cny, PricePoints: s.points,
+			Status: entity.MallSKUOn, DeliverType: &dt, ContentURL: &url,
+		}
+		if err := db.Create(&sku).Error; err != nil {
+			return err
 		}
 	}
 	return nil

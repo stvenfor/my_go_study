@@ -103,6 +103,7 @@ func run() error {
 	var profileController *controller.ProfileController
 	var accessController *controller.AccessController
 	var mallController *controller.MallController
+	var pointsController *controller.PointsController
 	var communityController *controller.CommunityController
 	var addressController *controller.AddressController
 	var sbClient *pkgsb.Client
@@ -130,7 +131,10 @@ func run() error {
 		accessUC := usecase.NewAccessUsecase(accessRepo)
 		accessController = controller.NewAccessController(accessUC)
 		mallRepo := postgres.NewMallRepository(db)
-		mallUC := usecase.NewMallUsecase(mallRepo, accessUC)
+		pointsRepo := postgres.NewPointsRepository(db)
+		pointsUC := usecase.NewPointsUsecase(pointsRepo, postgres.NewPointsTaskProgress(db))
+		pointsController = controller.NewPointsController(pointsUC)
+		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC)
 		mallController = controller.NewMallController(mallUC)
 		communityRepo = postgres.NewCommunityRepository(db)
 		addressRepo := postgres.NewAddressRepository(db)
@@ -244,6 +248,7 @@ func run() error {
 		ProfileController:     profileController,
 		AccessController:      accessController,
 		MallController:        mallController,
+		PointsController:      pointsController,
 		CommunityController:   communityController,
 		AddressController:     addressController,
 		TransactionController: transactionController,

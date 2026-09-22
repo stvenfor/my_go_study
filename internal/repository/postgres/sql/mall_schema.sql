@@ -227,3 +227,19 @@ INSERT INTO role_permission (role_code, permission_code) VALUES
   ('store_staff', 'mall.catalog.write'),
   ('platform_admin', 'mall.catalog.write')
 ON CONFLICT (role_code, permission_code) DO NOTHING;
+
+-- 积分价 / 混合支付（可重复执行）
+ALTER TABLE wys_mall_sku ADD COLUMN IF NOT EXISTS price_points bigint NOT NULL DEFAULT 0;
+ALTER TABLE wys_mall_order ADD COLUMN IF NOT EXISTS total_points bigint NOT NULL DEFAULT 0;
+ALTER TABLE wys_mall_order ADD COLUMN IF NOT EXISTS payment_mode smallint NOT NULL DEFAULT 1;
+ALTER TABLE wys_mall_order_item ADD COLUMN IF NOT EXISTS price_points bigint NOT NULL DEFAULT 0;
+ALTER TABLE wys_mall_order_item ADD COLUMN IF NOT EXISTS line_points bigint NOT NULL DEFAULT 0;
+ALTER TABLE wys_mall_payment DROP CONSTRAINT IF EXISTS chk_wys_mall_payment_channel;
+ALTER TABLE wys_mall_order DROP CONSTRAINT IF EXISTS chk_wys_mall_order_channel;
+ALTER TABLE wys_mall_order ADD CONSTRAINT chk_wys_mall_order_channel
+  CHECK (payment_channel IS NULL OR payment_channel IN (1, 2, 3, 4, 5));
+ALTER TABLE wys_mall_payment ADD CONSTRAINT chk_wys_mall_payment_channel
+  CHECK (payment_channel IN (1, 2, 3, 4, 5));
+DROP INDEX IF EXISTS uq_wys_mall_payment_one_success;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wys_mall_payment_one_success_per_channel
+  ON wys_mall_payment (order_id, payment_channel) WHERE status = 1;

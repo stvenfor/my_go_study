@@ -30,10 +30,18 @@ const (
 	MallOrderCancelled int16 = 3
 	MallOrderClosed    int16 = 4
 
+	// MallOrderPayTTL 待支付订单支付窗口。超时后惰性取消为已取消。
+	MallOrderPayTTL = 15 * time.Minute
+
 	MallPayAlipay    int16 = 1
 	MallPayWeChat    int16 = 2
 	MallPayAppleIAP  int16 = 3
 	MallPayHuaweiIAP int16 = 4
+	MallPayPoints    int16 = 5
+
+	MallPayModeCNY    int16 = 1
+	MallPayModePoints int16 = 2
+	MallPayModeMixed  int16 = 3
 
 	MallPaymentPending int16 = 0
 	MallPaymentSuccess int16 = 1
@@ -56,14 +64,76 @@ const (
 	WysMallAuditLogTable    = "wys_mall_audit_log"
 )
 
-// ValidMallPaymentChannel 本地模拟支付允许的渠道。
+// ValidMallPaymentChannel 本地模拟支付允许的渠道（含积分）。
 func ValidMallPaymentChannel(ch int16) bool {
+	switch ch {
+	case MallPayAlipay, MallPayWeChat, MallPayAppleIAP, MallPayHuaweiIAP, MallPayPoints:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidMallCNYChannel 人民币渠道（不含积分）。
+func ValidMallCNYChannel(ch int16) bool {
 	switch ch {
 	case MallPayAlipay, MallPayWeChat, MallPayAppleIAP, MallPayHuaweiIAP:
 		return true
 	default:
 		return false
 	}
+}
+
+// MallSKUPaymentMode 由 CNY 价与积分价派生支付方式。
+func MallSKUPaymentMode(priceCNY string, pricePoints int64) int16 {
+	cnyZero := IsZeroMoney(priceCNY)
+	ptsZero := pricePoints <= 0
+	switch {
+	case !cnyZero && ptsZero:
+		return MallPayModeCNY
+	case cnyZero && !ptsZero:
+		return MallPayModePoints
+	case !cnyZero && !ptsZero:
+		return MallPayModeMixed
+	default:
+		return MallPayModeCNY
+	}
+}
+
+// IsZeroMoney 判断金额字符串是否为零。
+func IsZeroMoney(s string) bool {
+	s = trimSpaceMoney(s)
+	if s == "" || s == "0" || s == "0.0" || s == "0.00" {
+		return true
+	}
+	return false
+}
+
+func trimSpaceMoney(s string) string {
+	for len(s) > 0 && (s[0] == ' ' || s[0] == '\t') {
+		s = s[1:]
+	}
+	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '\t') {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+// MallOrderPayDeadline 待支付截止时刻；非待支付返回 nil。
+func MallOrderPayDeadline(status int16, createdAt time.Time) *time.Time {
+	if status != MallOrderUnpaid {
+		return nil
+	}
+	t := createdAt.Add(MallOrderPayTTL)
+	return &t
+}
+
+// MallOrderPayExpired 待支付是否已过支付窗口。
+func MallOrderPayExpired(status int16, createdAt, now time.Time) bool {
+	if status != MallOrderUnpaid {
+		return false
+	}
+	return !now.Before(createdAt.Add(MallOrderPayTTL))
 }
 
 // WysMallCategory 门店类目。
@@ -107,6 +177,8 @@ type MallShelfItem struct {
 	CoverAspect float64 `json:"cover_aspect"`
 	Kind        int16   `json:"kind"`
 	Price       string  `json:"price"`
+	PricePoints int64   `json:"price_points"`
+	PaymentMode int16   `json:"payment_mode"`
 	Subtitle    string  `json:"subtitle,omitempty"`
 }
 
@@ -122,6 +194,8 @@ type MallSKUOffer struct {
 	Title       string          `json:"title"`
 	Specs       json.RawMessage `json:"specs"`
 	Price       string          `json:"price"`
+	PricePoints int64           `json:"price_points"`
+	PaymentMode int16           `json:"payment_mode"`
 	StockQty    int             `json:"stock_qty"`
 	DeliverType *int16          `json:"deliver_type,omitempty"`
 }
@@ -139,7 +213,8 @@ type WysMallSKU struct {
 	SKUCode     string         `json:"sku_code" gorm:"column:sku_code"`
 	Title       string         `json:"title"`
 	Specs       json.RawMessage `json:"specs" gorm:"type:jsonb"`
-	Price       string          `json:"price" gorm:"type:numeric(10,2)"`
+	Price       string          `json:"price" gorm:"type:numeric(10,2)"` // CNY
+	PricePoints int64           `json:"price_points" gorm:"column:price_points"`
 	StockQty    int            `json:"stock_qty"`
 	Version     int            `json:"version"`
 	Status      int16          `json:"status"`
@@ -184,6 +259,8 @@ type WysMallOrder struct {
 	Status          int16      `json:"status"`
 	PaymentChannel  *int16     `json:"payment_channel,omitempty"`
 	Amount          string     `json:"amount" gorm:"type:numeric(10,2)"`
+	TotalPoints     int64      `json:"total_points"`
+	PaymentMode     int16      `json:"payment_mode"`
 	ReceiverName    *string    `json:"receiver_name,omitempty"`
 	ReceiverPhone   *string    `json:"receiver_phone,omitempty"`
 	ReceiverAddress *string    `json:"receiver_address,omitempty"`
@@ -205,8 +282,10 @@ type WysMallOrderItem struct {
 	CoverURL     *string        `json:"cover_url,omitempty"`
 	Specs        json.RawMessage `json:"specs" gorm:"type:jsonb"`
 	Price        string          `json:"price" gorm:"type:numeric(10,2)"`
+	PricePoints  int64           `json:"price_points"`
 	Qty          int             `json:"qty"`
 	LineAmount   string          `json:"line_amount" gorm:"type:numeric(10,2)"`
+	LinePoints   int64           `json:"line_points"`
 	ContentURL   *string        `json:"content_url,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`
 }
@@ -258,7 +337,20 @@ func (WysMallAuditLog) TableName() string { return WysMallAuditLogTable }
 
 // MallOrderDetail 订单详情。
 type MallOrderDetail struct {
-	Order    WysMallOrder       `json:"order"`
-	Items    []WysMallOrderItem `json:"items"`
-	Payments []WysMallPayment   `json:"payments,omitempty"`
+	Order         WysMallOrder       `json:"order"`
+	Items         []WysMallOrderItem `json:"items"`
+	Payments      []WysMallPayment   `json:"payments,omitempty"`
+	PayDeadlineAt *time.Time         `json:"pay_deadline_at,omitempty"`
+}
+
+// MallOrderListItem 买家订单列表行（含行快照，够画卡片）。
+type MallOrderListItem struct {
+	OrderID       int64              `json:"order_id"`
+	OrderNo       string             `json:"order_no"`
+	StoreID       int                `json:"store_id"`
+	Status        int16              `json:"status"`
+	Amount        string             `json:"amount"`
+	CreatedAt     time.Time          `json:"created_at"`
+	PayDeadlineAt *time.Time         `json:"pay_deadline_at,omitempty"`
+	Items         []WysMallOrderItem `json:"items"`
 }

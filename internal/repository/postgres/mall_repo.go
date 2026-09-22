@@ -147,15 +147,16 @@ func (r *MallRepository) ListShelfItems(ctx context.Context, storeID, offset, li
 		CoverAspect float64 `gorm:"column:cover_aspect"`
 		Kind        int16   `gorm:"column:kind"`
 		Price       string  `gorm:"column:price"`
+		PricePoints int64   `gorm:"column:price_points"`
 		SKUTitle    string  `gorm:"column:sku_title"`
 	}
 	var rows []row
 	listSQL := `
 		SELECT p.product_id, s.sku_id, p.title, p.cover_url, p.cover_aspect, p.kind,
-		       s.price::text AS price, s.title AS sku_title
+		       s.price::text AS price, COALESCE(s.price_points, 0) AS price_points, s.title AS sku_title
 		FROM wys_mall_product p
 		INNER JOIN LATERAL (
-		  SELECT sku_id, price, title
+		  SELECT sku_id, price, price_points, title
 		  FROM wys_mall_sku
 		  WHERE product_id = p.product_id AND status = ? AND deleted_at IS NULL
 		  ORDER BY sku_id
@@ -197,6 +198,8 @@ func (r *MallRepository) ListShelfItems(ctx context.Context, storeID, offset, li
 			CoverAspect: aspect,
 			Kind:        rw.Kind,
 			Price:       rw.Price,
+			PricePoints: rw.PricePoints,
+			PaymentMode: entity.MallSKUPaymentMode(rw.Price, rw.PricePoints),
 			Subtitle:    subtitle,
 		})
 	}
@@ -273,9 +276,32 @@ func (r *MallRepository) GetOrder(ctx context.Context, orderID int64) (*entity.W
 	return &o, nil
 }
 
+func (r *MallRepository) ListOrdersByBuyer(ctx context.Context, buyerUserID string, statuses []int16, offset, limit int) ([]entity.WysMallOrder, int64, error) {
+	q := r.db.WithContext(ctx).Model(&entity.WysMallOrder{}).Where("buyer_user_id = ?", buyerUserID)
+	if len(statuses) > 0 {
+		q = q.Where("status IN ?", statuses)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var orders []entity.WysMallOrder
+	err := q.Order("created_at DESC, order_id DESC").Offset(offset).Limit(limit).Find(&orders).Error
+	return orders, total, err
+}
+
 func (r *MallRepository) ListOrderItems(ctx context.Context, orderID int64) ([]entity.WysMallOrderItem, error) {
 	var items []entity.WysMallOrderItem
 	err := r.db.WithContext(ctx).Where("order_id = ?", orderID).Order("item_id").Find(&items).Error
+	return items, err
+}
+
+func (r *MallRepository) ListOrderItemsByOrderIDs(ctx context.Context, orderIDs []int64) ([]entity.WysMallOrderItem, error) {
+	if len(orderIDs) == 0 {
+		return nil, nil
+	}
+	var items []entity.WysMallOrderItem
+	err := r.db.WithContext(ctx).Where("order_id IN ?", orderIDs).Order("order_id, item_id").Find(&items).Error
 	return items, err
 }
 
@@ -381,28 +407,54 @@ func (r *MallRepository) PayOrderLocal(ctx context.Context, orderID int64, buyer
 		}
 
 		tradeNo := "local-" + uuid.NewString()
-		pay := entity.WysMallPayment{
-			PaymentNo:      "P" + strings.ReplaceAll(uuid.NewString(), "-", "")[:20],
-			OrderID:        orderID,
-			UserID:         buyerUserID,
-			PaymentChannel: channel,
-			Amount:         order.Amount,
-			Status:         entity.MallPaymentSuccess,
-			ChannelTradeNo: &tradeNo,
-			ChannelPayload: json.RawMessage(`{}`),
-			PaidAt:         &now,
-		}
-		if err := tx.Create(&pay).Error; err != nil {
-			return err
+
+		// 积分支付单（余额已由 PointsUsecase 在 usecase 层扣减）
+		if order.TotalPoints > 0 {
+			ptsTrade := "pts-" + uuid.NewString()
+			ptsPay := entity.WysMallPayment{
+				PaymentNo:      "P" + strings.ReplaceAll(uuid.NewString(), "-", "")[:20],
+				OrderID:        orderID,
+				UserID:         buyerUserID,
+				PaymentChannel: entity.MallPayPoints,
+				Amount:         "0.00",
+				Status:         entity.MallPaymentSuccess,
+				ChannelTradeNo: &ptsTrade,
+				ChannelPayload: json.RawMessage(fmt.Sprintf(`{"points":%d}`, order.TotalPoints)),
+				PaidAt:         &now,
+			}
+			if err := tx.Create(&ptsPay).Error; err != nil {
+				return err
+			}
 		}
 
-		ch := channel
+		payChannel := channel
+		if entity.IsZeroMoney(order.Amount) {
+			payChannel = entity.MallPayPoints
+		} else {
+			cnyTrade := tradeNo
+			pay := entity.WysMallPayment{
+				PaymentNo:      "P" + strings.ReplaceAll(uuid.NewString(), "-", "")[:20],
+				OrderID:        orderID,
+				UserID:         buyerUserID,
+				PaymentChannel: channel,
+				Amount:         order.Amount,
+				Status:         entity.MallPaymentSuccess,
+				ChannelTradeNo: &cnyTrade,
+				ChannelPayload: json.RawMessage(`{}`),
+				PaidAt:         &now,
+			}
+			if err := tx.Create(&pay).Error; err != nil {
+				return err
+			}
+			payChannel = channel
+		}
+
 		from := entity.MallOrderUnpaid
 		res := tx.Model(&entity.WysMallOrder{}).
 			Where("order_id = ? AND status = ?", orderID, entity.MallOrderUnpaid).
 			Updates(map[string]interface{}{
 				"status":          entity.MallOrderPaid,
-				"payment_channel": ch,
+				"payment_channel": payChannel,
 				"paid_at":         now,
 				"updated_at":      now,
 			})
@@ -425,8 +477,8 @@ func (r *MallRepository) PayOrderLocal(ctx context.Context, orderID int64, buyer
 
 		detailJSON, _ := json.Marshal(map[string]interface{}{
 			"order_no":        order.OrderNo,
-			"payment_no":      pay.PaymentNo,
-			"payment_channel": channel,
+			"payment_channel": payChannel,
+			"total_points":    order.TotalPoints,
 		})
 		audit := entity.WysMallAuditLog{
 			ActorUserID: buyerUserID,

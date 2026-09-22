@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
@@ -32,17 +33,22 @@ var (
 	ErrMallEmptyCart          = repository.ErrMallEmptyCart
 	ErrMallInvalidIdempotency = errors.New("缺少 idempotency_key")
 	ErrMallInvalidTitle       = errors.New("标题不能为空")
+	ErrMallInvalidStatus      = errors.New("订单状态无效")
+	ErrMallOrderPayExpired    = errors.New("订单支付已超时")
+	ErrMallPaymentModeMixed   = errors.New("一笔订单内商品支付方式必须一致")
+	ErrMallNeedCNYChannel     = errors.New("混合或人民币订单需使用人民币支付渠道")
 )
 
 // MallUsecase 商城用例。
 type MallUsecase struct {
 	repo   repository.MallRepository
 	access *AccessUsecase
+	points *PointsUsecase
 }
 
-// NewMallUsecase 创建。
-func NewMallUsecase(repo repository.MallRepository, access *AccessUsecase) *MallUsecase {
-	return &MallUsecase{repo: repo, access: access}
+// NewMallUsecase 创建。points 可为 nil（仅人民币路径；积分支付不可用）。
+func NewMallUsecase(repo repository.MallRepository, access *AccessUsecase, points *PointsUsecase) *MallUsecase {
+	return &MallUsecase{repo: repo, access: access, points: points}
 }
 
 // CreateProduct 店员创建商品。
@@ -81,6 +87,7 @@ type CreateSKUInput struct {
 	Title       string
 	SpecsJSON   json.RawMessage
 	Price       string
+	PricePoints int64
 	StockQty    int
 	Status      int16
 	DeliverType *int16
@@ -108,13 +115,17 @@ func (u *MallUsecase) CreateSKU(ctx context.Context, actorID string, in CreateSK
 	if len(specs) == 0 {
 		specs = json.RawMessage(`{}`)
 	}
+	if in.PricePoints < 0 {
+		return nil, ErrMallInvalidPrice
+	}
 	sku := &entity.WysMallSKU{
-		ProductID: p.ProductID,
-		SKUCode:   code,
-		Title:     strings.TrimSpace(in.Title),
-		Specs:     specs,
-		Price:     price,
-		Status:    in.Status,
+		ProductID:   p.ProductID,
+		SKUCode:     code,
+		Title:       strings.TrimSpace(in.Title),
+		Specs:       specs,
+		Price:       price,
+		PricePoints: in.PricePoints,
+		Status:      in.Status,
 	}
 	if sku.Status != entity.MallSKUOn && sku.Status != entity.MallSKUOff {
 		sku.Status = entity.MallSKUOff
@@ -210,6 +221,8 @@ func (u *MallUsecase) GetShelfProduct(ctx context.Context, storeID int, productI
 			Title:       s.Title,
 			Specs:       specs,
 			Price:       s.Price,
+			PricePoints: s.PricePoints,
+			PaymentMode: entity.MallSKUPaymentMode(s.Price, s.PricePoints),
 			StockQty:    s.StockQty,
 			DeliverType: s.DeliverType,
 		})
@@ -296,6 +309,9 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 
 	var items []entity.WysMallOrderItem
 	total := big.NewRat(0, 1)
+	var totalPoints int64
+	var orderMode int16
+	modeSet := false
 	needAddress := false
 	for _, line := range in.Lines {
 		if line.Qty <= 0 {
@@ -318,6 +334,13 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 		if p.Status != entity.MallProductOnShelf {
 			return nil, ErrMallSKUOffShelf
 		}
+		mode := entity.MallSKUPaymentMode(sku.Price, sku.PricePoints)
+		if !modeSet {
+			orderMode = mode
+			modeSet = true
+		} else if mode != orderMode {
+			return nil, ErrMallPaymentModeMixed
+		}
 		if p.Kind == entity.MallKindPhysical {
 			needAddress = true
 			if sku.StockQty < line.Qty {
@@ -330,6 +353,8 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 		}
 		lineAmt := new(big.Rat).Mul(unit, big.NewRat(int64(line.Qty), 1))
 		total.Add(total, lineAmt)
+		linePts := sku.PricePoints * int64(line.Qty)
+		totalPoints += linePts
 		specs := sku.Specs
 		if len(specs) == 0 {
 			specs = json.RawMessage(`{}`)
@@ -342,8 +367,10 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 			CoverURL:     p.CoverURL,
 			Specs:        specs,
 			Price:        sku.Price,
+			PricePoints:  sku.PricePoints,
 			Qty:          line.Qty,
 			LineAmount:   formatMoney(lineAmt),
+			LinePoints:   linePts,
 		})
 	}
 	if needAddress {
@@ -359,6 +386,8 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 		IdempotencyKey: key,
 		Status:         entity.MallOrderUnpaid,
 		Amount:         formatMoney(total),
+		TotalPoints:    totalPoints,
+		PaymentMode:    orderMode,
 	}
 	if needAddress {
 		n := strings.TrimSpace(in.ReceiverName)
@@ -385,7 +414,7 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 	return u.GetOrder(ctx, buyerUserID, order.OrderID)
 }
 
-// GetOrder 买家读自己的订单。
+// GetOrder 买家读自己的订单。待支付超时则惰性取消。
 func (u *MallUsecase) GetOrder(ctx context.Context, buyerUserID string, orderID int64) (*entity.MallOrderDetail, error) {
 	order, err := u.repo.GetOrder(ctx, orderID)
 	if err != nil {
@@ -393,6 +422,10 @@ func (u *MallUsecase) GetOrder(ctx context.Context, buyerUserID string, orderID 
 	}
 	if order.BuyerUserID != buyerUserID {
 		return nil, ErrMallNotFound
+	}
+	order, err = u.expireUnpaidIfNeeded(ctx, order)
+	if err != nil {
+		return nil, err
 	}
 	items, err := u.repo.ListOrderItems(ctx, orderID)
 	if err != nil {
@@ -402,20 +435,146 @@ func (u *MallUsecase) GetOrder(ctx context.Context, buyerUserID string, orderID 
 	if err != nil {
 		return nil, err
 	}
-	return &entity.MallOrderDetail{Order: *order, Items: items, Payments: pays}, nil
+	return &entity.MallOrderDetail{
+		Order:         *order,
+		Items:         items,
+		Payments:      pays,
+		PayDeadlineAt: entity.MallOrderPayDeadline(order.Status, order.CreatedAt),
+	}, nil
 }
 
-// PayOrder 本地模拟支付：渠道 1–4 均直接成功落库。
+// ListOrders 买家分页列出自己的订单。statuses 为空表示全部；每个值必须在 0–4。
+func (u *MallUsecase) ListOrders(ctx context.Context, buyerUserID string, statuses []int16, page, size int) ([]entity.MallOrderListItem, int64, error) {
+	for _, s := range statuses {
+		if s < entity.MallOrderUnpaid || s > entity.MallOrderClosed {
+			return nil, 0, ErrMallInvalidStatus
+		}
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size <= 0 {
+		size = 10
+	}
+	if size > 100 {
+		size = 100
+	}
+	offset := (page - 1) * size
+	orders, total, err := u.repo.ListOrdersByBuyer(ctx, buyerUserID, statuses, offset, size)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(orders) == 0 {
+		return []entity.MallOrderListItem{}, total, nil
+	}
+	ids := make([]int64, len(orders))
+	for i := range orders {
+		o, err := u.expireUnpaidIfNeeded(ctx, &orders[i])
+		if err != nil {
+			return nil, 0, err
+		}
+		orders[i] = *o
+		ids[i] = orders[i].OrderID
+	}
+	allItems, err := u.repo.ListOrderItemsByOrderIDs(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	byOrder := make(map[int64][]entity.WysMallOrderItem, len(orders))
+	for _, it := range allItems {
+		byOrder[it.OrderID] = append(byOrder[it.OrderID], it)
+	}
+	out := make([]entity.MallOrderListItem, 0, len(orders))
+	for _, o := range orders {
+		items := byOrder[o.OrderID]
+		if items == nil {
+			items = []entity.WysMallOrderItem{}
+		}
+		out = append(out, entity.MallOrderListItem{
+			OrderID:       o.OrderID,
+			OrderNo:       o.OrderNo,
+			StoreID:       o.StoreID,
+			Status:        o.Status,
+			Amount:        o.Amount,
+			CreatedAt:     o.CreatedAt,
+			PayDeadlineAt: entity.MallOrderPayDeadline(o.Status, o.CreatedAt),
+			Items:         items,
+		})
+	}
+	return out, total, nil
+}
+
+// PayOrder 支付：积分经 Points 账本扣减；混合需人民币渠道；失败则退回已扣积分。
 func (u *MallUsecase) PayOrder(ctx context.Context, buyerUserID string, orderID int64, channel int16) (*entity.MallOrderDetail, error) {
 	if !entity.ValidMallPaymentChannel(channel) {
 		return nil, ErrMallInvalidChannel
 	}
-	return u.repo.PayOrderLocal(ctx, orderID, buyerUserID, channel)
+	order, err := u.repo.GetOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.BuyerUserID != buyerUserID {
+		return nil, ErrMallNotFound
+	}
+	if entity.MallOrderPayExpired(order.Status, order.CreatedAt, time.Now()) {
+		if _, err := u.repo.CancelUnpaidOrder(ctx, order.OrderID, buyerUserID); err != nil &&
+			!errors.Is(err, ErrMallOrderNotCancelable) {
+			return nil, err
+		}
+		return nil, ErrMallOrderPayExpired
+	}
+	needsCNY := !entity.IsZeroMoney(order.Amount)
+	needsPoints := order.TotalPoints > 0
+	if needsCNY {
+		if !entity.ValidMallCNYChannel(channel) {
+			return nil, ErrMallNeedCNYChannel
+		}
+	} else if needsPoints {
+		channel = entity.MallPayPoints
+	}
+
+	debited := int64(0)
+	if needsPoints {
+		if u.points == nil {
+			return nil, ErrPointsInsufficient
+		}
+		if _, err := u.points.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, fmt.Sprintf("%d", orderID)); err != nil {
+			return nil, err
+		}
+		debited = order.TotalPoints
+	}
+	detail, err := u.repo.PayOrderLocal(ctx, orderID, buyerUserID, channel)
+	if err != nil {
+		if debited > 0 && u.points != nil {
+			_, _ = u.points.Credit(ctx, buyerUserID, debited, entity.PointsReasonMallRefund, fmt.Sprintf("%d", orderID))
+		}
+		return nil, err
+	}
+	return detail, nil
 }
 
-// CancelOrder 取消未支付订单。
+// CancelOrder 取消未支付订单（未扣积分则无需退分）。
 func (u *MallUsecase) CancelOrder(ctx context.Context, buyerUserID string, orderID int64) (*entity.WysMallOrder, error) {
 	return u.repo.CancelUnpaidOrder(ctx, orderID, buyerUserID)
+}
+
+// expireUnpaidIfNeeded 待支付超过 TTL 则取消并返回最新行。
+func (u *MallUsecase) expireUnpaidIfNeeded(ctx context.Context, order *entity.WysMallOrder) (*entity.WysMallOrder, error) {
+	if order == nil {
+		return nil, ErrMallNotFound
+	}
+	if !entity.MallOrderPayExpired(order.Status, order.CreatedAt, time.Now()) {
+		return order, nil
+	}
+	cancelled, err := u.repo.CancelUnpaidOrder(ctx, order.OrderID, order.BuyerUserID)
+	if err != nil {
+		if errors.Is(err, ErrMallOrderNotCancelable) {
+			// 并发下已被支付/取消，重读。
+			return u.repo.GetOrder(ctx, order.OrderID)
+		}
+		return nil, err
+	}
+	return cancelled, nil
 }
 
 func (u *MallUsecase) requireCatalogWrite(ctx context.Context, actorID string, storeID int) error {

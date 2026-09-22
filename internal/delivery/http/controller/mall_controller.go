@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/dto/response"
@@ -65,6 +66,7 @@ func (ctrl *MallController) CreateSKU(c *gin.Context) {
 		Title       string          `json:"title"`
 		Specs       json.RawMessage `json:"specs"`
 		Price       string          `json:"price"`
+		PricePoints int64           `json:"price_points"`
 		StockQty    int             `json:"stock_qty"`
 		Status      int16           `json:"status"`
 		DeliverType *int16          `json:"deliver_type"`
@@ -80,6 +82,7 @@ func (ctrl *MallController) CreateSKU(c *gin.Context) {
 		Title:       body.Title,
 		SpecsJSON:   body.Specs,
 		Price:       body.Price,
+		PricePoints: body.PricePoints,
 		StockQty:    body.StockQty,
 		Status:      body.Status,
 		DeliverType: body.DeliverType,
@@ -198,6 +201,28 @@ func (ctrl *MallController) ListCart(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"items": items})
+}
+
+// ListOrders GET /api/v1/mall/orders?page=&size=&status=
+// status 可省略（全部），或单个 0–4，或逗号分隔多值（如 1,2）。
+func (ctrl *MallController) ListOrders(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	statuses, err := parseOrderStatusQuery(c.Query("status"))
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
+		return
+	}
+	pq := response.ParsePageQuery(c, 10)
+	list, total, err := ctrl.mallUC.ListOrders(c.Request.Context(), user.ID, statuses, pq.Page, pq.Size)
+	if err != nil {
+		writeMallError(c, err)
+		return
+	}
+	response.SuccessList(c, list, pq.Page, pq.Size, total)
 }
 
 // CreateOrder POST /api/v1/mall/orders
@@ -320,6 +345,7 @@ func writeMallError(c *gin.Context, err error) {
 		errors.Is(err, usecase.ErrMallInvalidKind),
 		errors.Is(err, usecase.ErrMallInvalidPrice),
 		errors.Is(err, usecase.ErrMallInvalidQty),
+		errors.Is(err, usecase.ErrMallInvalidStatus),
 		errors.Is(err, usecase.ErrMallNeedAddress),
 		errors.Is(err, usecase.ErrMallMultiStore),
 		errors.Is(err, usecase.ErrMallEmptyCart),
@@ -329,9 +355,37 @@ func writeMallError(c *gin.Context, err error) {
 		errors.Is(err, usecase.ErrMallStockInsufficient),
 		errors.Is(err, usecase.ErrMallCodeInsufficient),
 		errors.Is(err, usecase.ErrMallOrderNotPayable),
-		errors.Is(err, usecase.ErrMallOrderNotCancelable):
+		errors.Is(err, usecase.ErrMallOrderPayExpired),
+		errors.Is(err, usecase.ErrMallOrderNotCancelable),
+		errors.Is(err, usecase.ErrMallPaymentModeMixed),
+		errors.Is(err, usecase.ErrMallNeedCNYChannel),
+		errors.Is(err, usecase.ErrPointsInsufficient):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
 	default:
 		response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())
 	}
+}
+
+func parseOrderStatusQuery(raw string) ([]int16, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]int16, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		v, err := strconv.ParseInt(p, 10, 16)
+		if err != nil || v < 0 || v > 4 {
+			return nil, usecase.ErrMallInvalidStatus
+		}
+		out = append(out, int16(v))
+	}
+	if len(out) == 0 {
+		return nil, usecase.ErrMallInvalidStatus
+	}
+	return out, nil
 }
