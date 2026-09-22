@@ -103,6 +103,7 @@ func run() error {
 	var profileController *controller.ProfileController
 	var accessController *controller.AccessController
 	var mallController *controller.MallController
+	var communityController *controller.CommunityController
 	var addressController *controller.AddressController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
@@ -111,6 +112,8 @@ func run() error {
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
+	var communityUC *usecase.CommunityUsecase
+	var communityRepo *postgres.CommunityRepository
 
 	var accountGate gin.HandlerFunc
 	businessEnabled := cfg.Auth.IsLocalProvider() || cfg.Supabase.Enabled()
@@ -129,6 +132,7 @@ func run() error {
 		mallRepo := postgres.NewMallRepository(db)
 		mallUC := usecase.NewMallUsecase(mallRepo, accessUC)
 		mallController = controller.NewMallController(mallUC)
+		communityRepo = postgres.NewCommunityRepository(db)
 		addressRepo := postgres.NewAddressRepository(db)
 		addressUC := usecase.NewAddressUsecase(addressRepo)
 		addressController = controller.NewAddressController(addressUC)
@@ -193,6 +197,15 @@ func run() error {
 
 		pushUC := usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub, pushEnqueuer)
 		realtimeController = controller.NewRealtimeController(ticketUC, syncUC, pushUC)
+		if communityRepo != nil {
+			communityUC = usecase.NewCommunityUsecase(communityRepo, pushUC, cfg.Community.AskEveryoneInviteUserIDs)
+			communityController = controller.NewCommunityController(communityUC)
+			if err := communityUC.EnsureSeed(context.Background()); err != nil {
+				log.Warn("社区种子数据写入失败", zap.Error(err))
+			} else {
+				log.Info("社区话题/动态种子已就绪")
+			}
+		}
 		log.Info("Realtime WebSocket 已启用",
 			zap.String("ws_path", cfg.Realtime.WsPath),
 			zap.String("ws_url", cfg.Realtime.WSURL(cfg.Server.Port)),
@@ -231,6 +244,7 @@ func run() error {
 		ProfileController:     profileController,
 		AccessController:      accessController,
 		MallController:        mallController,
+		CommunityController:   communityController,
 		AddressController:     addressController,
 		TransactionController: transactionController,
 		RealtimeController:    realtimeController,
@@ -354,6 +368,10 @@ func autoMigrate(db *gorm.DB) error {
 		&entity.TransactionRecord{},
 		&entity.AnalyticsRecord{},
 		&entity.WysUserStoreStats{},
+		&entity.WysTopic{},
+		&entity.WysPost{},
+		&entity.WysPostLike{},
+		&entity.WysPostComment{},
 	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}

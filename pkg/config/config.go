@@ -25,6 +25,12 @@ type Config struct {
 	Queue     QueueConfig     `mapstructure:"queue"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
 	SSE       SSEConfig       `mapstructure:"sse"`
+	Community CommunityConfig `mapstructure:"community"`
+}
+
+// CommunityConfig 社区动态。
+type CommunityConfig struct {
+	AskEveryoneInviteUserIDs []string `mapstructure:"ask_everyone_invite_user_ids"`
 }
 
 // ServerConfig HTTP 服务配置。
@@ -486,6 +492,7 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("sse.openai.base_url", "SSE_OPENAI_BASE_URL")
 	_ = v.BindEnv("sse.openai.model", "SSE_OPENAI_MODEL")
 	_ = v.BindEnv("sse.openai.api_key", "SSE_OPENAI_API_KEY")
+	_ = v.BindEnv("community.ask_everyone_invite_user_ids", "COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -557,6 +564,7 @@ func Load(configPath, env string) (*Config, error) {
 	}
 	applySSEDefaults(&cfg)
 	applyAuthWhitelistEnv(&cfg.Auth)
+	applyCommunityEnv(&cfg.Community)
 
 	return &cfg, nil
 }
@@ -671,6 +679,12 @@ func applyAuthWhitelistEnv(auth *AuthConfig) {
 	}
 	if raw := strings.TrimSpace(os.Getenv("AUTH_SESSION_WHITELIST_EMAILS")); raw != "" {
 		auth.SessionWhitelistEmails = splitCommaTrimmed(raw)
+	}
+}
+
+func applyCommunityEnv(c *CommunityConfig) {
+	if raw := strings.TrimSpace(os.Getenv("COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")); raw != "" {
+		c.AskEveryoneInviteUserIDs = splitCommaTrimmed(raw)
 	}
 }
 
