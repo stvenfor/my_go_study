@@ -106,6 +106,7 @@ func run() error {
 	var pointsController *controller.PointsController
 	var communityController *controller.CommunityController
 	var addressController *controller.AddressController
+	var homeTodoController *controller.HomeTodoController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
@@ -140,6 +141,14 @@ func run() error {
 		addressRepo := postgres.NewAddressRepository(db)
 		addressUC := usecase.NewAddressUsecase(addressRepo)
 		addressController = controller.NewAddressController(addressUC)
+		homeTodoRepo := postgres.NewHomeTodoRepository(db)
+		homeTodoUC := usecase.NewHomeTodoUsecase(homeTodoRepo, accessUC)
+		homeTodoController = controller.NewHomeTodoController(homeTodoUC)
+		if err := homeTodoUC.EnsureSeed(context.Background(), 1, ""); err != nil {
+			log.Warn("首页待办种子写入失败", zap.Error(err))
+		} else {
+			log.Info("首页待办种子已就绪（门店1）")
+		}
 		if err := postgres.EnsureMallSeed(db); err != nil {
 			log.Warn("商城种子商品写入失败", zap.Error(err))
 		} else {
@@ -251,6 +260,7 @@ func run() error {
 		PointsController:      pointsController,
 		CommunityController:   communityController,
 		AddressController:     addressController,
+		HomeTodoController:    homeTodoController,
 		TransactionController: transactionController,
 		RealtimeController:    realtimeController,
 		SseController:         sseController,
@@ -377,6 +387,7 @@ func autoMigrate(db *gorm.DB) error {
 		&entity.WysPost{},
 		&entity.WysPostLike{},
 		&entity.WysPostComment{},
+		&entity.WysUserFollow{},
 	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}
