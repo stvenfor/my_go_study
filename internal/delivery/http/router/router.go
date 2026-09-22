@@ -14,27 +14,28 @@ import (
 
 // Options 路由依赖。
 type Options struct {
-	Log                   *zap.Logger
-	Mode                  string
-	JWTManager            *jwtmanager.Manager
-	UserHandler           *handler.UserHandler
-	ProfileController     *controller.ProfileController
-	AccessController      *controller.AccessController
-	MallController        *controller.MallController
-	PointsController      *controller.PointsController
-	CommunityController   *controller.CommunityController
-	ShortVideoController  *controller.ShortVideoController
-	AddressController     *controller.AddressController
-	HomeTodoController     *controller.HomeTodoController
-	DealInvoiceController  *controller.DealInvoiceController
-	TransactionController  *controller.TransactionController
-	RealtimeController    *controller.RealtimeController
-	SseController         *controller.SseController
-	WSHandler             *wshandler.Handler
-	Config                config.Config
-	Supabase              config.SupabaseConfig
-	DeviceSessionUC       *usecase.DeviceSessionUsecase
-	AccountGate           gin.HandlerFunc
+	Log                          *zap.Logger
+	Mode                         string
+	JWTManager                   *jwtmanager.Manager
+	UserHandler                  *handler.UserHandler
+	ProfileController            *controller.ProfileController
+	AccessController             *controller.AccessController
+	MallController               *controller.MallController
+	PointsController             *controller.PointsController
+	CommunityController          *controller.CommunityController
+	ShortVideoController         *controller.ShortVideoController
+	AddressController            *controller.AddressController
+	HomeTodoController           *controller.HomeTodoController
+	DealInvoiceController        *controller.DealInvoiceController
+	PurchaseCalculatorController *controller.PurchaseCalculatorController
+	TransactionController        *controller.TransactionController
+	RealtimeController           *controller.RealtimeController
+	SseController                *controller.SseController
+	WSHandler                    *wshandler.Handler
+	Config                       config.Config
+	Supabase                     config.SupabaseConfig
+	DeviceSessionUC              *usecase.DeviceSessionUsecase
+	AccountGate                  gin.HandlerFunc
 }
 
 // Setup 构建 Gin 路由引擎。
@@ -97,6 +98,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if opts.Config.Auth.IsLocalProvider() && opts.DealInvoiceController != nil && sessionAuth != nil {
 		registerDealInvoiceRoutes(v1, sessionAuth, opts.DealInvoiceController, opts.AccountGate)
+	}
+
+	if opts.Config.Auth.IsLocalProvider() {
+		registerPurchaseCalculatorRoutes(v1, opts.PurchaseCalculatorController)
 	}
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {

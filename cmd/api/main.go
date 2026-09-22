@@ -109,6 +109,7 @@ func run() error {
 	var addressController *controller.AddressController
 	var homeTodoController *controller.HomeTodoController
 	var dealInvoiceController *controller.DealInvoiceController
+	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var realtimeController *controller.RealtimeController
@@ -174,6 +175,14 @@ func run() error {
 			log.Warn("成交发票种子写入失败", zap.Error(err))
 		} else {
 			log.Info("成交发票种子已就绪（13400000000）")
+		}
+		financeRepo := postgres.NewAutoFinanceRepository(db)
+		purchaseQuoteUC := usecase.NewPurchaseQuoteUsecase(financeRepo)
+		purchaseCalculatorController = controller.NewPurchaseCalculatorController(purchaseQuoteUC)
+		if err := postgres.EnsureAutoFinanceSeed(db); err != nil {
+			log.Warn("购车金融产品种子写入失败", zap.Error(err))
+		} else {
+			log.Info("购车金融产品种子已就绪")
 		}
 		if err := postgres.EnsureMallSeed(db); err != nil {
 			log.Warn("商城种子商品写入失败", zap.Error(err))
@@ -276,27 +285,28 @@ func run() error {
 	}
 
 	engine := router.Setup(router.Options{
-		Log:                   log,
-		Mode:                  cfg.Server.Mode,
-		JWTManager:            jwtMgr,
-		UserHandler:           userHandler,
-		ProfileController:     profileController,
-		AccessController:      accessController,
-		MallController:        mallController,
-		PointsController:      pointsController,
-		CommunityController:   communityController,
-		ShortVideoController:  shortVideoController,
-		AddressController:     addressController,
-		HomeTodoController:    homeTodoController,
-		DealInvoiceController: dealInvoiceController,
-		TransactionController: transactionController,
-		RealtimeController:    realtimeController,
-		SseController:         sseController,
-		WSHandler:             wsGateway,
-		Config:                *cfg,
-		Supabase:              cfg.Supabase,
-		DeviceSessionUC:       deviceSessionUC,
-		AccountGate:           accountGate,
+		Log:                          log,
+		Mode:                         cfg.Server.Mode,
+		JWTManager:                   jwtMgr,
+		UserHandler:                  userHandler,
+		ProfileController:            profileController,
+		AccessController:             accessController,
+		MallController:               mallController,
+		PointsController:             pointsController,
+		CommunityController:          communityController,
+		ShortVideoController:         shortVideoController,
+		AddressController:            addressController,
+		HomeTodoController:           homeTodoController,
+		DealInvoiceController:        dealInvoiceController,
+		PurchaseCalculatorController: purchaseCalculatorController,
+		TransactionController:        transactionController,
+		RealtimeController:           realtimeController,
+		SseController:                sseController,
+		WSHandler:                    wsGateway,
+		Config:                       *cfg,
+		Supabase:                     cfg.Supabase,
+		DeviceSessionUC:              deviceSessionUC,
+		AccountGate:                  accountGate,
 	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
