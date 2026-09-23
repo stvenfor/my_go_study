@@ -71,7 +71,9 @@ auth:
 | `wys_mall_*` | 门店商城：类目、SPU/SKU、兑换码、购物车、订单快照、支付/退款/审计。金额 `numeric(10,2)`。无物理外键。`payment_channel`：1 支付宝 / 2 微信 / 3 苹果内购 / 4 华为内购。本地 `POST /api/v1/mall/orders/:id/pay` 任意合法渠道直接成功落库，不调渠道 SDK。待支付订单自 `created_at` 起 **15 分钟**支付窗口；列表/详情/支付时惰性超时取消，响应含 `pay_deadline_at`。启动时门店 1 种子 ≥35 条在售；`GET /api/v1/mall/stores/:store_id/products?page=&size=` 默认每页 10；`GET .../products/:product_id` 返回在售 SPU 与上架规格（不含发放地址）；`GET /api/v1/mall/orders?page=&size=&status=` 买家自己的订单列表（`status` 可省略或 `0–4`，逗号多值如 `1,2`；含行快照） |
 | `wys_user_address` | 用户收货地址簿。软删；每人至多一条默认（偏唯一索引）。订单只快照 `receiver_*`，不引用 `address_id`。`GET/POST/PATCH/DELETE /api/v1/user/addresses*`（local SessionAuth） |
 
-注册、登录、刷新、`POST /api/v1/user/phone/otp/send`、`POST /api/v1/user/phone/otp/verify` **不要求**请求里的 `user_id`。其余已登录接口必须在 query 或 JSON body 带 `user_id`，且必须与当前会话一致，否则 400。账号已注销或 `status = 1` 时拒绝业务请求。连续 5 次密码错误锁定 15 分钟。`POST /api/v1/user/deactivate` 写 `deleted_at` 并撤销 refresh token，不删除行。没有把 `status` 设为停用的接口。
+注册、登录、刷新、`POST /api/v1/user/phone/otp/send`、`POST /api/v1/user/phone/otp/verify`、`POST /api/v1/user/wechat/login`、`POST /api/v1/user/huawei/login` **不要求**请求里的 `user_id`。其余已登录接口必须在 query 或 JSON body 带 `user_id`，且必须与当前会话一致，否则 400。账号已注销或 `status = 1` 时拒绝业务请求。连续 5 次密码错误锁定 15 分钟。`POST /api/v1/user/deactivate` 写 `deleted_at` 并撤销 refresh token，不删除行。没有把 `status` 设为停用的接口。
+
+**微信 / 支付宝：** 客户端 AppID、Universal Link、支付宝 scheme 在 Flutter `wys_login_share_pay`；`WECHAT_APP_SECRET`、商户密钥、支付宝私钥只放本仓 `.env`。未配置时登录/预支付返回 503 并提示缺哪项。`POST /api/v1/payments/prepay` body：`channel`=`wechat`|`alipay`，`amount_fen`，`subject`。
 
 **冒烟：** 注册（请求不带 `user_id`，响应有 `user_id`、`user_name`、`email`、`status=0`）→ 登录 → 连续 5 次错误密码后锁定 → `PATCH /api/v1/profiles/me` 改 `user_name` 且不能改 `status` → 注销 → 同一邮箱可再注册出新的 `user_id`。
 

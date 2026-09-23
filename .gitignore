@@ -11,6 +11,12 @@ tmp/
 logs/
 *.log
 
+# 本地备份 / 补丁残留（勿入库）
+*.bak
+*.orig
+*.rej
+*.full
+
 # Editor / local tooling
 .idea/
 .vscode/

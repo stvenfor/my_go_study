@@ -7,9 +7,10 @@ const (
 	WysCashLedgerTable     = "wys_cash_ledger"
 	WysBankCardTable       = "wys_bank_card"
 
-	CashReasonRecharge   = "recharge"
-	CashReasonMallPay    = "mall_pay"
-	CashReasonMallRefund = "mall_refund"
+	CashReasonRecharge      = "recharge"
+	CashReasonMallPay       = "mall_pay"
+	CashReasonMallRefund    = "mall_refund"
+	CashReasonMembershipPay = "membership_pay"
 
 	// 充值模拟渠道
 	WalletRechargeAlipay = 1

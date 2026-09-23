@@ -101,11 +101,14 @@ func run() error {
 	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth)
 	var sessionAuthUC usecase.SessionAuth
 	var phoneOTPUC usecase.PhoneOTPAuth
+	var wechatLoginUC usecase.WeChatLoginAuth
+	var huaweiLoginUC usecase.HuaweiLoginAuth
 	var profileController *controller.ProfileController
 	var accessController *controller.AccessController
 	var mallController *controller.MallController
 	var pointsController *controller.PointsController
 	var cashWalletController *controller.CashWalletController
+	var membershipController *controller.MembershipController
 	var communityController *controller.CommunityController
 	var shortVideoController *controller.ShortVideoController
 	var addressController *controller.AddressController
@@ -132,6 +135,8 @@ func run() error {
 		localAuth := usecase.NewLocalAuthUsecase(db, jwtMgr, cfg.Auth, cfg.Server.Mode)
 		sessionAuthUC = localAuth
 		phoneOTPUC = localAuth
+		wechatLoginUC = usecase.NewWeChatAuthUsecase(cfg.ThirdParty, localAuth)
+		huaweiLoginUC = usecase.NewHuaweiAuthUsecase(cfg.ThirdParty, localAuth)
 		accountGate = middleware.RequireActiveAccount(localAuth)
 		profileRepo := postgres.NewProfileRepository(db)
 		storeStatsRepo := postgres.NewStoreStatsRepository(db)
@@ -147,6 +152,15 @@ func run() error {
 		cashRepo := postgres.NewCashWalletRepository(db)
 		cashUC := usecase.NewCashWalletUsecase(cashRepo)
 		cashWalletController = controller.NewCashWalletController(cashUC)
+		membershipRepo := postgres.NewMembershipRepository(db)
+		if err := postgres.EnsureMembershipSchema(db); err != nil {
+			log.Warn("会员订阅表准备失败", zap.Error(err))
+		}
+		paymentUCForMembership := usecase.NewPaymentUsecase(cfg.ThirdParty)
+		huaweiVerifier := usecase.NewLiveHuaweiSubscriptionVerifier(cfg.ThirdParty.HuaweiIAP)
+		appleVerifier := usecase.NewLiveAppleReceiptVerifier(cfg.ThirdParty.AppleIAP)
+		membershipUC := usecase.NewMembershipUsecase(membershipRepo, cashUC, paymentUCForMembership, huaweiVerifier, appleVerifier, cfg.Server.Mode)
+		membershipController = controller.NewMembershipController(membershipUC)
 		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC, cashUC)
 		mallController = controller.NewMallController(mallUC)
 		communityRepo = postgres.NewCommunityRepository(db)
@@ -302,7 +316,7 @@ func run() error {
 		}
 	}
 
-
+	
 	if businessEnabled {
 		pushDeviceRepo := postgres.NewPushDeviceRepository(db)
 		if err := postgres.EnsurePushDeviceSchema(db); err != nil {
@@ -327,15 +341,13 @@ func run() error {
 		}
 	}
 
-	var wechatLoginUC usecase.WeChatLoginAuth
-	var huaweiLoginUC usecase.HuaweiLoginAuth
-	if cfg.Auth.IsLocalProvider() {
-		if local, ok := sessionAuthUC.(*usecase.LocalAuthUsecase); ok {
-			wechatLoginUC = usecase.NewWeChatAuthUsecase(cfg.ThirdParty, local)
-			huaweiLoginUC = usecase.NewHuaweiAuthUsecase(cfg.ThirdParty, local)
-		}
-	}
 	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC, wechatLoginUC, huaweiLoginUC)
+
+	var paymentController *controller.PaymentController
+	if businessEnabled {
+		paymentUC := usecase.NewPaymentUsecase(cfg.ThirdParty)
+		paymentController = controller.NewPaymentController(paymentUC)
+	}
 
 	var analyticsUC *usecase.AnalyticsUsecase
 	analyticsRepo := postgres.NewAnalyticsRepository(db)
@@ -356,6 +368,7 @@ func run() error {
 		MallController:               mallController,
 		PointsController:             pointsController,
 		CashWalletController:         cashWalletController,
+		MembershipController:         membershipController,
 		CommunityController:          communityController,
 		ShortVideoController:         shortVideoController,
 		AddressController:            addressController,
@@ -364,6 +377,7 @@ func run() error {
 		UsedCarOrderController:       usedCarOrderController,
 		AfterSalesZoneController:     afterSalesZoneController,
 		PurchaseCalculatorController: purchaseCalculatorController,
+		PaymentController:            paymentController,
 		TransactionController:        transactionController,
 		RealtimeController:           realtimeController,
 		JPushController:              jpushController,

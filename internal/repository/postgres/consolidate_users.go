@@ -34,6 +34,9 @@ var consolidateNewCarFollowSchemaSQL string
 //go:embed sql/cash_wallet_schema.sql
 var cashWalletSchemaSQL string
 
+//go:embed sql/membership_schema.sql
+var membershipSchemaSQLConsolidate string
+
 // ConsolidateLocalUsers 把遗留用户表收成 user_id 主键的 users，并补上账号状态列。可重复执行。
 func ConsolidateLocalUsers(db *gorm.DB) error {
 	if err := db.Exec(consolidateUsersSQL).Error; err != nil {
@@ -56,6 +59,9 @@ func ConsolidateLocalUsers(db *gorm.DB) error {
 	}
 	if err := db.Exec(cashWalletSchemaSQL).Error; err != nil {
 		return fmt.Errorf("建立现金钱包表失败: %w", err)
+	}
+	if err := db.Exec(membershipSchemaSQLConsolidate).Error; err != nil {
+		return fmt.Errorf("建立会员订阅表失败: %w", err)
 	}
 	if err := db.Exec(homeTodoSchemaSQL).Error; err != nil {
 		return fmt.Errorf("建立首页待办表失败: %w", err)

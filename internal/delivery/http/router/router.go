@@ -23,6 +23,7 @@ type Options struct {
 	MallController               *controller.MallController
 	PointsController             *controller.PointsController
 	CashWalletController         *controller.CashWalletController
+	MembershipController         *controller.MembershipController
 	CommunityController          *controller.CommunityController
 	ShortVideoController         *controller.ShortVideoController
 	AddressController            *controller.AddressController
@@ -31,6 +32,7 @@ type Options struct {
 	UsedCarOrderController       *controller.UsedCarOrderController
 	AfterSalesZoneController     *controller.AfterSalesZoneController
 	PurchaseCalculatorController *controller.PurchaseCalculatorController
+	PaymentController            *controller.PaymentController
 	TransactionController        *controller.TransactionController
 	RealtimeController           *controller.RealtimeController
 	JPushController              *controller.JPushController
@@ -92,6 +94,10 @@ func Setup(opts Options) *gin.Engine {
 		registerCashWalletRoutes(v1, sessionAuth, opts.CashWalletController, opts.AccountGate)
 	}
 
+	if opts.Config.Auth.IsLocalProvider() && opts.MembershipController != nil && sessionAuth != nil {
+		registerMembershipRoutes(v1, sessionAuth, opts.MembershipController, opts.AccountGate)
+	}
+
 	if opts.Config.Auth.IsLocalProvider() && opts.CommunityController != nil && sessionAuth != nil {
 		registerCommunityRoutes(v1, sessionAuth, opts.CommunityController, opts.AccountGate)
 	}
@@ -112,12 +118,17 @@ func Setup(opts Options) *gin.Engine {
 		registerUsedCarOrderRoutes(v1, sessionAuth, opts.UsedCarOrderController, opts.AccountGate)
 	}
 
+
 	if opts.Config.Auth.IsLocalProvider() && opts.AfterSalesZoneController != nil && sessionAuth != nil {
 		registerAfterSalesZoneRoutes(v1, sessionAuth, opts.AfterSalesZoneController, opts.AccountGate)
 	}
 
 	if opts.Config.Auth.IsLocalProvider() {
 		registerPurchaseCalculatorRoutes(v1, opts.PurchaseCalculatorController)
+	}
+
+	if businessAuth && opts.PaymentController != nil && sessionAuth != nil {
+		registerPaymentRoutes(v1, sessionAuth, opts.PaymentController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {
