@@ -111,6 +111,7 @@ func run() error {
 	var homeTodoController *controller.HomeTodoController
 	var dealInvoiceController *controller.DealInvoiceController
 	var usedCarOrderController *controller.UsedCarOrderController
+	var afterSalesZoneController *controller.AfterSalesZoneController
 	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
@@ -192,6 +193,12 @@ func run() error {
 		} else {
 			log.Info("二手车业务单种子已就绪（13400000000）")
 		}
+		afterSalesZoneRepo := postgres.NewAfterSalesZoneRepository(db)
+		if err := postgres.EnsureAfterSalesZoneSchema(db); err != nil {
+			log.Warn("售后专区表准备失败", zap.Error(err))
+		}
+		afterSalesZoneUC := usecase.NewAfterSalesZoneUsecase(afterSalesZoneRepo, accessUC)
+		afterSalesZoneController = controller.NewAfterSalesZoneController(afterSalesZoneUC)
 		financeRepo := postgres.NewAutoFinanceRepository(db)
 		purchaseQuoteUC := usecase.NewPurchaseQuoteUsecase(financeRepo)
 		purchaseCalculatorController = controller.NewPurchaseCalculatorController(purchaseQuoteUC)
@@ -319,6 +326,7 @@ func run() error {
 		HomeTodoController:           homeTodoController,
 		DealInvoiceController:        dealInvoiceController,
 		UsedCarOrderController:       usedCarOrderController,
+		AfterSalesZoneController:     afterSalesZoneController,
 		PurchaseCalculatorController: purchaseCalculatorController,
 		TransactionController:        transactionController,
 		RealtimeController:           realtimeController,
