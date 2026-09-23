@@ -2,7 +2,7 @@
 
 > **目标**：本机 Mac 作为局域网后端（本地 Auth + Postgres + Redis），iOS / Android 真机（或模拟器）通过 Flutter 联调。  
 > **仓库**：Go `my_go_study` · Flutter `my_ai_project`（独立 Git）。  
-> **相关专题**：[lan-backend-host.md](./lan-backend-host.md) · [local-auth-postgres.md](./local-auth-postgres.md) · Flutter [BACKEND_INTEGRATION.md](../../my_ai_project/docs/BACKEND_INTEGRATION.md)
+> **相关专题**：[lan-backend-host.md](./lan-backend-host.md) · [local-auth-postgres.md](./local-auth-postgres.md) · Flutter [BACKEND_INTEGRATION.md](../../my_ai_project/docs/BACKEND_INTEGRATION.md) · Flutter [device-startup-notes.md](../../my_ai_project/docs/device-startup-notes.md)（**无线 release / USB debug**）
 
 ---
 
@@ -191,22 +191,26 @@ BACKEND_HOST=192.168.0.102
 
 ### 3.2 启动命令
 
+**硬规则**：**无线 → release**；**USB → debug**（热重载）。细则见 Flutter [device-startup-notes.md](../../my_ai_project/docs/device-startup-notes.md)。
+
 ```bash
 cd my_ai_project
 
-# IDE（推荐）：Run and Debug →「my_ai_project (LAN 真机)」
-# （已内置 --dart-define-from-file=.env.lan）
+# IDE
+#   无线联调：「my_ai_project (LAN 真机)」→ release
+#   USB 热重载：「LAN 真机 · debug·需USB」→ debug
 
-# CLI
+# CLI（检测到 wireless 时脚本自动 --release）
 ./scripts/run_app.sh --lan -d <device_id>
+./scripts/run_app.sh --lan -d <device_id> --force-debug   # 仅 USB
 # 或只指定真机，脚本自动切 .env.lan
 ./scripts/run_app.sh -d <device_id>
 
-# 等价手写
-flutter run -d <device_id> --dart-define-from-file=.env.lan
+# 等价手写（无线务必加 --release）
+flutter run -d <device_id> --release --dart-define-from-file=.env.lan
 ```
 
-`flutter devices` 可查 device id。模拟器仍用默认 `.env`（`./scripts/run_app.sh --ios`）。
+`flutter devices` 可查 device id。带 `(wireless)` → **release**；线连要热重载 → **debug**。模拟器仍用默认 `.env`（`./scripts/run_app.sh --ios`）。
 
 ### 3.3 模拟器对照（可不改 BACKEND_HOST）
 
@@ -343,6 +347,9 @@ curl http://127.0.0.1:8080/health
 curl http://172.16.0.43:8080/health
 
 # Flutter
-# IDE: Run →「my_ai_project (LAN 真机)」
-./scripts/run_app.sh --lan -d <device_id>
+# IDE: 无线 →「LAN 真机」(release)；USB 热重载 →「LAN 真机 · debug·需USB」
+./scripts/run_app.sh --lan -d <device_id>                 # 无线自动 release
+./scripts/run_app.sh --lan -d <device_id> --force-debug   # USB debug
+# 冻屏：my_ai_project/scripts/cleanup_ios_debug.sh -d <udid>
+# 硬规则见 Flutter docs/device-startup-notes.md
 ```

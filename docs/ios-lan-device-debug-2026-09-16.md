@@ -1,7 +1,7 @@
 # iOS 真机局域网联调调试记录（2026-09-16）
 
 > **结论（一句话）**：真机登录提示「无法连接服务端（`http://127.0.0.1:8080`）」时，**不是 Go 没起来**，而是 Flutter **未注入 `BACKEND_HOST`**，手机把请求打到了自己。  
-> **相关手册**：[dual-end-lan-startup.md](./dual-end-lan-startup.md) · [lan-backend-host.md](./lan-backend-host.md) · Flutter [BACKEND_INTEGRATION.md](../../my_ai_project/docs/BACKEND_INTEGRATION.md)
+> **相关手册**：[dual-end-lan-startup.md](./dual-end-lan-startup.md) · [lan-backend-host.md](./lan-backend-host.md) · Flutter [BACKEND_INTEGRATION.md](../../my_ai_project/docs/BACKEND_INTEGRATION.md) · Flutter [device-startup-notes.md](../../my_ai_project/docs/device-startup-notes.md)（**无线 release / USB debug**）
 
 ---
 
