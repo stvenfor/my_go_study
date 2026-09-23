@@ -139,9 +139,10 @@ func (m *memDealInvoiceRepo) GetUserBrief(_ context.Context, _ string) (string, 
 }
 
 type stubAccessForDeal struct {
-	storeID int
-	member  *entity.WysStoreMember
-	store   *entity.WysStore
+	storeID         int
+	member          *entity.WysStoreMember
+	store           *entity.WysStore
+	storePermsByUser map[string][]string
 }
 
 func (s *stubAccessForDeal) asUsecase() *AccessUsecase {
@@ -161,6 +162,11 @@ func (s *stubAccessForDeal) GetMember(_ context.Context, userID string, storeID 
 	if s.member != nil && s.member.UserID == userID && s.member.StoreID == storeID {
 		return s.member, nil
 	}
+	if s.storePermsByUser != nil {
+		if _, ok := s.storePermsByUser[userID]; ok && storeID == s.storeID {
+			return &entity.WysStoreMember{UserID: userID, StoreID: storeID}, nil
+		}
+	}
 	return nil, repository.ErrAccessMemberNotFound
 }
 func (s *stubAccessForDeal) GetRole(context.Context, string) (*entity.Role, error) { return nil, nil }
@@ -176,7 +182,10 @@ func (s *stubAccessForDeal) ClearCurrentStoreIf(context.Context, string, int) er
 func (s *stubAccessForDeal) PlatformPermissionCodes(context.Context, string) ([]string, error) {
 	return nil, nil
 }
-func (s *stubAccessForDeal) StorePermissionCodes(context.Context, string, int) ([]string, error) {
+func (s *stubAccessForDeal) StorePermissionCodes(_ context.Context, userID string, _ int) ([]string, error) {
+	if s.storePermsByUser != nil {
+		return s.storePermsByUser[userID], nil
+	}
 	return nil, nil
 }
 func (s *stubAccessForDeal) AssignRole(context.Context, entity.UserRole) error { return nil }

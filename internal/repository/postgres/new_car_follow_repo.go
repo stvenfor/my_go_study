@@ -28,26 +28,32 @@ func (r *NewCarFollowRepository) CountStats(
 	ctx context.Context, storeID int, ownerUserID string, now time.Time,
 ) (entity.NewCarFollowStats, error) {
 	var stats entity.NewCarFollowStats
-	base := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{}).
-		Where("store_id = ? AND owner_user_id = ?", storeID, ownerUserID)
+	scope := func(q *gorm.DB) *gorm.DB {
+		q = q.Where("store_id = ?", storeID)
+		if ownerUserID != "" {
+			q = q.Where("owner_user_id = ?", ownerUserID)
+		}
+		return q
+	}
 
-	if err := base.Where("stage IN ?", openStages()).Count(&stats.Active).Error; err != nil {
+	if err := scope(r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{})).
+		Where("stage IN ?", openStages()).Count(&stats.Active).Error; err != nil {
 		return stats, err
 	}
-	if err := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{}).
-		Where("store_id = ? AND owner_user_id = ? AND stage IN ? AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= ?",
-			storeID, ownerUserID, openStages(), now).
+	if err := scope(r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{})).
+		Where("stage IN ? AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= ?",
+			openStages(), now).
 		Count(&stats.Overdue).Error; err != nil {
 		return stats, err
 	}
-	if err := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{}).
-		Where("store_id = ? AND owner_user_id = ? AND stage IN ? AND follow_level IN ?",
-			storeID, ownerUserID, openStages(), []string{entity.FollowLevelH, entity.FollowLevelA}).
+	if err := scope(r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{})).
+		Where("stage IN ? AND follow_level IN ?",
+			openStages(), []string{entity.FollowLevelH, entity.FollowLevelA}).
 		Count(&stats.HighIntent).Error; err != nil {
 		return stats, err
 	}
-	if err := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{}).
-		Where("store_id = ? AND owner_user_id = ? AND stage = ?", storeID, ownerUserID, entity.FollowStageLost).
+	if err := scope(r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{})).
+		Where("stage = ?", entity.FollowStageLost).
 		Count(&stats.Lost).Error; err != nil {
 		return stats, err
 	}
@@ -66,8 +72,10 @@ func openStages() []int16 {
 func (r *NewCarFollowRepository) ListFiles(
 	ctx context.Context, storeID int, ownerUserID string, f entity.NewCarFollowListFilter, now time.Time, offset, limit int,
 ) ([]entity.WysNewCarFollowFile, int64, error) {
-	q := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{}).
-		Where("store_id = ? AND owner_user_id = ?", storeID, ownerUserID)
+	q := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowFile{}).Where("store_id = ?", storeID)
+	if ownerUserID != "" {
+		q = q.Where("owner_user_id = ?", ownerUserID)
+	}
 	if f.FollowLevel != "" {
 		q = q.Where("follow_level = ?", f.FollowLevel)
 	}
@@ -151,6 +159,38 @@ func (r *NewCarFollowRepository) FindOpenFileByCustomer(
 	return &row, nil
 }
 
+func (r *NewCarFollowRepository) ListLogs(
+	ctx context.Context, fileID int64, offset, limit int,
+) ([]entity.WysNewCarFollowLog, int64, error) {
+	q := r.db.WithContext(ctx).Model(&entity.WysNewCarFollowLog{}).Where("file_id = ?", fileID)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []entity.WysNewCarFollowLog
+	err := q.Order("created_at DESC, log_id DESC").Offset(offset).Limit(limit).Find(&rows).Error
+	return rows, total, err
+}
+
+func (r *NewCarFollowRepository) CreateLogAndTouchFile(
+	ctx context.Context, log *entity.WysNewCarFollowLog, file *entity.WysNewCarFollowFile, syncCustomerFollow bool,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(log).Error; err != nil {
+			return err
+		}
+		if err := tx.Save(file).Error; err != nil {
+			return err
+		}
+		if syncCustomerFollow {
+			return tx.Model(&entity.WysStoreCustomer{}).
+				Where("customer_id = ?", file.CustomerID).
+				Update("next_follow_up_at", file.NextFollowUpAt).Error
+		}
+		return nil
+	})
+}
+
 func (r *NewCarFollowRepository) GetCustomer(ctx context.Context, customerID int64) (*entity.WysStoreCustomer, error) {
 	var row entity.WysStoreCustomer
 	err := r.db.WithContext(ctx).Where("customer_id = ?", customerID).First(&row).Error
@@ -205,7 +245,7 @@ func EnsureNewCarFollowSchema(db *gorm.DB) error {
 	if err := db.Exec(newCarFollowSchemaSQL).Error; err != nil {
 		return fmt.Errorf("new car follow schema: %w", err)
 	}
-	if err := db.AutoMigrate(&entity.WysNewCarFollowFile{}); err != nil {
+	if err := db.AutoMigrate(&entity.WysNewCarFollowFile{}, &entity.WysNewCarFollowLog{}); err != nil {
 		return fmt.Errorf("new car follow migrate: %w", err)
 	}
 	return nil

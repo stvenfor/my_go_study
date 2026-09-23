@@ -157,7 +157,7 @@ func (ctrl *HomeTodoController) ListPendingReviewOrders(c *gin.Context) {
 func writeHomeTodoError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrAccessForbidden), errors.Is(err, usecase.ErrAccessNotMember):
-		response.Error(c, http.StatusForbidden, response.CodeForbidden, "无权限")
+		response.Error(c, http.StatusForbidden, response.CodeForbidden, "仅门店管理员可查看")
 	case errors.Is(err, usecase.ErrJoinApplicationNotFound):
 		response.Error(c, http.StatusNotFound, response.CodeNotFound, "入店申请不存在")
 	case errors.Is(err, usecase.ErrJoinApplicationDuplicate):

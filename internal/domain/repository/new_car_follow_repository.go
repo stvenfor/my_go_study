@@ -17,9 +17,11 @@ var (
 	ErrNewCarFollowBadFilter   = errors.New("筛选参数无效")
 	ErrNewCarFollowBadStage    = errors.New("档案阶段无效")
 	ErrNewCarFollowDuplicate   = errors.New("该客户已有未关闭跟进档案")
+	ErrNewCarFollowBadLogBody  = errors.New("跟进内容不能为空")
 )
 
 // NewCarFollowRepository 跟进档案 + 客户读写。
+// CountStats / ListFiles：ownerUserID 为空表示当前店全员（店管口径）。
 type NewCarFollowRepository interface {
 	CountStats(ctx context.Context, storeID int, ownerUserID string, now time.Time) (entity.NewCarFollowStats, error)
 	ListFiles(ctx context.Context, storeID int, ownerUserID string, f entity.NewCarFollowListFilter, now time.Time, offset, limit int) ([]entity.WysNewCarFollowFile, int64, error)
@@ -28,6 +30,10 @@ type NewCarFollowRepository interface {
 	// UpdateFileAndCustomerFollow 事务更新档案，并可选回写客户 next_follow_up_at。
 	UpdateFileAndCustomerFollow(ctx context.Context, row *entity.WysNewCarFollowFile, syncCustomerFollow bool) error
 	FindOpenFileByCustomer(ctx context.Context, storeID int, customerID int64) (*entity.WysNewCarFollowFile, error)
+
+	ListLogs(ctx context.Context, fileID int64, offset, limit int) ([]entity.WysNewCarFollowLog, int64, error)
+	// CreateLogAndTouchFile 插流水并更新档案（last_follow / 可选级别与下次跟进）；syncCustomerFollow 时回写客户。
+	CreateLogAndTouchFile(ctx context.Context, log *entity.WysNewCarFollowLog, file *entity.WysNewCarFollowFile, syncCustomerFollow bool) error
 
 	GetCustomer(ctx context.Context, customerID int64) (*entity.WysStoreCustomer, error)
 	CreateCustomer(ctx context.Context, row *entity.WysStoreCustomer) error

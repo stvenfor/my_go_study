@@ -1,22 +1,57 @@
-# Slice — new-car-follow-c2-follow-log（草案，C1 批后升格）
+# Slice — new-car-follow-c2-follow-log
 
 ## Slice Brief
 - SOURCE_MODULE: 新车跟进档案
-- TARGET_MODULE: Go BFF + Flutter 详情流水区
+- TARGET_MODULE: Go BFF local Postgres + Flutter 详情「跟进流水」时间线
+- Source entry: CONTEXT「新车跟进档案」；人批纳入本轮（原 Deferred 升格）
+- Target entry: `/api/v1/new-car-follow-files/:file_id/logs`；详情页时间线（UI 已对标成交后接入）
 - 本轮 ONLY:
-  - 表 `wys_new_car_follow_log`
-  - `POST/GET /api/v1/new-car-follow-files/:file_id/logs`
-  - 写流水可带 `next_follow_up_at` / 可选改 `follow_level`；事务更新档案+客户
-  - 详情页时间线 UI
+  - 表 `wys_new_car_follow_log`（file_id、作者、正文、可选 follow_level、可选 next_follow_up_at、created_at）
+  - `GET/POST .../:file_id/logs`（SessionAuth；可见性与档案一致——C2 仍跟档案 owner 规则；店管放大等 C4）
+  - 写流水事务：插 log；可选更新档案 `follow_level` / `next_follow_up_at` / `last_follow_at`；若改下次跟进则回写 `wys_store_customer.next_follow_up_at`
+  - usecase 单测：倒序；写后 last_follow；非法级别拒绝；越权 404
+  - 文档：`docs/new-car-follow-api.md` 补 `/logs`
+  - Flutter：详情页时间线列表 + 写一条跟进（正文必填；级别/下次跟进可选）
 - 不做:
-  - 外呼录音、企微、店管全店、待办深链
+  - 店管全店（→ C4）
+  - 外呼录音、企微同步、待办深链 C3
+  - 真 OSS；审核台；转交
+  - 另建客户表
 - 验收:
-  - 流水按时间倒序；写后 `last_follow_at` 更新；改下次跟进仍驱动首页待办
-- 文件白名单: （C1 同模块文件 + log 相关；待 C1 Accept 后锁定）
+  - 流水按 `created_at` 倒序
+  - POST 后档案 `last_follow_at` 更新；若带 `next_follow_up_at` 则客户逾期条件仍正确
+  - 非可见档案 → 404（与 C1 一致）
+  - `go test ./internal/usecase/ -count=1 -run 'Follow|NewCarFollow'`
+  - 人证：详情可见时间线并可新增一条
+- 文件白名单:
+  - internal/domain/entity/new_car_follow.go
+  - internal/domain/repository/new_car_follow_repository.go
+  - internal/repository/postgres/new_car_follow_repo.go
+  - internal/repository/postgres/sql/new_car_follow_schema.sql
+  - internal/usecase/new_car_follow_usecase.go
+  - internal/usecase/new_car_follow_usecase_test.go
+  - internal/delivery/http/controller/new_car_follow_controller.go
+  - internal/delivery/http/router/new_car_follow_routes.go
+  - migrations/*new_car_follow*
+  - docs/new-car-follow-api.md
+  - docs/acceptance-records/2026-09-23-new-car-follow-c2.md
+  - CONTEXT.md
+  - plans/epics/new-car-follow.md
+  - plans/slices/new-car-follow-c2-follow-log.md
+  - （配对仓）my_ai_project/features/home/lib/new_car_follow/**
+- 文件黑名单:
+  - deal_invoice / mall / community 无关模块
+  - internal/repository/supabase/**
 - 验证命令:
-  - go test ./internal/usecase/ -count=1 -run Follow
-- 证据: docs/acceptance-records/2026-09-22-new-car-follow-c2.md
+  - go test ./internal/usecase/ -count=1 -run 'Follow|NewCarFollow'
+  - make agent-pre（若已落地 check-brief）
+- 证据: docs/acceptance-records/2026-09-23-new-car-follow-c2.md
+- Accept 模式: Partial（Go 机跑 + Flutter 人证）
 
-## Context Card
-- 依赖: C1 Accept
-- 下一 Slice: C3 待办深链（可选）
+## Context Card — new-car-follow-c2-follow-log
+- 已完成: 表/API/usecase/测试；Flutter 详情时间线+写跟进；docs
+- 未做/Deferred: 人证；外呼企微；C3
+- 关键文件: 见白名单
+- harness: post ok? go test Follow|NewCarFollow 绿
+- 下一 Slice 建议: `new-car-follow-c4-store-admin-scope`（已落地）
+- 已知坑: 写流水与双写 next_follow_up_at 同一事务

@@ -19,7 +19,10 @@ var (
 	ErrNewCarFollowBadFilter   = repository.ErrNewCarFollowBadFilter
 	ErrNewCarFollowBadStage    = repository.ErrNewCarFollowBadStage
 	ErrNewCarFollowDuplicate   = repository.ErrNewCarFollowDuplicate
+	ErrNewCarFollowBadLogBody  = repository.ErrNewCarFollowBadLogBody
 )
+
+const followStoreAdminPerm = entity.PermRoleAssignStore
 
 // NewCarFollowUsecase 跟进档案读写。
 type NewCarFollowUsecase struct {
@@ -55,12 +58,23 @@ type PatchNewCarFollowInput struct {
 	TouchNextFollow bool // true 时回写客户 next_follow_up_at（可为 nil 清空）
 }
 
+type CreateFollowLogInput struct {
+	Body           string
+	FollowLevel    string     // 可选；空=不改级别
+	NextFollowUpAt *time.Time // 非 nil 时更新档案+客户；传指针且需 TouchNext
+	TouchNext      bool
+}
+
 func (u *NewCarFollowUsecase) Summary(ctx context.Context, actorID string) (*entity.NewCarFollowSummary, error) {
 	storeID, err := u.requireCurrentStore(ctx, actorID)
 	if err != nil {
 		return nil, err
 	}
-	stats, err := u.repo.CountStats(ctx, storeID, actorID, u.now())
+	ownerFilter, err := u.ownerScope(ctx, actorID, storeID)
+	if err != nil {
+		return nil, err
+	}
+	stats, err := u.repo.CountStats(ctx, storeID, ownerFilter, u.now())
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +105,10 @@ func (u *NewCarFollowUsecase) List(
 	ctx context.Context, actorID string, followLevel, intentBand, stage string, overdue bool, page, size int,
 ) ([]entity.NewCarFollowFileDTO, int64, error) {
 	storeID, err := u.requireCurrentStore(ctx, actorID)
+	if err != nil {
+		return nil, 0, err
+	}
+	ownerFilter, err := u.ownerScope(ctx, actorID, storeID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -125,30 +143,26 @@ func (u *NewCarFollowUsecase) List(
 		size = 50
 	}
 	offset := (page - 1) * size
-	rows, total, err := u.repo.ListFiles(ctx, storeID, actorID, f, u.now(), offset, size)
+	rows, total, err := u.repo.ListFiles(ctx, storeID, ownerFilter, f, u.now(), offset, size)
 	if err != nil {
 		return nil, 0, err
 	}
 	out := make([]entity.NewCarFollowFileDTO, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, entity.ToNewCarFollowFileDTO(row))
+		dto := entity.ToNewCarFollowFileDTO(row)
+		u.fillOwnerDisplay(ctx, &dto)
+		out = append(out, dto)
 	}
 	return out, total, nil
 }
 
 func (u *NewCarFollowUsecase) Get(ctx context.Context, actorID string, fileID int64) (*entity.NewCarFollowFileDTO, error) {
-	storeID, err := u.requireCurrentStore(ctx, actorID)
+	row, err := u.loadVisibleFile(ctx, actorID, fileID)
 	if err != nil {
 		return nil, err
-	}
-	row, err := u.repo.GetFile(ctx, fileID)
-	if err != nil {
-		return nil, err
-	}
-	if row.StoreID != storeID || row.OwnerUserID != actorID {
-		return nil, ErrNewCarFollowNotFound
 	}
 	dto := entity.ToNewCarFollowFileDTO(*row)
+	u.fillOwnerDisplay(ctx, &dto)
 	return &dto, nil
 }
 
@@ -232,22 +246,16 @@ func (u *NewCarFollowUsecase) Create(ctx context.Context, actorID string, in Cre
 		return nil, err
 	}
 	dto := entity.ToNewCarFollowFileDTO(*row)
+	u.fillOwnerDisplay(ctx, &dto)
 	return &dto, nil
 }
 
 func (u *NewCarFollowUsecase) Patch(
 	ctx context.Context, actorID string, fileID int64, in PatchNewCarFollowInput,
 ) (*entity.NewCarFollowFileDTO, error) {
-	storeID, err := u.requireCurrentStore(ctx, actorID)
+	row, err := u.loadVisibleFile(ctx, actorID, fileID)
 	if err != nil {
 		return nil, err
-	}
-	row, err := u.repo.GetFile(ctx, fileID)
-	if err != nil {
-		return nil, err
-	}
-	if row.StoreID != storeID || row.OwnerUserID != actorID {
-		return nil, ErrNewCarFollowNotFound
 	}
 
 	syncFollow := false
@@ -286,6 +294,93 @@ func (u *NewCarFollowUsecase) Patch(
 		return nil, err
 	}
 	dto := entity.ToNewCarFollowFileDTO(*row)
+	u.fillOwnerDisplay(ctx, &dto)
+	return &dto, nil
+}
+
+func (u *NewCarFollowUsecase) ListLogs(
+	ctx context.Context, actorID string, fileID int64, page, size int,
+) ([]entity.NewCarFollowLogDTO, int64, error) {
+	if _, err := u.loadVisibleFile(ctx, actorID, fileID); err != nil {
+		return nil, 0, err
+	}
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 20
+	}
+	if size > 50 {
+		size = 50
+	}
+	offset := (page - 1) * size
+	rows, total, err := u.repo.ListLogs(ctx, fileID, offset, size)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]entity.NewCarFollowLogDTO, 0, len(rows))
+	for _, row := range rows {
+		dto := entity.ToNewCarFollowLogDTO(row)
+		if name, _, err := u.repo.GetUserBrief(ctx, row.AuthorUserID); err == nil {
+			dto.AuthorDisplayName = name
+		}
+		out = append(out, dto)
+	}
+	return out, total, nil
+}
+
+func (u *NewCarFollowUsecase) CreateLog(
+	ctx context.Context, actorID string, fileID int64, in CreateFollowLogInput,
+) (*entity.NewCarFollowLogDTO, error) {
+	body := strings.TrimSpace(in.Body)
+	if body == "" {
+		return nil, ErrNewCarFollowBadLogBody
+	}
+	row, err := u.loadVisibleFile(ctx, actorID, fileID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := u.now()
+	logLevel := ""
+	if strings.TrimSpace(in.FollowLevel) != "" {
+		lv, ok := entity.NormalizeFollowLevel(in.FollowLevel)
+		if !ok {
+			return nil, ErrNewCarFollowBadLevel
+		}
+		logLevel = lv
+		row.FollowLevel = lv
+	}
+	syncCustomer := false
+	if in.TouchNext {
+		row.NextFollowUpAt = in.NextFollowUpAt
+		syncCustomer = true
+	}
+	row.LastFollowAt = &now
+	row.UpdatedAt = now
+	if entity.FollowFileIsOpen(row.Stage) && row.Stage == entity.FollowStageNew {
+		row.Stage = entity.FollowStageFollowing
+	}
+
+	log := &entity.WysNewCarFollowLog{
+		FileID:         fileID,
+		AuthorUserID:   actorID,
+		Body:           body,
+		FollowLevel:    logLevel,
+		NextFollowUpAt: nil,
+		CreatedAt:      now,
+	}
+	if in.TouchNext {
+		log.NextFollowUpAt = in.NextFollowUpAt
+	}
+
+	if err := u.repo.CreateLogAndTouchFile(ctx, log, row, syncCustomer); err != nil {
+		return nil, err
+	}
+	dto := entity.ToNewCarFollowLogDTO(*log)
+	if name, _, err := u.repo.GetUserBrief(ctx, actorID); err == nil {
+		dto.AuthorDisplayName = name
+	}
 	return &dto, nil
 }
 
@@ -321,6 +416,57 @@ func (u *NewCarFollowUsecase) requireCurrentStore(ctx context.Context, actorID s
 		return 0, ErrNewCarFollowNoStore
 	}
 	return *cur, nil
+}
+
+// ownerScope 店管 → 空串（全店）；否则 actorID。
+func (u *NewCarFollowUsecase) ownerScope(ctx context.Context, actorID string, storeID int) (string, error) {
+	ok, err := u.isStoreAdmin(ctx, actorID, storeID)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return "", nil
+	}
+	return actorID, nil
+}
+
+func (u *NewCarFollowUsecase) isStoreAdmin(ctx context.Context, actorID string, storeID int) (bool, error) {
+	if u.access == nil {
+		return false, nil
+	}
+	sid := storeID
+	return u.access.can(ctx, actorID, followStoreAdminPerm, &sid)
+}
+
+func (u *NewCarFollowUsecase) loadVisibleFile(ctx context.Context, actorID string, fileID int64) (*entity.WysNewCarFollowFile, error) {
+	storeID, err := u.requireCurrentStore(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	row, err := u.repo.GetFile(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+	if row.StoreID != storeID {
+		return nil, ErrNewCarFollowNotFound
+	}
+	admin, err := u.isStoreAdmin(ctx, actorID, storeID)
+	if err != nil {
+		return nil, err
+	}
+	if !admin && row.OwnerUserID != actorID {
+		return nil, ErrNewCarFollowNotFound
+	}
+	return row, nil
+}
+
+func (u *NewCarFollowUsecase) fillOwnerDisplay(ctx context.Context, dto *entity.NewCarFollowFileDTO) {
+	if dto == nil || dto.OwnerUserID == "" {
+		return
+	}
+	if name, _, err := u.repo.GetUserBrief(ctx, dto.OwnerUserID); err == nil {
+		dto.OwnerDisplayName = name
+	}
 }
 
 // ParseNewCarFollowFileID 路径 id。

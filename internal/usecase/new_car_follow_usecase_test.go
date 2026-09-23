@@ -12,18 +12,23 @@ import (
 type memNewCarFollowRepo struct {
 	nextFileID     int64
 	nextCustomerID int64
+	nextLogID      int64
 	files          map[int64]*entity.WysNewCarFollowFile
 	customers      map[int64]*entity.WysStoreCustomer
+	logs           map[int64]*entity.WysNewCarFollowLog
 	userName       string
 	avatarURL      string
+	namesByUser    map[string]string
 }
 
 func newMemFollowRepo() *memNewCarFollowRepo {
 	return &memNewCarFollowRepo{
 		nextFileID:     1,
 		nextCustomerID: 1,
+		nextLogID:      1,
 		files:          map[int64]*entity.WysNewCarFollowFile{},
 		customers:      map[int64]*entity.WysStoreCustomer{},
+		logs:           map[int64]*entity.WysNewCarFollowLog{},
 		userName:       "东东枪",
 		avatarURL:      "https://example.com/a.png",
 	}
@@ -32,7 +37,10 @@ func newMemFollowRepo() *memNewCarFollowRepo {
 func (m *memNewCarFollowRepo) CountStats(_ context.Context, storeID int, owner string, now time.Time) (entity.NewCarFollowStats, error) {
 	var s entity.NewCarFollowStats
 	for _, row := range m.files {
-		if row.StoreID != storeID || row.OwnerUserID != owner {
+		if row.StoreID != storeID {
+			continue
+		}
+		if owner != "" && row.OwnerUserID != owner {
 			continue
 		}
 		open := entity.FollowFileIsOpen(row.Stage)
@@ -57,7 +65,10 @@ func (m *memNewCarFollowRepo) ListFiles(
 ) ([]entity.WysNewCarFollowFile, int64, error) {
 	var all []entity.WysNewCarFollowFile
 	for _, row := range m.files {
-		if row.StoreID != storeID || row.OwnerUserID != owner {
+		if row.StoreID != storeID {
+			continue
+		}
+		if owner != "" && row.OwnerUserID != owner {
 			continue
 		}
 		if f.FollowLevel != "" && row.FollowLevel != f.FollowLevel {
@@ -145,6 +156,48 @@ func (m *memNewCarFollowRepo) FindOpenFileByCustomer(_ context.Context, storeID 
 	return nil, nil
 }
 
+func (m *memNewCarFollowRepo) ListLogs(_ context.Context, fileID int64, offset, limit int) ([]entity.WysNewCarFollowLog, int64, error) {
+	var all []entity.WysNewCarFollowLog
+	for _, row := range m.logs {
+		if row.FileID == fileID {
+			all = append(all, *row)
+		}
+	}
+	// newest first
+	for i := 0; i < len(all); i++ {
+		for j := i + 1; j < len(all); j++ {
+			if all[j].CreatedAt.After(all[i].CreatedAt) ||
+				(all[j].CreatedAt.Equal(all[i].CreatedAt) && all[j].LogID > all[i].LogID) {
+				all[i], all[j] = all[j], all[i]
+			}
+		}
+	}
+	total := int64(len(all))
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+
+func (m *memNewCarFollowRepo) CreateLogAndTouchFile(_ context.Context, log *entity.WysNewCarFollowLog, file *entity.WysNewCarFollowFile, sync bool) error {
+	log.LogID = m.nextLogID
+	m.nextLogID++
+	cpLog := *log
+	m.logs[log.LogID] = &cpLog
+	cpFile := *file
+	m.files[file.FileID] = &cpFile
+	if sync {
+		if c, ok := m.customers[file.CustomerID]; ok {
+			c.NextFollowUpAt = file.NextFollowUpAt
+		}
+	}
+	return nil
+}
+
 func (m *memNewCarFollowRepo) GetCustomer(_ context.Context, id int64) (*entity.WysStoreCustomer, error) {
 	c, ok := m.customers[id]
 	if !ok {
@@ -180,7 +233,12 @@ func (m *memNewCarFollowRepo) ListCustomers(_ context.Context, storeID int, _ st
 	return all[offset:end], total, nil
 }
 
-func (m *memNewCarFollowRepo) GetUserBrief(_ context.Context, _ string) (string, string, error) {
+func (m *memNewCarFollowRepo) GetUserBrief(_ context.Context, userID string) (string, string, error) {
+	if m.namesByUser != nil {
+		if n, ok := m.namesByUser[userID]; ok {
+			return n, m.avatarURL, nil
+		}
+	}
 	return m.userName, m.avatarURL, nil
 }
 
@@ -307,3 +365,110 @@ func TestNewCarFollowNoStore(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestNewCarFollowCreateLogAndOrder(t *testing.T) {
+	repo := newMemFollowRepo()
+	repo.customers[1] = &entity.WysStoreCustomer{CustomerID: 1, StoreID: 1, DisplayName: "x", Phone: "138"}
+	repo.files[1] = &entity.WysNewCarFollowFile{
+		FileID: 1, StoreID: 1, OwnerUserID: "u1", CustomerID: 1,
+		FollowLevel: "E", Stage: entity.FollowStageNew, CustomerPhone: "138",
+	}
+	access := &stubAccessForDeal{storeID: 1}
+	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	fixed := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
+	uc.now = func() time.Time { return fixed }
+	next := fixed.Add(24 * time.Hour)
+
+	log1, err := uc.CreateLog(context.Background(), "u1", 1, CreateFollowLogInput{
+		Body: "第一次拜访", FollowLevel: "B", NextFollowUpAt: &next, TouchNext: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if log1.Body != "第一次拜访" || log1.FollowLevel != "B" {
+		t.Fatalf("log=%+v", log1)
+	}
+	file := repo.files[1]
+	if file.LastFollowAt == nil || !file.LastFollowAt.Equal(fixed) {
+		t.Fatalf("last_follow=%v", file.LastFollowAt)
+	}
+	if file.FollowLevel != "B" || file.Stage != entity.FollowStageFollowing {
+		t.Fatalf("file=%+v", file)
+	}
+	if repo.customers[1].NextFollowUpAt == nil || !repo.customers[1].NextFollowUpAt.Equal(next) {
+		t.Fatal("customer next not synced")
+	}
+
+	uc.now = func() time.Time { return fixed.Add(time.Hour) }
+	if _, err := uc.CreateLog(context.Background(), "u1", 1, CreateFollowLogInput{Body: "第二次"}); err != nil {
+		t.Fatal(err)
+	}
+	logs, total, err := uc.ListLogs(context.Background(), "u1", 1, 1, 10)
+	if err != nil || total != 2 || len(logs) != 2 {
+		t.Fatalf("total=%d logs=%+v err=%v", total, logs, err)
+	}
+	if logs[0].Body != "第二次" || logs[1].Body != "第一次拜访" {
+		t.Fatalf("order=%+v", logs)
+	}
+	if _, err := uc.CreateLog(context.Background(), "u1", 1, CreateFollowLogInput{Body: "  "}); err != ErrNewCarFollowBadLogBody {
+		t.Fatalf("empty body got %v", err)
+	}
+	if _, err := uc.CreateLog(context.Background(), "other", 1, CreateFollowLogInput{Body: "x"}); err != ErrNewCarFollowNotFound {
+		t.Fatalf("forbidden got %v", err)
+	}
+}
+
+func TestNewCarFollowStoreAdminSeesOthers(t *testing.T) {
+	repo := newMemFollowRepo()
+	repo.namesByUser = map[string]string{"u1": "销售甲", "admin": "店管"}
+	repo.customers[1] = &entity.WysStoreCustomer{CustomerID: 1, StoreID: 1, DisplayName: "客", Phone: "1"}
+	repo.files[9] = &entity.WysNewCarFollowFile{
+		FileID: 9, StoreID: 1, OwnerUserID: "u1", CustomerID: 1,
+		FollowLevel: "A", Stage: entity.FollowStageFollowing, CustomerName: "客", CustomerPhone: "1",
+	}
+	access := &stubAccessForDeal{
+		storeID: 1,
+		store:   &entity.WysStore{StoreID: 1, Name: "店"},
+		storePermsByUser: map[string][]string{
+			"admin": {entity.PermRoleAssignStore},
+		},
+	}
+	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+
+	if _, err := uc.Get(context.Background(), "stranger", 9); err != ErrNewCarFollowNotFound {
+		t.Fatalf("stranger got %v", err)
+	}
+	dto, err := uc.Get(context.Background(), "admin", 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dto.OwnerUserID != "u1" || dto.OwnerDisplayName != "销售甲" {
+		t.Fatalf("dto=%+v", dto)
+	}
+	list, total, err := uc.List(context.Background(), "admin", "", "", "", false, 1, 10)
+	if err != nil || total != 1 || list[0].OwnerDisplayName != "销售甲" {
+		t.Fatalf("list total=%d %+v err=%v", total, list, err)
+	}
+	sum, err := uc.Summary(context.Background(), "admin")
+	if err != nil || sum.Stats.Active != 1 {
+		t.Fatalf("summary=%+v err=%v", sum, err)
+	}
+	// sales still only self
+	listSelf, totalSelf, err := uc.List(context.Background(), "u1", "", "", "", false, 1, 10)
+	if err != nil || totalSelf != 1 || listSelf[0].FileID != "9" {
+		t.Fatalf("sales list total=%d %+v err=%v", totalSelf, listSelf, err)
+	}
+	repo.files[10] = &entity.WysNewCarFollowFile{
+		FileID: 10, StoreID: 1, OwnerUserID: "other", CustomerID: 1,
+		FollowLevel: "B", Stage: entity.FollowStageFollowing,
+	}
+	listSelf2, totalSelf2, _ := uc.List(context.Background(), "u1", "", "", "", false, 1, 10)
+	if totalSelf2 != 1 || listSelf2[0].FileID != "9" {
+		t.Fatalf("sales should not see other: total=%d %+v", totalSelf2, listSelf2)
+	}
+	listAdmin, totalAdmin, _ := uc.List(context.Background(), "admin", "", "", "", false, 1, 10)
+	if totalAdmin != 2 {
+		t.Fatalf("admin total=%d list=%+v", totalAdmin, listAdmin)
+	}
+}
+

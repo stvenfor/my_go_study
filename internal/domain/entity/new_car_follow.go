@@ -8,6 +8,7 @@ import (
 )
 
 const WysNewCarFollowFileTable = "wys_new_car_follow_file"
+const WysNewCarFollowLogTable = "wys_new_car_follow_log"
 
 // 档案阶段。
 const (
@@ -158,27 +159,30 @@ type NewCarFollowSummary struct {
 
 // NewCarFollowFileDTO 列表/详情读模型。
 type NewCarFollowFileDTO struct {
-	FileID          string     `json:"file_id"`
-	CustomerID      string     `json:"customer_id"`
-	CustomerName    string     `json:"customer_name"`
-	CustomerPhone   string     `json:"customer_phone"`
-	FollowLevel     string     `json:"follow_level"`
-	IntentBand      string     `json:"intent_band"`
-	Stage           string     `json:"stage"`
-	VehicleInterest string     `json:"vehicle_interest"`
-	BudgetNote      string     `json:"budget_note"`
-	Source          string     `json:"source"`
-	NextFollowUpAt  *time.Time `json:"next_follow_up_at,omitempty"`
-	LastFollowAt    *time.Time `json:"last_follow_at,omitempty"`
-	ClosedReason    string     `json:"closed_reason,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	FileID            string     `json:"file_id"`
+	OwnerUserID       string     `json:"owner_user_id"`
+	OwnerDisplayName  string     `json:"owner_display_name,omitempty"`
+	CustomerID        string     `json:"customer_id"`
+	CustomerName      string     `json:"customer_name"`
+	CustomerPhone     string     `json:"customer_phone"`
+	FollowLevel       string     `json:"follow_level"`
+	IntentBand        string     `json:"intent_band"`
+	Stage             string     `json:"stage"`
+	VehicleInterest   string     `json:"vehicle_interest"`
+	BudgetNote        string     `json:"budget_note"`
+	Source            string     `json:"source"`
+	NextFollowUpAt    *time.Time `json:"next_follow_up_at,omitempty"`
+	LastFollowAt      *time.Time `json:"last_follow_at,omitempty"`
+	ClosedReason      string     `json:"closed_reason,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // ToNewCarFollowFileDTO 行 → DTO。
 func ToNewCarFollowFileDTO(row WysNewCarFollowFile) NewCarFollowFileDTO {
 	return NewCarFollowFileDTO{
 		FileID:          strconv.FormatInt(row.FileID, 10),
+		OwnerUserID:     row.OwnerUserID,
 		CustomerID:      strconv.FormatInt(row.CustomerID, 10),
 		CustomerName:    row.CustomerName,
 		CustomerPhone:   row.CustomerPhone,
@@ -194,6 +198,49 @@ func ToNewCarFollowFileDTO(row WysNewCarFollowFile) NewCarFollowFileDTO {
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 	}
+}
+
+// WysNewCarFollowLog 跟进流水行。
+type WysNewCarFollowLog struct {
+	LogID          int64      `json:"log_id" gorm:"primaryKey"`
+	FileID         int64      `json:"file_id"`
+	AuthorUserID   string     `json:"author_user_id" gorm:"size:64"`
+	Body           string     `json:"body" gorm:"size:2000"`
+	FollowLevel    string     `json:"follow_level" gorm:"size:1"` // 空=未改级别
+	NextFollowUpAt *time.Time `json:"next_follow_up_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
+
+func (WysNewCarFollowLog) TableName() string { return WysNewCarFollowLogTable }
+
+// NewCarFollowLogDTO 流水读模型。
+type NewCarFollowLogDTO struct {
+	LogID            string     `json:"log_id"`
+	FileID           string     `json:"file_id"`
+	AuthorUserID     string     `json:"author_user_id"`
+	AuthorDisplayName string    `json:"author_display_name,omitempty"`
+	Body             string     `json:"body"`
+	FollowLevel      string     `json:"follow_level,omitempty"`
+	IntentBand       string     `json:"intent_band,omitempty"`
+	NextFollowUpAt   *time.Time `json:"next_follow_up_at,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+}
+
+// ToNewCarFollowLogDTO 行 → DTO。
+func ToNewCarFollowLogDTO(row WysNewCarFollowLog) NewCarFollowLogDTO {
+	dto := NewCarFollowLogDTO{
+		LogID:          strconv.FormatInt(row.LogID, 10),
+		FileID:         strconv.FormatInt(row.FileID, 10),
+		AuthorUserID:   row.AuthorUserID,
+		Body:           row.Body,
+		FollowLevel:    row.FollowLevel,
+		NextFollowUpAt: row.NextFollowUpAt,
+		CreatedAt:      row.CreatedAt,
+	}
+	if row.FollowLevel != "" {
+		dto.IntentBand = IntentBandFromFollowLevel(row.FollowLevel)
+	}
+	return dto
 }
 
 // NewCarFollowListFilter 列表筛选。

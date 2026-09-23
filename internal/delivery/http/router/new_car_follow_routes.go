@@ -19,5 +19,7 @@ func registerNewCarFollowRoutes(v1 *gin.RouterGroup, sbAuth gin.HandlerFunc, ctr
 		g.POST("", ctrl.Create)
 		g.GET("/:file_id", ctrl.Get)
 		g.PATCH("/:file_id", ctrl.Patch)
+		g.GET("/:file_id/logs", ctrl.ListLogs)
+		g.POST("/:file_id/logs", ctrl.CreateLog)
 	}
 }

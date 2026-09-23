@@ -227,6 +227,90 @@ func (ctrl *NewCarFollowController) ListCustomers(c *gin.Context) {
 	response.SuccessList(c, list, pq.Page, pq.Size, total)
 }
 
+func (ctrl *NewCarFollowController) ListLogs(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	id, err := usecase.ParseNewCarFollowFileID(c.Param("file_id"))
+	if err != nil {
+		writeNewCarFollowError(c, err)
+		return
+	}
+	pq := response.ParsePageQuery(c, 20)
+	list, total, err := ctrl.uc.ListLogs(c.Request.Context(), user.ID, id, pq.Page, pq.Size)
+	if err != nil {
+		writeNewCarFollowError(c, err)
+		return
+	}
+	response.SuccessList(c, list, pq.Page, pq.Size, total)
+}
+
+func (ctrl *NewCarFollowController) CreateLog(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	id, err := usecase.ParseNewCarFollowFileID(c.Param("file_id"))
+	if err != nil {
+		writeNewCarFollowError(c, err)
+		return
+	}
+	raw, err := io.ReadAll(c.Request.Body)
+	if err != nil || len(raw) == 0 {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误")
+		return
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误")
+		return
+	}
+	in := usecase.CreateFollowLogInput{}
+	if v, ok := fields["body"]; ok {
+		var s string
+		if err := json.Unmarshal(v, &s); err != nil {
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "跟进内容无效")
+			return
+		}
+		in.Body = s
+	}
+	if v, ok := fields["follow_level"]; ok {
+		var s string
+		if err := json.Unmarshal(v, &s); err != nil {
+			response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "跟进级别无效")
+			return
+		}
+		in.FollowLevel = s
+	}
+	if v, ok := fields["next_follow_up_at"]; ok {
+		in.TouchNext = true
+		if string(v) == "null" {
+			in.NextFollowUpAt = nil
+		} else {
+			var s string
+			if err := json.Unmarshal(v, &s); err != nil {
+				response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "下次跟进时间无效")
+				return
+			}
+			t, err := time.Parse(time.RFC3339, strings.TrimSpace(s))
+			if err != nil {
+				response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "下次跟进时间无效")
+				return
+			}
+			in.NextFollowUpAt = &t
+		}
+	}
+	dto, err := ctrl.uc.CreateLog(c.Request.Context(), user.ID, id, in)
+	if err != nil {
+		writeNewCarFollowError(c, err)
+		return
+	}
+	response.SuccessCreated(c, dto)
+}
+
 func parseOptionalRFC3339(raw *string) (*time.Time, error) {
 	if raw == nil {
 		return nil, nil
@@ -258,6 +342,8 @@ func writeNewCarFollowError(c *gin.Context, err error) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "筛选参数无效")
 	case errors.Is(err, usecase.ErrNewCarFollowDuplicate):
 		response.Error(c, http.StatusConflict, response.CodeInvalidParams, "该客户已有未关闭跟进档案")
+	case errors.Is(err, usecase.ErrNewCarFollowBadLogBody):
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "跟进内容不能为空")
 	default:
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务异常")
 	}

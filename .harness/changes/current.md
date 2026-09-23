@@ -2,19 +2,17 @@
 
 | 字段 | 值 |
 |------|-----|
-| Active slice | JPush 前后端推送（iOS/Android/Harmony + 深链） |
-| Last slice | 华为账号一键登录（人侧 AGC 待办） |
-| Epic | 极光推送 |
-| Program | — |
-| Role | executor 已落地代码 → **人** 填极光控制台 / 证书 |
-| agent:pre | — |
-| agent:post | `go test` pkg/jpush + usecase 已绿；Flutter 待本地 `flutter test` |
-| 验收 tick | Partial — 代码打通；AppKey/APNs/厂商通道未配 |
-| Next | 人：极光建应用 + 填密钥；见 `docs/jpush-integration.md` 遗留清单 |
+| Active slice | new-car-follow（ui-parity + C2 + C4 均 Partial 落地） |
+| Epic | `plans/epics/new-car-follow.md` |
+| Role | **人**（人证 / commit） |
+| Brief | 三份已批并已执行完毕 |
+| agent:post | `go test … -run 'Follow\|NewCarFollow'` 绿；`go build ./cmd/api` 绿 |
+| 验收 tick | Partial ×3 — 待真机人证 |
+| Next | 人证后如需 commit 再下指令；C3 深链仍 Deferred |
 
 ## Notes
 
-- Go: `POST /api/v1/push/devices` · `POST /api/v1/push/send`；Realtime 离线兜底极光
-- Flutter: `wys_push` + `module_linking`；AppKey 占位则自动 Mock
-- 遗留清单：`docs/jpush-integration.md`
-- 旁路已完成（非本 Epic）：社区 `VideoPlayPage` → CPF Chewie + tpc `video_player` OHOS；`pigeon_runtime_stub`；小视频未改
+- Go：流水表/API；店管 `role.assign_store` 全店口径；owner 字段
+- Flutter：成交对标 UI + 假上传 + 详情流水 + 列表销售名
+- 证据：`docs/acceptance-records/2026-09-23-new-car-follow-{ui-parity,c2,c4}.md`
+- 迁移：`migrations/20260923160000_new_car_follow_log.*`（或 EnsureSchema 兜底）
