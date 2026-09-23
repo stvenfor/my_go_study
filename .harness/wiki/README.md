@@ -14,5 +14,6 @@
 | Realtime 导读 | [realtime-beginner-walkthrough](../../docs/realtime-beginner-walkthrough.md) |
 | 消息队列 | [message-queue](../../docs/message-queue.md) |
 | 本仓编排 | [../README.md](../README.md) |
+| **双仓编码流程 Playbook** | [coding-playbook-dual-repo](../../docs/coding-playbook-dual-repo.md)（需求/提示词/刀法/坑/8 步流程） |
 | 跨仓 OS skill | `~/.cursor/skills/migration-os-harness/` |
 | Flutter 客户端 | [my_ai_project AGENTS](../../../my_ai_project/AGENTS.md) |

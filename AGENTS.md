@@ -17,8 +17,28 @@ Go BFF 后端 Agent 指南，并包含与 Flutter **`my_ai_project`** 协作的�
 | 当前指针 | [`.harness/changes/current.md`](./.harness/changes/current.md) |
 | 硬规则 | [`.harness/rules/`](./.harness/rules/) |
 | 文档索引 | [`.harness/wiki/README.md`](./.harness/wiki/README.md) |
+| **双仓编码 Playbook** | [`docs/coding-playbook-dual-repo.md`](./docs/coding-playbook-dual-repo.md)（8 步 / 提示词 / 坑） |
 
 新任务未指定角色时，先读 **conductor**；人批 Brief 与 commit/push。
+
+#### 开新模块一键提示词
+
+规划（先不写码）：
+
+```text
+结合双仓（本仓 + ../../my_ai_project）设计 <模块>：
+1) CONTEXT 术语草案（含 Avoid） 2) 表/API/权限口径 3) Flutter 对标页与模块边界
+4) Program/Epic/Slice backlog；标假实现边界。先方案与 Brief 草稿，等我批再落地。
+流程见 docs/coding-playbook-dual-repo.md。
+```
+
+执行（Brief 已批）：
+
+```text
+执行 plans/slices/<id>.md；只改白名单；Go：定向 go test + go build ./cmd/api；
+Flutter：dart analyze 触及包 + 对标 Brief。写 acceptance-records（Partial 可）。
+commit/push 等我指令。
+```
 
 ---
 
