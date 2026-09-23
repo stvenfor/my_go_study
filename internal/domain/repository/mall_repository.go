@@ -51,4 +51,6 @@ type MallRepository interface {
 	// PayOrderLocal 本地模拟支付：任意渠道成功落库并履约。已支付则幂等返回。
 	PayOrderLocal(ctx context.Context, orderID int64, buyerUserID string, channel int16) (*entity.MallOrderDetail, error)
 	CancelUnpaidOrder(ctx context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error)
+	// CancelPaidOrder 取消已支付未履约订单（库存/兑换码不回滚；退款由 usecase 入账钱包）。
+	CancelPaidOrder(ctx context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error)
 }

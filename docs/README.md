@@ -26,7 +26,8 @@
 | **两端联调启动手册** | [dual-end-lan-startup.md](./dual-end-lan-startup.md) | ✅ Go + Flutter 配置与启动清单 |
 | **iOS 真机 LAN 调试记录** | [ios-lan-device-debug-2026-09-16.md](./ios-lan-device-debug-2026-09-16.md) | ✅ 127.0.0.1 / BACKEND_HOST 未注入根因与验收 |
 | **本地 Auth + Postgres** | [local-auth-postgres.md](./local-auth-postgres.md) | ✅ `auth.provider=local`；`make import-supabase` |
-| ADR | [adr/](./adr/) | ✅ 含 LAN / local Auth 决策 |
+| ADR | [adr/](./adr/) | ✅ 含 LAN / local Auth / 钱包退款 ADR-0015 |
+| **人民币钱包** | [cash-wallet-api.md](./cash-wallet-api.md) · [acceptance 2026-09-23](./acceptance-records/2026-09-23-cash-wallet.md) · SPEC `.scratch/cash-wallet/` | ✅ 余额/绑卡/充值/商城渠道 6 |
 
 **结论：** 架构文档与使用文档都已存在，但此前分散在多篇里。下文是把「怎么装、怎么跑、怎么调、有哪些 API、架构是什么」收成一份的完整使用手册；细节仍以专题文档为准。
 

@@ -44,11 +44,12 @@ type MallUsecase struct {
 	repo   repository.MallRepository
 	access *AccessUsecase
 	points *PointsUsecase
+	wallet *CashWalletUsecase
 }
 
-// NewMallUsecase 创建。points 可为 nil（仅人民币路径；积分支付不可用）。
-func NewMallUsecase(repo repository.MallRepository, access *AccessUsecase, points *PointsUsecase) *MallUsecase {
-	return &MallUsecase{repo: repo, access: access, points: points}
+// NewMallUsecase 创建。points / wallet 可为 nil。
+func NewMallUsecase(repo repository.MallRepository, access *AccessUsecase, points *PointsUsecase, wallet *CashWalletUsecase) *MallUsecase {
+	return &MallUsecase{repo: repo, access: access, points: points, wallet: wallet}
 }
 
 // CreateProduct 店员创建商品。
@@ -504,7 +505,7 @@ func (u *MallUsecase) ListOrders(ctx context.Context, buyerUserID string, status
 	return out, total, nil
 }
 
-// PayOrder 支付：积分经 Points 账本扣减；混合需人民币渠道；失败则退回已扣积分。
+// PayOrder 支付：积分经 Points 账本扣减；人民币余额渠道经 Wallet 扣减；混合需人民币渠道；失败则退回已扣。
 func (u *MallUsecase) PayOrder(ctx context.Context, buyerUserID string, orderID int64, channel int16) (*entity.MallOrderDetail, error) {
 	if !entity.ValidMallPaymentChannel(channel) {
 		return nil, ErrMallInvalidChannel
@@ -533,29 +534,79 @@ func (u *MallUsecase) PayOrder(ctx context.Context, buyerUserID string, orderID 
 		channel = entity.MallPayPoints
 	}
 
-	debited := int64(0)
+	debitedPts := int64(0)
+	debitedFen := int64(0)
+	ref := fmt.Sprintf("%d", orderID)
 	if needsPoints {
 		if u.points == nil {
 			return nil, ErrPointsInsufficient
 		}
-		if _, err := u.points.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, fmt.Sprintf("%d", orderID)); err != nil {
+		if _, err := u.points.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, ref); err != nil {
 			return nil, err
 		}
-		debited = order.TotalPoints
+		debitedPts = order.TotalPoints
+	}
+	if needsCNY && channel == entity.MallPayBalance {
+		if u.wallet == nil {
+			return nil, ErrCashInsufficient
+		}
+		fen, err := entity.ParseYuanToFen(order.Amount)
+		if err != nil || fen <= 0 {
+			u.restorePayDebits(ctx, buyerUserID, debitedPts, 0, ref)
+			return nil, ErrMallInvalidPrice
+		}
+		if _, err := u.wallet.Debit(ctx, buyerUserID, fen, entity.CashReasonMallPay, ref); err != nil {
+			u.restorePayDebits(ctx, buyerUserID, debitedPts, 0, ref)
+			return nil, err
+		}
+		debitedFen = fen
 	}
 	detail, err := u.repo.PayOrderLocal(ctx, orderID, buyerUserID, channel)
 	if err != nil {
-		if debited > 0 && u.points != nil {
-			_, _ = u.points.Credit(ctx, buyerUserID, debited, entity.PointsReasonMallRefund, fmt.Sprintf("%d", orderID))
-		}
+		u.restorePayDebits(ctx, buyerUserID, debitedPts, debitedFen, ref)
 		return nil, err
 	}
 	return detail, nil
 }
 
-// CancelOrder 取消未支付订单（未扣积分则无需退分）。
+func (u *MallUsecase) restorePayDebits(ctx context.Context, userID string, pts, fen int64, ref string) {
+	if pts > 0 && u.points != nil {
+		_, _ = u.points.Credit(ctx, userID, pts, entity.PointsReasonMallRefund, ref)
+	}
+	if fen > 0 && u.wallet != nil {
+		_, _ = u.wallet.Credit(ctx, userID, fen, entity.CashReasonMallRefund, ref)
+	}
+}
+
+// CancelOrder 取消未支付订单；已支付未履约则取消并按 ADR-0015 将人民币退回钱包、积分退回积分账。
 func (u *MallUsecase) CancelOrder(ctx context.Context, buyerUserID string, orderID int64) (*entity.WysMallOrder, error) {
-	return u.repo.CancelUnpaidOrder(ctx, orderID, buyerUserID)
+	order, err := u.repo.GetOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.BuyerUserID != buyerUserID {
+		return nil, ErrMallNotFound
+	}
+	if order.Status == entity.MallOrderUnpaid {
+		return u.repo.CancelUnpaidOrder(ctx, orderID, buyerUserID)
+	}
+	if order.Status != entity.MallOrderPaid {
+		return nil, ErrMallOrderNotCancelable
+	}
+	cancelled, err := u.repo.CancelPaidOrder(ctx, orderID, buyerUserID)
+	if err != nil {
+		return nil, err
+	}
+	ref := fmt.Sprintf("%d", orderID)
+	if !entity.IsZeroMoney(cancelled.Amount) && u.wallet != nil {
+		if fen, err := entity.ParseYuanToFen(cancelled.Amount); err == nil && fen > 0 {
+			_, _ = u.wallet.Credit(ctx, buyerUserID, fen, entity.CashReasonMallRefund, ref)
+		}
+	}
+	if cancelled.TotalPoints > 0 && u.points != nil {
+		_, _ = u.points.Credit(ctx, buyerUserID, cancelled.TotalPoints, entity.PointsReasonMallRefund, ref)
+	}
+	return cancelled, nil
 }
 
 // expireUnpaidIfNeeded 待支付超过 TTL 则取消并返回最新行。

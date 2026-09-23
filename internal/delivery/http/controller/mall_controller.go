@@ -359,7 +359,8 @@ func writeMallError(c *gin.Context, err error) {
 		errors.Is(err, usecase.ErrMallOrderNotCancelable),
 		errors.Is(err, usecase.ErrMallPaymentModeMixed),
 		errors.Is(err, usecase.ErrMallNeedCNYChannel),
-		errors.Is(err, usecase.ErrPointsInsufficient):
+		errors.Is(err, usecase.ErrPointsInsufficient),
+		errors.Is(err, usecase.ErrCashInsufficient):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
 	default:
 		response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())

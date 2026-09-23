@@ -237,9 +237,9 @@ ALTER TABLE wys_mall_order_item ADD COLUMN IF NOT EXISTS line_points bigint NOT 
 ALTER TABLE wys_mall_payment DROP CONSTRAINT IF EXISTS chk_wys_mall_payment_channel;
 ALTER TABLE wys_mall_order DROP CONSTRAINT IF EXISTS chk_wys_mall_order_channel;
 ALTER TABLE wys_mall_order ADD CONSTRAINT chk_wys_mall_order_channel
-  CHECK (payment_channel IS NULL OR payment_channel IN (1, 2, 3, 4, 5));
+  CHECK (payment_channel IS NULL OR payment_channel IN (1, 2, 3, 4, 5, 6));
 ALTER TABLE wys_mall_payment ADD CONSTRAINT chk_wys_mall_payment_channel
-  CHECK (payment_channel IN (1, 2, 3, 4, 5));
+  CHECK (payment_channel IN (1, 2, 3, 4, 5, 6));
 DROP INDEX IF EXISTS uq_wys_mall_payment_one_success;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_wys_mall_payment_one_success_per_channel
   ON wys_mall_payment (order_id, payment_channel) WHERE status = 1;

@@ -67,7 +67,7 @@ const (
 // ValidMallPaymentChannel 本地模拟支付允许的渠道（含积分）。
 func ValidMallPaymentChannel(ch int16) bool {
 	switch ch {
-	case MallPayAlipay, MallPayWeChat, MallPayAppleIAP, MallPayHuaweiIAP, MallPayPoints:
+	case MallPayAlipay, MallPayWeChat, MallPayAppleIAP, MallPayHuaweiIAP, MallPayPoints, MallPayBalance:
 		return true
 	default:
 		return false
@@ -77,7 +77,7 @@ func ValidMallPaymentChannel(ch int16) bool {
 // ValidMallCNYChannel 人民币渠道（不含积分）。
 func ValidMallCNYChannel(ch int16) bool {
 	switch ch {
-	case MallPayAlipay, MallPayWeChat, MallPayAppleIAP, MallPayHuaweiIAP:
+	case MallPayAlipay, MallPayWeChat, MallPayAppleIAP, MallPayHuaweiIAP, MallPayBalance:
 		return true
 	default:
 		return false

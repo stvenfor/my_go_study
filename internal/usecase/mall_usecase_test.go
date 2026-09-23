@@ -65,7 +65,7 @@ func TestGetShelfProductHidesOffShelfAndDeliveryURL(t *testing.T) {
 		skus: []entity.WysMallSKU{{
 			SKUID: 9, Title: "虚拟发放", Price: "12.00", ContentURL: &url, DeliverType: &dt,
 		}},
-	}, nil, nil)
+	}, nil, nil, nil)
 	detail, err := on.GetShelfProduct(context.Background(), 1, 7)
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestGetShelfProductHidesOffShelfAndDeliveryURL(t *testing.T) {
 
 	off := usecase.NewMallUsecase(shelfRepo{
 		product: &entity.WysMallProduct{ProductID: 7, StoreID: 1, Status: entity.MallProductOffShelf},
-	}, nil, nil)
+	}, nil, nil, nil)
 	if _, err := off.GetShelfProduct(context.Background(), 1, 7); err != usecase.ErrMallNotFound {
 		t.Fatalf("off shelf got %v", err)
 	}
@@ -86,7 +86,7 @@ func TestGetShelfProductHidesOffShelfAndDeliveryURL(t *testing.T) {
 }
 
 func TestPayOrderRejectsInvalidChannel(t *testing.T) {
-	uc := usecase.NewMallUsecase(nil, nil, nil)
+	uc := usecase.NewMallUsecase(nil, nil, nil, nil)
 	_, err := uc.PayOrder(context.Background(), "u1", 1, 9)
 	if err != usecase.ErrMallInvalidChannel {
 		t.Fatalf("got %v want ErrMallInvalidChannel", err)
@@ -199,7 +199,7 @@ func TestListOrdersOwnAndStatusFilter(t *testing.T) {
 			3: {{ItemID: 13, OrderID: 3, ProductTitle: "他", Qty: 1, LineAmount: "30.00"}},
 		},
 	}
-	uc := usecase.NewMallUsecase(repo, nil, nil)
+	uc := usecase.NewMallUsecase(repo, nil, nil, nil)
 
 	all, total, err := uc.ListOrders(context.Background(), "u1", nil, 1, 10)
 	if err != nil {

@@ -22,6 +22,7 @@ type Options struct {
 	AccessController             *controller.AccessController
 	MallController               *controller.MallController
 	PointsController             *controller.PointsController
+	CashWalletController         *controller.CashWalletController
 	CommunityController          *controller.CommunityController
 	ShortVideoController         *controller.ShortVideoController
 	AddressController            *controller.AddressController
@@ -83,6 +84,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if opts.Config.Auth.IsLocalProvider() && opts.PointsController != nil && sessionAuth != nil {
 		registerPointsRoutes(v1, sessionAuth, opts.PointsController, opts.AccountGate)
+	}
+
+	if opts.Config.Auth.IsLocalProvider() && opts.CashWalletController != nil && sessionAuth != nil {
+		registerCashWalletRoutes(v1, sessionAuth, opts.CashWalletController, opts.AccountGate)
 	}
 
 	if opts.Config.Auth.IsLocalProvider() && opts.CommunityController != nil && sessionAuth != nil {

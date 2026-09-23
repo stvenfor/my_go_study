@@ -104,6 +104,7 @@ func run() error {
 	var accessController *controller.AccessController
 	var mallController *controller.MallController
 	var pointsController *controller.PointsController
+	var cashWalletController *controller.CashWalletController
 	var communityController *controller.CommunityController
 	var shortVideoController *controller.ShortVideoController
 	var addressController *controller.AddressController
@@ -139,7 +140,10 @@ func run() error {
 		pointsRepo := postgres.NewPointsRepository(db)
 		pointsUC := usecase.NewPointsUsecase(pointsRepo, postgres.NewPointsTaskProgress(db))
 		pointsController = controller.NewPointsController(pointsUC)
-		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC)
+		cashRepo := postgres.NewCashWalletRepository(db)
+		cashUC := usecase.NewCashWalletUsecase(cashRepo)
+		cashWalletController = controller.NewCashWalletController(cashUC)
+		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC, cashUC)
 		mallController = controller.NewMallController(mallUC)
 		communityRepo = postgres.NewCommunityRepository(db)
 		shortVideoRepo := postgres.NewShortVideoRepository(db)
@@ -305,6 +309,7 @@ func run() error {
 		AccessController:             accessController,
 		MallController:               mallController,
 		PointsController:             pointsController,
+		CashWalletController:         cashWalletController,
 		CommunityController:          communityController,
 		ShortVideoController:         shortVideoController,
 		AddressController:            addressController,

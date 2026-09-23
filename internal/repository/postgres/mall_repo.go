@@ -559,6 +559,53 @@ func (r *MallRepository) CancelUnpaidOrder(ctx context.Context, orderID int64, b
 	return &out, nil
 }
 
+func (r *MallRepository) CancelPaidOrder(ctx context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error) {
+	var out entity.WysMallOrder
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var order entity.WysMallOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("order_id = ? AND buyer_user_id = ?", orderID, buyerUserID).
+			First(&order).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return repository.ErrMallNotFound
+			}
+			return err
+		}
+		if order.Status != entity.MallOrderPaid {
+			return repository.ErrMallOrderNotCancelable
+		}
+		from := entity.MallOrderPaid
+		now := time.Now()
+		if err := tx.Model(&entity.WysMallOrder{}).
+			Where("order_id = ? AND status = ?", orderID, entity.MallOrderPaid).
+			Updates(map[string]interface{}{
+				"status":     entity.MallOrderCancelled,
+				"updated_at": now,
+			}).Error; err != nil {
+			return err
+		}
+		logRow := entity.WysMallOrderLog{
+			OrderID:     orderID,
+			FromStatus:  &from,
+			ToStatus:    entity.MallOrderCancelled,
+			ActorUserID: buyerUserID,
+		}
+		if err := tx.Create(&logRow).Error; err != nil {
+			return err
+		}
+		updated, err := getOrderTx(tx, orderID)
+		if err != nil {
+			return err
+		}
+		out = *updated
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func getOrderTx(tx *gorm.DB, orderID int64) (*entity.WysMallOrder, error) {
 	var o entity.WysMallOrder
 	if err := tx.Where("order_id = ?", orderID).First(&o).Error; err != nil {
