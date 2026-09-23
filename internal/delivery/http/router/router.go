@@ -30,6 +30,7 @@ type Options struct {
 	HomeTodoController           *controller.HomeTodoController
 	DealInvoiceController        *controller.DealInvoiceController
 	UsedCarOrderController       *controller.UsedCarOrderController
+	NewCarFollowController       *controller.NewCarFollowController
 	AfterSalesZoneController     *controller.AfterSalesZoneController
 	PurchaseCalculatorController *controller.PurchaseCalculatorController
 	PaymentController            *controller.PaymentController
@@ -118,6 +119,9 @@ func Setup(opts Options) *gin.Engine {
 		registerUsedCarOrderRoutes(v1, sessionAuth, opts.UsedCarOrderController, opts.AccountGate)
 	}
 
+	if opts.Config.Auth.IsLocalProvider() && opts.NewCarFollowController != nil && sessionAuth != nil {
+		registerNewCarFollowRoutes(v1, sessionAuth, opts.NewCarFollowController, opts.AccountGate)
+	}
 
 	if opts.Config.Auth.IsLocalProvider() && opts.AfterSalesZoneController != nil && sessionAuth != nil {
 		registerAfterSalesZoneRoutes(v1, sessionAuth, opts.AfterSalesZoneController, opts.AccountGate)

@@ -115,6 +115,7 @@ func run() error {
 	var homeTodoController *controller.HomeTodoController
 	var dealInvoiceController *controller.DealInvoiceController
 	var usedCarOrderController *controller.UsedCarOrderController
+	var newCarFollowController *controller.NewCarFollowController
 	var afterSalesZoneController *controller.AfterSalesZoneController
 	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
@@ -209,6 +210,17 @@ func run() error {
 			log.Warn("二手车业务单种子写入失败", zap.Error(err))
 		} else {
 			log.Info("二手车业务单种子已就绪（13400000000）")
+		}
+		newCarFollowRepo := postgres.NewNewCarFollowRepository(db)
+		if err := postgres.EnsureNewCarFollowSchema(db); err != nil {
+			log.Warn("新车跟进档案表准备失败", zap.Error(err))
+		}
+		newCarFollowUC := usecase.NewNewCarFollowUsecase(newCarFollowRepo, accessUC)
+		newCarFollowController = controller.NewNewCarFollowController(newCarFollowUC)
+		if err := postgres.EnsureNewCarFollowSeed(db); err != nil {
+			log.Warn("新车跟进档案种子写入失败", zap.Error(err))
+		} else {
+			log.Info("新车跟进档案种子已就绪（13400000000）")
 		}
 		afterSalesZoneRepo := postgres.NewAfterSalesZoneRepository(db)
 		if err := postgres.EnsureAfterSalesZoneSchema(db); err != nil {
@@ -375,6 +387,7 @@ func run() error {
 		HomeTodoController:           homeTodoController,
 		DealInvoiceController:        dealInvoiceController,
 		UsedCarOrderController:       usedCarOrderController,
+		NewCarFollowController:       newCarFollowController,
 		AfterSalesZoneController:     afterSalesZoneController,
 		PurchaseCalculatorController: purchaseCalculatorController,
 		PaymentController:            paymentController,
