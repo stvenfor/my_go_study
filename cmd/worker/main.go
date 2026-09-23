@@ -13,9 +13,12 @@ import (
 	"syscall"
 
 	"github.com/hibiken/asynq"
+	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	redisrepo "github.com/stvenfor/my_go_study/internal/repository/redis"
+	"github.com/stvenfor/my_go_study/internal/usecase"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	"github.com/stvenfor/my_go_study/pkg/database"
+	"github.com/stvenfor/my_go_study/pkg/jpush"
 	"github.com/stvenfor/my_go_study/pkg/logger"
 	"github.com/stvenfor/my_go_study/pkg/queue"
 	"go.uber.org/zap"
@@ -69,9 +72,35 @@ func run() error {
 		}
 	}()
 
+	db, err := database.NewPostgres(cfg.Database)
+	if err != nil {
+		return fmt.Errorf("连接 Postgres 失败: %w", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = sqlDB.Close() }()
+
+	var jpushUC *usecase.JPushUsecase
+	pushDeviceRepo := postgres.NewPushDeviceRepository(db)
+	if err := postgres.EnsurePushDeviceSchema(db); err != nil {
+		log.Warn("极光设备表初始化失败", zap.Error(err))
+	} else {
+		jpushClient := jpush.NewClient(jpush.Config{
+			AppKey:         cfg.ThirdParty.JPushAppKey,
+			MasterSecret:   cfg.ThirdParty.JPushMasterSecret,
+			APNsProduction: cfg.ThirdParty.JPushAPNsProduction,
+		})
+		jpushUC = usecase.NewJPushUsecase(pushDeviceRepo, jpushClient)
+		if pushUC != nil {
+			pushUC.SetOfflinePusher(jpushUC)
+		}
+	}
+
 	server := queue.NewAsynqServer(*cfg)
 	mux := asynq.NewServeMux()
-	queue.NewHandler(pushUC, sessionRepo, queueClient, *cfg, redisClient, log).Register(mux)
+	queue.NewHandler(pushUC, sessionRepo, queueClient, *cfg, redisClient, log).WithJPush(jpushUC).Register(mux)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

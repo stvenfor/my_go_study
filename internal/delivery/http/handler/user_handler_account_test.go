@@ -42,7 +42,7 @@ func (f *fakeSession) Deactivate(_ context.Context, userID string) error {
 func TestRegisterIgnoresClientUserID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	fake := &fakeSession{}
-	h := NewUserHandler(fake, nil, nil)
+	h := NewUserHandler(fake, nil, nil, nil, nil)
 	r := gin.New()
 	r.POST("/register", h.Register)
 
@@ -73,7 +73,7 @@ func TestRegisterIgnoresClientUserID(t *testing.T) {
 func TestDeactivateUsesSessionUser(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	fake := &fakeSession{}
-	h := NewUserHandler(fake, nil, nil)
+	h := NewUserHandler(fake, nil, nil, nil, nil)
 	r := gin.New()
 	r.POST("/deactivate", func(c *gin.Context) {
 		c.Set(middleware.ContextSupabaseUserKey, pkgauth.SupabaseUser{ID: "server-user"})

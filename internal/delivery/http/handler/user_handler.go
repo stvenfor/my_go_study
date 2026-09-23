@@ -25,6 +25,8 @@ type UserHandler struct {
 	sessionAuthUC   usecase.SessionAuth
 	deviceSessionUC *usecase.DeviceSessionUsecase
 	phoneOTPUC      usecase.PhoneOTPAuth
+	wechatLoginUC   usecase.WeChatLoginAuth
+	huaweiLoginUC   usecase.HuaweiLoginAuth
 }
 
 // NewUserHandler 创建用户处理器。
@@ -32,11 +34,15 @@ func NewUserHandler(
 	sessionAuthUC usecase.SessionAuth,
 	deviceSessionUC *usecase.DeviceSessionUsecase,
 	phoneOTPUC usecase.PhoneOTPAuth,
+	wechatLoginUC usecase.WeChatLoginAuth,
+	huaweiLoginUC usecase.HuaweiLoginAuth,
 ) *UserHandler {
 	return &UserHandler{
 		sessionAuthUC:   sessionAuthUC,
 		deviceSessionUC: deviceSessionUC,
 		phoneOTPUC:      phoneOTPUC,
+		wechatLoginUC:   wechatLoginUC,
+		huaweiLoginUC:   huaweiLoginUC,
 	}
 }
 
@@ -243,6 +249,60 @@ func (h *UserHandler) VerifyPhoneOTP(c *gin.Context) {
 	response.Success(c, loginDataFrom(result, sessionID))
 }
 
+// LoginWithWechat POST /api/v1/user/wechat/login
+func (h *UserHandler) LoginWithWechat(c *gin.Context) {
+	var req request.WeChatLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误: "+err.Error())
+		return
+	}
+	if h.wechatLoginUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "微信登录未启用（需 auth.provider=local）")
+		return
+	}
+
+	result, err := h.wechatLoginUC.LoginWithWechatCode(c.Request.Context(), req.Code)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	sessionID, err := h.issueDeviceSession(c, result.UserID, result.Email, req.DeviceID, req.Platform)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	response.Success(c, loginDataFrom(result, sessionID))
+}
+
+// LoginWithHuawei POST /api/v1/user/huawei/login
+func (h *UserHandler) LoginWithHuawei(c *gin.Context) {
+	var req request.HuaweiLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误: "+err.Error())
+		return
+	}
+	if h.huaweiLoginUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "华为登录未启用（需 auth.provider=local）")
+		return
+	}
+
+	result, err := h.huaweiLoginUC.LoginWithHuaweiCode(c.Request.Context(), req.Code)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	sessionID, err := h.issueDeviceSession(c, result.UserID, result.Email, req.DeviceID, req.Platform)
+	if err != nil {
+		h.handleUsecaseError(c, err)
+		return
+	}
+
+	response.Success(c, loginDataFrom(result, sessionID))
+}
+
 func (h *UserHandler) issueDeviceSession(c *gin.Context, userID, email, deviceID, platform string) (string, error) {
 	if h.deviceSessionUC == nil {
 		return "", usecase.ErrSupabaseUnavailable
@@ -284,7 +344,24 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "验证码错误或已失效")
 	case errors.Is(err, usecase.ErrPhoneLoginNotAvailable):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "短信登录暂未开放，请使用邮箱登录")
+	case errors.Is(err, usecase.ErrWechatNotConfigured):
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, err.Error())
+	case errors.Is(err, usecase.ErrWechatLocalOnly):
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, err.Error())
+	case errors.Is(err, usecase.ErrWechatAuthFailed):
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, err.Error())
+	case errors.Is(err, usecase.ErrHuaweiNotConfigured):
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, err.Error())
+	case errors.Is(err, usecase.ErrHuaweiLocalOnly):
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, err.Error())
+	case errors.Is(err, usecase.ErrHuaweiAuthFailed):
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, err.Error())
 	default:
+		// 带微信 / 华为 errmsg 后缀
+		if strings.Contains(err.Error(), "微信授权失败") || strings.Contains(err.Error(), "华为授权失败") {
+			response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, err.Error())
+			return
+		}
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}
 }

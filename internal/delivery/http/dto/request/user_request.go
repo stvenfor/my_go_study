@@ -31,6 +31,20 @@ type VerifyPhoneOTPRequest struct {
 	Platform string `json:"platform" binding:"required,oneof=android ios"`
 }
 
+// WeChatLoginRequest 微信授权 code 登录。
+type WeChatLoginRequest struct {
+	Code     string `json:"code" binding:"required"`
+	DeviceID string `json:"device_id" binding:"required"`
+	Platform string `json:"platform" binding:"required,oneof=android ios"`
+}
+
+// HuaweiLoginRequest 华为账号一键登录 authorization code。
+type HuaweiLoginRequest struct {
+	Code     string `json:"code" binding:"required"`
+	DeviceID string `json:"device_id" binding:"required"`
+	Platform string `json:"platform" binding:"required,oneof=android ios"`
+}
+
 // RefreshTokenRequest 刷新 access token 请求体。
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`

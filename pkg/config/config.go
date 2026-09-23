@@ -28,6 +28,7 @@ type Config struct {
 	SSE       SSEConfig       `mapstructure:"sse"`
 	Community  CommunityConfig  `mapstructure:"community"`
 	ShortVideo ShortVideoConfig `mapstructure:"short_video"`
+	ThirdParty ThirdPartyConfig `mapstructure:"third_party"`
 }
 
 // CommunityConfig 社区动态。
@@ -508,6 +509,27 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("sse.openai.model", "SSE_OPENAI_MODEL")
 	_ = v.BindEnv("sse.openai.api_key", "SSE_OPENAI_API_KEY")
 	_ = v.BindEnv("community.ask_everyone_invite_user_ids", "COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")
+	_ = v.BindEnv("third_party.wechat_app_id", "WECHAT_APP_ID")
+	_ = v.BindEnv("third_party.wechat_app_secret", "WECHAT_APP_SECRET")
+	_ = v.BindEnv("third_party.wechat_mch_id", "WECHAT_MCH_ID")
+	_ = v.BindEnv("third_party.wechat_mch_api_key", "WECHAT_MCH_API_KEY")
+	_ = v.BindEnv("third_party.wechat_mch_notify_url", "WECHAT_MCH_NOTIFY_URL")
+	_ = v.BindEnv("third_party.alipay_app_id", "ALIPAY_APP_ID")
+	_ = v.BindEnv("third_party.alipay_private_key", "ALIPAY_PRIVATE_KEY")
+	_ = v.BindEnv("third_party.alipay_notify_url", "ALIPAY_NOTIFY_URL")
+	_ = v.BindEnv("third_party.huawei_iap.app_id", "HUAWEI_IAP_APP_ID")
+	_ = v.BindEnv("third_party.huawei_iap.issuer_id", "HUAWEI_IAP_ISSUER_ID")
+	_ = v.BindEnv("third_party.huawei_iap.key_id", "HUAWEI_IAP_KEY_ID")
+	_ = v.BindEnv("third_party.huawei_iap.private_key_pem", "HUAWEI_IAP_PRIVATE_KEY_PEM")
+	_ = v.BindEnv("third_party.huawei_iap.subscription_root_url", "HUAWEI_IAP_SUBSCRIPTION_ROOT_URL")
+	_ = v.BindEnv("third_party.apple_iap.shared_secret", "APPLE_IAP_SHARED_SECRET")
+	_ = v.BindEnv("third_party.apple_iap.bundle_id", "APPLE_IAP_BUNDLE_ID")
+	_ = v.BindEnv("third_party.huawei_client_id", "HUAWEI_CLIENT_ID")
+	_ = v.BindEnv("third_party.huawei_client_secret", "HUAWEI_CLIENT_SECRET")
+	_ = v.BindEnv("third_party.huawei_redirect_uri", "HUAWEI_REDIRECT_URI")
+	_ = v.BindEnv("third_party.jpush_app_key", "JPUSH_APP_KEY")
+	_ = v.BindEnv("third_party.jpush_master_secret", "JPUSH_MASTER_SECRET")
+	_ = v.BindEnv("third_party.jpush_apns_production", "JPUSH_APNS_PRODUCTION")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {

@@ -17,6 +17,8 @@ func registerUserRoutes(v1 *gin.RouterGroup, jwtManager *jwtmanager.Manager, use
 		userGroup.POST("/refresh", userHandler.Refresh)
 		userGroup.POST("/phone/otp/send", userHandler.SendPhoneOTP)
 		userGroup.POST("/phone/otp/verify", userHandler.VerifyPhoneOTP)
+		userGroup.POST("/wechat/login", userHandler.LoginWithWechat)
+		userGroup.POST("/huawei/login", userHandler.LoginWithHuawei)
 		if sbAuth != nil {
 			// 身份只认 Session Auth 写入的 user_id，不要求客户端再传。
 			chain := sessionAuthChain(sbAuth, accountGate)

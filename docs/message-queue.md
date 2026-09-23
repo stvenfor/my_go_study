@@ -66,7 +66,7 @@ Docker Compose 已包含 `worker` 服务（与 `app` 共用镜像，入口为 `/
 | Realtime Push | `realtime:push_notify` | 已实现 |
 | 定时广播 | `scheduled:broadcast_notify` | 已实现（每小时系统通知） |
 | 短信 OTP | `sms:send` | 占位（生产接入 SMS 厂商） |
-| 极光注册 | `jpush:register` | 占位（接入 JPush SDK 后实现） |
+| 极光注册 | `jpush:register` | 已实现（写入 `wys_push_devices`） |
 
 ## Push API 响应（异步模式）
 

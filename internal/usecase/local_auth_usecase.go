@@ -227,6 +227,129 @@ func (u *LocalAuthUsecase) VerifyPhoneOTP(ctx context.Context, phone, otp string
 	return u.issueTokens(ctx, user)
 }
 
+// LoginOrRegisterHuawei 用华为 UnionID 找/建本地账号；有手机号则优先合并到已有手机号用户。
+// email 占位 hw_{unionID}@huawei.local。
+func (u *LocalAuthUsecase) LoginOrRegisterHuawei(ctx context.Context, unionID, openID, phone, nickname string) (*SupabaseAuthOutput, error) {
+	unionID = strings.TrimSpace(unionID)
+	if unionID == "" {
+		return nil, ErrInvalidParams
+	}
+	digits := config.NormalizePhoneDigits(phone)
+	email := fmt.Sprintf("hw_%s@huawei.local", unionID)
+
+	user, err := u.findOpenByEmail(ctx, email)
+	if errors.Is(err, gorm.ErrRecordNotFound) && digits != "" {
+		user, err = u.findOpenByPhone(ctx, digits)
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		hash, herr := bcrypt.GenerateFromPassword([]byte(uuid.NewString()), bcrypt.DefaultCost)
+		if herr != nil {
+			return nil, herr
+		}
+		name := strings.TrimSpace(nickname)
+		if name == "" {
+			name = "华为用户"
+		}
+		if len(name) > 64 {
+			name = name[:64]
+		}
+		created := newLocalUser(email, name, digits, string(hash))
+		if digits != "" {
+			now := time.Now().UTC()
+			created.PhoneVerifiedAt = &now
+		}
+		if err := u.db.WithContext(ctx).Create(&created).Error; err != nil {
+			return nil, fmt.Errorf("创建华为用户失败: %w", err)
+		}
+		return u.issueTokens(ctx, &created)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	updates := map[string]any{"updated_at": time.Now().UTC()}
+	if user.Email != email && (strings.HasSuffix(user.Email, "@dev.test.local") || user.Email == "") {
+		updates["email"] = email
+		user.Email = email
+	}
+	if digits != "" && user.Phone == "" {
+		updates["phone"] = digits
+		user.Phone = digits
+		now := time.Now().UTC()
+		updates["phone_verified_at"] = now
+		user.PhoneVerifiedAt = &now
+	}
+	if n := strings.TrimSpace(nickname); n != "" && (user.UserName == "华为用户" || user.UserName == "") {
+		if len(n) > 64 {
+			n = n[:64]
+		}
+		updates["user_name"] = n
+		user.UserName = n
+	}
+	_ = openID // OpenID 仅联调用；账号主键用 UnionID。
+	if len(updates) > 1 {
+		_ = u.db.WithContext(ctx).Model(&entity.User{}).Where("user_id = ?", user.UserID).Updates(updates).Error
+	}
+	return u.issueTokens(ctx, user)
+}
+
+func (u *LocalAuthUsecase) findOpenByPhone(ctx context.Context, phone string) (*entity.User, error) {
+	var user entity.User
+	err := u.db.WithContext(ctx).Where("phone = ? AND deleted_at IS NULL", phone).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// LoginOrRegisterWechat 用微信 openid 找/建本地账号（email 占位 wx_{openid}@wechat.local）。
+func (u *LocalAuthUsecase) LoginOrRegisterWechat(ctx context.Context, openID, nickname, avatarURL string) (*SupabaseAuthOutput, error) {
+	openID = strings.TrimSpace(openID)
+	if openID == "" {
+		return nil, ErrInvalidParams
+	}
+	email := fmt.Sprintf("wx_%s@wechat.local", openID)
+	user, err := u.findOpenByEmail(ctx, email)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		hash, herr := bcrypt.GenerateFromPassword([]byte(uuid.NewString()), bcrypt.DefaultCost)
+		if herr != nil {
+			return nil, herr
+		}
+		name := strings.TrimSpace(nickname)
+		if name == "" {
+			name = "微信用户"
+		}
+		if len(name) > 64 {
+			name = name[:64]
+		}
+		created := newLocalUser(email, name, "", string(hash))
+		created.AvatarURL = strings.TrimSpace(avatarURL)
+		if err := u.db.WithContext(ctx).Create(&created).Error; err != nil {
+			return nil, fmt.Errorf("创建微信用户失败: %w", err)
+		}
+		user = &created
+	} else if err != nil {
+		return nil, err
+	} else {
+		updates := map[string]any{"updated_at": time.Now().UTC()}
+		if n := strings.TrimSpace(nickname); n != "" && user.UserName == "微信用户" {
+			if len(n) > 64 {
+				n = n[:64]
+			}
+			updates["user_name"] = n
+			user.UserName = n
+		}
+		if a := strings.TrimSpace(avatarURL); a != "" && user.AvatarURL == "" {
+			updates["avatar_url"] = a
+			user.AvatarURL = a
+		}
+		if len(updates) > 1 {
+			_ = u.db.WithContext(ctx).Model(&entity.User{}).Where("user_id = ?", user.UserID).Updates(updates).Error
+		}
+	}
+	return u.issueTokens(ctx, user)
+}
+
 func (u *LocalAuthUsecase) issueTokens(ctx context.Context, user *entity.User) (*SupabaseAuthOutput, error) {
 	if user.DeletedAt != nil || user.Status == entity.UserStatusDisabled {
 		return nil, ErrAccountDisabled

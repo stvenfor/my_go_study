@@ -25,7 +25,9 @@
 | **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ `make lan-up`（现为本地 Auth） |
 | **两端联调启动手册** | [dual-end-lan-startup.md](./dual-end-lan-startup.md) | ✅ Go + Flutter 配置与启动清单 |
 | **iOS 真机 LAN 调试记录** | [ios-lan-device-debug-2026-09-16.md](./ios-lan-device-debug-2026-09-16.md) | ✅ 127.0.0.1 / BACKEND_HOST 未注入根因与验收 |
-| **本地 Auth + Postgres** | [local-auth-postgres.md](./local-auth-postgres.md) | ✅ `auth.provider=local`；`make import-supabase` |
+| **本地 Auth + Postgres** | [jpush-integration.md](./jpush-integration.md) | 极光推送前后端 + 遗留清单 |
+| [local-auth-postgres.md](./local-auth-postgres.md) | ✅ `auth.provider=local`；`make import-supabase` |
+| **华为账号一键登录** | [huawei-account-login.md](./huawei-account-login.md) | HarmonyOS Account Kit → `POST /user/huawei/login`；AGC scope 待申请 |
 | ADR | [adr/](./adr/) | ✅ 含 LAN / local Auth / 钱包退款 ADR-0015 |
 | **人民币钱包** | [cash-wallet-api.md](./cash-wallet-api.md) · [acceptance 2026-09-23](./acceptance-records/2026-09-23-cash-wallet.md) · SPEC `.scratch/cash-wallet/` | ✅ 余额/绑卡/充值/商城渠道 6 |
 

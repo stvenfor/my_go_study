@@ -23,6 +23,7 @@ type Handler struct {
 	sessions   repository.SessionRepository
 	enqueue    *Client
 	hourly     *usecase.HourlyNotifyUsecase
+	jpushUC    *usecase.JPushUsecase
 	cfg        config.Config
 	redis      *redis.Client
 	log        *zap.Logger
@@ -46,6 +47,14 @@ func NewHandler(
 		redis:    redisClient,
 		log:      log,
 	}
+}
+
+// WithJPush 注入极光设备登记 usecase（可选）。
+func (h *Handler) WithJPush(uc *usecase.JPushUsecase) *Handler {
+	if h != nil {
+		h.jpushUC = uc
+	}
+	return h
 }
 
 // Register 向 ServeMux 注册所有任务路由。
@@ -144,9 +153,26 @@ func (h *Handler) handleJPushRegister(ctx context.Context, t *asynq.Task) error 
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
 		return fmt.Errorf("unmarshal jpush payload: %w", err)
 	}
-	h.log.Info("jpush register task stub — integrate JPush SDK in production",
+	if h.jpushUC == nil {
+		h.log.Info("jpush register skipped — usecase nil",
+			zap.String("userId", payload.UserID),
+			zap.String("deviceId", payload.DeviceID),
+		)
+		return nil
+	}
+	_, err := h.jpushUC.RegisterDevice(ctx, usecase.RegisterDeviceInput{
+		UserID:         payload.UserID,
+		DeviceID:       payload.DeviceID,
+		Platform:       payload.Platform,
+		RegistrationID: payload.RegisterID,
+	})
+	if err != nil {
+		return fmt.Errorf("jpush register: %w", err)
+	}
+	h.log.Info("jpush device registered",
 		zap.String("userId", payload.UserID),
 		zap.String("deviceId", payload.DeviceID),
+		zap.String("platform", payload.Platform),
 	)
 	return nil
 }

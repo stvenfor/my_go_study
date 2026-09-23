@@ -36,6 +36,7 @@ import (
 	"github.com/stvenfor/my_go_study/pkg/database"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 	"github.com/stvenfor/my_go_study/pkg/logger"
+	"github.com/stvenfor/my_go_study/pkg/jpush"
 	"github.com/stvenfor/my_go_study/pkg/queue"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
 	"go.uber.org/zap"
@@ -115,7 +116,9 @@ func run() error {
 	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
+	var jpushController *controller.JPushController
 	var realtimeController *controller.RealtimeController
+	var pushUC *usecase.RealtimePushUsecase
 	var sseController *controller.SseController
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
@@ -266,7 +269,7 @@ func run() error {
 			log.Info("异步队列已启用", zap.Bool("queue_enabled", true))
 		}
 
-		pushUC := usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub, pushEnqueuer)
+		pushUC = usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub, pushEnqueuer)
 		realtimeController = controller.NewRealtimeController(ticketUC, syncUC, pushUC)
 		if communityRepo != nil {
 			communityUC = usecase.NewCommunityUsecase(communityRepo, pushUC, cfg.Community.AskEveryoneInviteUserIDs)
@@ -299,7 +302,40 @@ func run() error {
 		}
 	}
 
-	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC)
+
+	if businessEnabled {
+		pushDeviceRepo := postgres.NewPushDeviceRepository(db)
+		if err := postgres.EnsurePushDeviceSchema(db); err != nil {
+			log.Warn("极光设备表初始化失败", zap.Error(err))
+		} else {
+			log.Info("极光设备表已就绪")
+		}
+		jpushClient := jpush.NewClient(jpush.Config{
+			AppKey:         cfg.ThirdParty.JPushAppKey,
+			MasterSecret:   cfg.ThirdParty.JPushMasterSecret,
+			APNsProduction: cfg.ThirdParty.JPushAPNsProduction,
+		})
+		jpushUC := usecase.NewJPushUsecase(pushDeviceRepo, jpushClient)
+		jpushController = controller.NewJPushController(jpushUC)
+		if pushUC != nil {
+			pushUC.SetOfflinePusher(jpushUC)
+		}
+		if cfg.ThirdParty.JPushConfigured() {
+			log.Info("JPush 服务端已配置")
+		} else {
+			log.Info("JPush 服务端未配置（跳过真实下发；登记 API 仍可用）")
+		}
+	}
+
+	var wechatLoginUC usecase.WeChatLoginAuth
+	var huaweiLoginUC usecase.HuaweiLoginAuth
+	if cfg.Auth.IsLocalProvider() {
+		if local, ok := sessionAuthUC.(*usecase.LocalAuthUsecase); ok {
+			wechatLoginUC = usecase.NewWeChatAuthUsecase(cfg.ThirdParty, local)
+			huaweiLoginUC = usecase.NewHuaweiAuthUsecase(cfg.ThirdParty, local)
+		}
+	}
+	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC, wechatLoginUC, huaweiLoginUC)
 
 	var analyticsUC *usecase.AnalyticsUsecase
 	analyticsRepo := postgres.NewAnalyticsRepository(db)
@@ -330,6 +366,7 @@ func run() error {
 		PurchaseCalculatorController: purchaseCalculatorController,
 		TransactionController:        transactionController,
 		RealtimeController:           realtimeController,
+		JPushController:              jpushController,
 		SseController:                sseController,
 		WSHandler:                    wsGateway,
 		Config:                       *cfg,

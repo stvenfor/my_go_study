@@ -33,6 +33,7 @@ type Options struct {
 	PurchaseCalculatorController *controller.PurchaseCalculatorController
 	TransactionController        *controller.TransactionController
 	RealtimeController           *controller.RealtimeController
+	JPushController              *controller.JPushController
 	SseController                *controller.SseController
 	WSHandler                    *wshandler.Handler
 	Config                       config.Config
@@ -121,6 +122,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {
 		registerRealtimeRoutes(v1, sessionAuth, opts.RealtimeController, opts.AccountGate)
+	}
+
+	if businessAuth && opts.JPushController != nil && sessionAuth != nil {
+		registerJPushRoutes(v1, sessionAuth, opts.JPushController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.SseController != nil && sessionAuth != nil && opts.Config.SSE.Enabled {

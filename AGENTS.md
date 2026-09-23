@@ -95,6 +95,9 @@ make test-phone-otp-login
 | 刷新 Token | `POST /api/v1/user/refresh` |
 | 退出登录 | `POST /api/v1/user/logout` |
 | 测试手机号 OTP | `POST /api/v1/user/phone/otp/send` · `verify`（dev：`13400000000` + `123456`） |
+| 微信登录 | `POST /api/v1/user/wechat/login`（需 `WECHAT_APP_ID` + `WECHAT_APP_SECRET`；仅 local Auth） |
+| 华为一键登录 | `POST /api/v1/user/huawei/login`（需 `HUAWEI_CLIENT_ID` + `HUAWEI_CLIENT_SECRET`；仅 local Auth；AGC 须申请 `quickLoginMobilePhone`） |
+| 预支付 | `POST /api/v1/payments/prepay`（需登录；微信商户 / 支付宝私钥见 `.env.example`） |
 | Realtime | Flutter 设置 → Realtime 调试 |
 | 异步 Push | `make test-queue-push`（需 Worker） |
 | 定时通知 | `make trigger-hourly-notify` + `make test-scheduled-notify` |

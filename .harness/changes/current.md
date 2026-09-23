@@ -17,3 +17,4 @@
 - Go: `POST /api/v1/push/devices` · `POST /api/v1/push/send`；Realtime 离线兜底极光
 - Flutter: `wys_push` + `module_linking`；AppKey 占位则自动 Mock
 - 遗留清单：`docs/jpush-integration.md`
+- 旁路已完成（非本 Epic）：社区 `VideoPlayPage` → CPF Chewie + tpc `video_player` OHOS；`pigeon_runtime_stub`；小视频未改

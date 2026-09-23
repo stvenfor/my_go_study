@@ -43,11 +43,17 @@ type PushEnqueuer interface {
 	EnqueueRealtimePush(ctx context.Context, input RealtimePushInput) (taskID string, err error)
 }
 
+// OfflinePusher 离线通道（极光）；失败不阻断 WS 投递。
+type OfflinePusher interface {
+	NotifyUser(ctx context.Context, userID, title, body, deeplink string, extras map[string]any) (SendResult, error)
+}
+
 type RealtimePushUsecase struct {
-	events repository.RealtimeEventRepository
-	cfg    config.Config
-	hub    RealtimeBroadcaster
-	queue  PushEnqueuer
+	events  repository.RealtimeEventRepository
+	cfg     config.Config
+	hub     RealtimeBroadcaster
+	queue   PushEnqueuer
+	offline OfflinePusher
 }
 
 // RealtimeBroadcaster 接口：Usecase 不依赖具体 Hub，方便单元测试 mock。
@@ -62,6 +68,13 @@ func NewRealtimePushUsecase(
 	queue PushEnqueuer,
 ) *RealtimePushUsecase {
 	return &RealtimePushUsecase{events: events, cfg: cfg, hub: hub, queue: queue}
+}
+
+// SetOfflinePusher 注入极光等离线推送（可在构造后设置）。
+func (u *RealtimePushUsecase) SetOfflinePusher(p OfflinePusher) {
+	if u != nil {
+		u.offline = p
+	}
 }
 
 // PushToUser 推送通知：queue.enabled 时异步入队，否则同步投递。
@@ -140,5 +153,20 @@ func (u *RealtimePushUsecase) DeliverPush(ctx context.Context, input RealtimePus
 	}
 
 	delivered := u.hub.BroadcastToUser(input.UserID, topic, envelope)
+
+	if u.offline != nil {
+		deeplink := ""
+		extras := map[string]any{}
+		for k, v := range input.Extra {
+			extras[k] = v
+			if k == "deeplink" {
+				if s, ok := v.(string); ok {
+					deeplink = s
+				}
+			}
+		}
+		_, _ = u.offline.NotifyUser(ctx, input.UserID, input.Title, input.Body, deeplink, extras)
+	}
+
 	return envelope, delivered, nil
 }
