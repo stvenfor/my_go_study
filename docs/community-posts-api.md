@@ -150,7 +150,8 @@ post_tab: latest | hot | following   # 对齐 UI「最新 / 热门 / 关注」
 | 方法 | 路径 | 用途 |
 |------|------|------|
 | GET | `/topics` | 话题列表（热度降序） |
-| GET | `/topics/search?q=` | 搜索话题 |
+| GET | `/topics/search?q=` | 搜索话题（兼容发帖选话题） |
+| GET | `/search?q=&type=` | **统一搜索**：`type=all\|post\|topic\|user` |
 | POST | `/posts` | 发帖 |
 | GET | `/posts` | 动态流 |
 | DELETE | `/posts/:id` | 软删（作者） |
@@ -200,7 +201,34 @@ Query：`page`（默认 1）、`size`（默认 20）
 
 ### 6.2 `GET /topics/search?q=`
 
-同列表结构；`q` 空则等价列表首页。`name ILIKE '%'||q||'%'`。
+同列表结构；`q` 空则等价列表首页。`name ILIKE '%'||q||'%'`（已 escape `%` `_`）。
+
+### 6.2b `GET /search` — 社区统一搜索
+
+Query：
+
+| 参数 | 说明 |
+|------|------|
+| `q` | 关键词；trim；最长 64 字；空时 post/user 返回空列表 |
+| `type` | `all`（默认）\| `post` \| `topic` \| `user` |
+| `page` / `size` | 同其它列表；`all` 时各分区共用 |
+
+匹配：话题 `name`、动态 `content`、用户 `user_name`，均为 `ILIKE %q% ESCAPE '\'`。可选 `pg_trgm` GIN 索引（migration `20260923170000`）。
+
+`type=all` 响应 `data`：
+
+```json
+{
+  "q": "Flutter",
+  "posts":  { "list": [ /* PostDTO */ ], "pagination": { "page": 1, "size": 5, "total": 2, "totalPages": 1 } },
+  "topics": { "list": [ /* TopicDTO */ ], "pagination": { ... } },
+  "users":  { "list": [ { "user_id", "nickname", "avatar", "is_followed" } ], "pagination": { ... } }
+}
+```
+
+`type=post|topic|user`：标准 `SuccessList`（`data.list` + `data.pagination`）。
+
+Flutter：社区页搜索条 → `CommunitySearchPage`；发帖选话题仍走 `/topics/search`。
 
 ### 6.3 `POST /posts` — 发帖（写模型）
 

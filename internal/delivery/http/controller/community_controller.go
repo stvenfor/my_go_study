@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stvenfor/my_go_study/internal/delivery/http/dto/response"
@@ -34,6 +35,34 @@ func (ctrl *CommunityController) ListTopics(c *gin.Context) {
 
 func (ctrl *CommunityController) SearchTopics(c *gin.Context) {
 	ctrl.ListTopics(c)
+}
+
+func (ctrl *CommunityController) Search(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	pq := response.ParsePageQuery(c, 10)
+	typ := c.Query("type")
+	data, total, err := ctrl.uc.Search(c.Request.Context(), user.ID, c.Query("q"), typ, pq.Page, pq.Size)
+	if err != nil {
+		writeCommunityError(c, err)
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(typ)) {
+	case "post", "posts", "动态":
+		list, _ := data.([]usecase.PostDTO)
+		response.SuccessList(c, list, pq.Page, pq.Size, total)
+	case "topic", "topics", "话题":
+		list, _ := data.([]usecase.TopicDTO)
+		response.SuccessList(c, list, pq.Page, pq.Size, total)
+	case "user", "users", "用户":
+		list, _ := data.([]usecase.CommunityUserDTO)
+		response.SuccessList(c, list, pq.Page, pq.Size, total)
+	default:
+		response.Success(c, data)
+	}
 }
 
 func (ctrl *CommunityController) CreatePost(c *gin.Context) {

@@ -264,6 +264,9 @@ func run() error {
 		if communityRepo != nil {
 			communityUC = usecase.NewCommunityUsecase(communityRepo, pushUC, cfg.Community.AskEveryoneInviteUserIDs)
 			communityController = controller.NewCommunityController(communityUC)
+			if err := postgres.EnsureCommunitySearchIndexes(db); err != nil {
+				log.Warn("社区搜索索引准备失败（ILIKE 仍可用）", zap.Error(err))
+			}
 			if err := communityUC.EnsureSeed(context.Background()); err != nil {
 				log.Warn("社区种子数据写入失败", zap.Error(err))
 			} else {

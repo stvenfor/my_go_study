@@ -26,6 +26,7 @@ type CommunityRepository interface {
 	GetPost(ctx context.Context, id uuid.UUID) (*entity.WysPost, error)
 	SoftDeletePost(ctx context.Context, id uuid.UUID, userID string) (bool, error)
 	ListPosts(ctx context.Context, viewerID, tab string, offset, limit int) ([]entity.WysPost, int64, error)
+	SearchPosts(ctx context.Context, q string, offset, limit int) ([]entity.WysPost, int64, error)
 
 	AddLike(ctx context.Context, postID uuid.UUID, userID string) (added bool, err error)
 	RemoveLike(ctx context.Context, postID uuid.UUID, userID string) (removed bool, err error)
@@ -38,7 +39,9 @@ type CommunityRepository interface {
 	FollowUser(ctx context.Context, followerID, followeeID string) (added bool, err error)
 	UnfollowUser(ctx context.Context, followerID, followeeID string) (removed bool, err error)
 	IsFollowing(ctx context.Context, followerID, followeeID string) (bool, error)
+	FollowingSet(ctx context.Context, followerID string, followeeIDs []string) (map[string]bool, error)
 
+	SearchUsers(ctx context.Context, q string, offset, limit int) ([]AuthorProfile, int64, error)
 	AuthorsByIDs(ctx context.Context, ids []string) (map[string]AuthorProfile, error)
 	EnsureSeed(ctx context.Context) error
 	BackfillPostHeat(ctx context.Context) error
@@ -46,6 +49,7 @@ type CommunityRepository interface {
 
 // AuthorProfile 列表展示用作者信息。
 type AuthorProfile struct {
+	UserID   string
 	Nickname string
 	Avatar   string
 }

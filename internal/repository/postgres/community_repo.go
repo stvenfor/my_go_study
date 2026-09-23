@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,18 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// escapeILIKE 转义 % _ \，配合 ESCAPE '\'。
+func escapeILIKE(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+func ilikeContains(q string) string {
+	return "%" + escapeILIKE(q) + "%"
+}
 
 type CommunityRepository struct {
 	db *gorm.DB
@@ -25,7 +38,7 @@ func NewCommunityRepository(db *gorm.DB) *CommunityRepository {
 func (r *CommunityRepository) ListTopics(ctx context.Context, q string, offset, limit int) ([]entity.WysTopic, int64, error) {
 	tx := r.db.WithContext(ctx).Model(&entity.WysTopic{})
 	if q != "" {
-		tx = tx.Where("name ILIKE ?", "%"+q+"%")
+		tx = tx.Where("name ILIKE ? ESCAPE '\\'", ilikeContains(q))
 	}
 	var total int64
 	if err := tx.Count(&total).Error; err != nil {
@@ -72,6 +85,20 @@ func (r *CommunityRepository) SoftDeletePost(ctx context.Context, id uuid.UUID, 
 		return false, res.Error
 	}
 	return res.RowsAffected > 0, nil
+}
+
+func (r *CommunityRepository) SearchPosts(ctx context.Context, q string, offset, limit int) ([]entity.WysPost, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.WysPost{}).Where("deleted_at IS NULL")
+	if q != "" {
+		tx = tx.Where("content ILIKE ? ESCAPE '\\'", ilikeContains(q))
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var list []entity.WysPost
+	err := tx.Order("heat DESC, created_at DESC").Offset(offset).Limit(limit).Find(&list).Error
+	return list, total, err
 }
 
 func (r *CommunityRepository) ListPosts(ctx context.Context, viewerID, tab string, offset, limit int) ([]entity.WysPost, int64, error) {
@@ -224,11 +251,69 @@ func (r *CommunityRepository) AuthorsByIDs(ctx context.Context, ids []string) (m
 	}
 	for _, u := range users {
 		out[u.UserID] = repository.AuthorProfile{
+			UserID:   u.UserID,
 			Nickname: u.UserName,
 			Avatar:   u.AvatarURL,
 		}
 	}
 	return out, nil
+}
+
+func (r *CommunityRepository) SearchUsers(ctx context.Context, q string, offset, limit int) ([]repository.AuthorProfile, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.User{}).Where("deleted_at IS NULL")
+	if q != "" {
+		tx = tx.Where("user_name ILIKE ? ESCAPE '\\'", ilikeContains(q))
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var users []entity.User
+	err := tx.Order("user_name ASC").Offset(offset).Limit(limit).Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]repository.AuthorProfile, 0, len(users))
+	for _, u := range users {
+		out = append(out, repository.AuthorProfile{
+			UserID: u.UserID, Nickname: u.UserName, Avatar: u.AvatarURL,
+		})
+	}
+	return out, total, nil
+}
+
+func (r *CommunityRepository) FollowingSet(ctx context.Context, followerID string, followeeIDs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if followerID == "" || len(followeeIDs) == 0 {
+		return out, nil
+	}
+	var rows []entity.WysUserFollow
+	err := r.db.WithContext(ctx).
+		Where("follower_id = ? AND followee_id IN ?", followerID, followeeIDs).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.FolloweeID] = true
+	}
+	return out, nil
+}
+
+// EnsureCommunitySearchIndexes pg_trgm + GIN（失败仅记日志，搜索仍可用 ILIKE）。
+func EnsureCommunitySearchIndexes(db *gorm.DB) error {
+	stmts := []string{
+		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+		`CREATE INDEX IF NOT EXISTS idx_wys_topics_name_trgm ON wys_topics USING gin (name gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_wys_posts_content_trgm ON wys_posts USING gin (content gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_user_name_trgm ON users USING gin (user_name gin_trgm_ops)`,
+	}
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *CommunityRepository) FollowUser(ctx context.Context, followerID, followeeID string) (bool, error) {

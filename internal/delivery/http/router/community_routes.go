@@ -11,6 +11,7 @@ func registerCommunityRoutes(v1 *gin.RouterGroup, sessionAuth gin.HandlerFunc, c
 	g.Use(chain...)
 	g.GET("/topics", ctrl.ListTopics)
 	g.GET("/topics/search", ctrl.SearchTopics)
+	g.GET("/search", ctrl.Search)
 	g.POST("/posts", ctrl.CreatePost)
 	g.GET("/posts", ctrl.ListPosts)
 	g.DELETE("/posts/:id", ctrl.DeletePost)

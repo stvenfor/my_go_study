@@ -20,6 +20,40 @@ func TestNormalizeMedia_defaults(t *testing.T) {
 	}
 }
 
+func TestCommunitySearch_normalizeType(t *testing.T) {
+	cases := map[string]string{
+		"": "all", "all": "all", "POST": "post", "动态": "post",
+		"topic": "topic", "话题": "topic", "user": "user", "用户": "user",
+	}
+	for in, want := range cases {
+		if got := normalizeSearchType(in); got != want {
+			t.Fatalf("type %q: got %q want %q", in, got, want)
+		}
+	}
+}
+
+func TestCommunitySearch_normalizeQuery(t *testing.T) {
+	q, err := normalizeSearchQuery("  Flutter  ")
+	if err != nil || q != "Flutter" {
+		t.Fatalf("trim: %q %v", q, err)
+	}
+	long := strings.Repeat("啊", maxSearchQueryLen+1)
+	if _, err := normalizeSearchQuery(long); err == nil {
+		t.Fatal("want length error")
+	}
+}
+
+func TestCommunitySearch_newSearchList(t *testing.T) {
+	list := newSearchList([]TopicDTO{{ID: "1", Name: "a"}}, 1, 5, 12)
+	if len(list.List) != 1 {
+		t.Fatalf("list len %d", len(list.List))
+	}
+	p, ok := list.Pagination.(map[string]any)
+	if !ok || p["total"] != int64(12) || p["totalPages"] != 3 {
+		t.Fatalf("pagination %#v", list.Pagination)
+	}
+}
+
 func TestNormalizeMedia_imageCap(t *testing.T) {
 	tooMany := make([]string, 10)
 	for i := range tooMany {

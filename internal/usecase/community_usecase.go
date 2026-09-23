@@ -104,9 +104,78 @@ type PostDTO struct {
 	PreviewComments []CommentDTO   `json:"preview_comments"`
 }
 
+// CommunityUserDTO 搜索用户命中。
+type CommunityUserDTO struct {
+	UserID     string `json:"user_id"`
+	Nickname   string `json:"nickname"`
+	Avatar     string `json:"avatar"`
+	IsFollowed bool   `json:"is_followed"`
+}
+
+// SearchListDTO 搜索分区列表（含分页元数据）。
+type SearchListDTO[T any] struct {
+	List       []T   `json:"list"`
+	Pagination any   `json:"pagination"`
+	page       int
+	size       int
+	total      int64
+}
+
+func newSearchList[T any](list []T, page, size int, total int64) SearchListDTO[T] {
+	if list == nil {
+		list = []T{}
+	}
+	totalPages := 0
+	if size > 0 && total > 0 {
+		totalPages = int((total + int64(size) - 1) / int64(size))
+	}
+	return SearchListDTO[T]{
+		List: list,
+		Pagination: map[string]any{
+			"page": page, "size": size, "total": total, "totalPages": totalPages,
+		},
+		page: page, size: size, total: total,
+	}
+}
+
+// CommunitySearchAllDTO type=all 响应。
+type CommunitySearchAllDTO struct {
+	Q      string                      `json:"q"`
+	Posts  SearchListDTO[PostDTO]      `json:"posts"`
+	Topics SearchListDTO[TopicDTO]     `json:"topics"`
+	Users  SearchListDTO[CommunityUserDTO] `json:"users"`
+}
+
+const maxSearchQueryLen = 64
+
+func normalizeSearchQuery(q string) (string, error) {
+	q = strings.TrimSpace(q)
+	if len([]rune(q)) > maxSearchQueryLen {
+		return "", fmt.Errorf("%w: q 最长 %d 字", ErrCommunityInvalid, maxSearchQueryLen)
+	}
+	return q, nil
+}
+
+func normalizeSearchType(t string) string {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "post", "posts", "动态":
+		return "post"
+	case "topic", "topics", "话题":
+		return "topic"
+	case "user", "users", "用户":
+		return "user"
+	default:
+		return "all"
+	}
+}
+
 func (u *CommunityUsecase) ListTopics(ctx context.Context, q string, page, size int) ([]TopicDTO, int64, error) {
+	q, err := normalizeSearchQuery(q)
+	if err != nil {
+		return nil, 0, err
+	}
 	offset := (page - 1) * size
-	list, total, err := u.repo.ListTopics(ctx, strings.TrimSpace(q), offset, size)
+	list, total, err := u.repo.ListTopics(ctx, q, offset, size)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -114,6 +183,104 @@ func (u *CommunityUsecase) ListTopics(ctx context.Context, q string, page, size 
 	for _, t := range list {
 		out = append(out, TopicDTO{
 			ID: t.ID.String(), Name: t.Name, Heat: t.Heat, IsAskEveryone: t.IsAskEveryone,
+		})
+	}
+	return out, total, nil
+}
+
+// Search 社区统一搜索。type=all 返回分区；其余返回单列表 + total。
+func (u *CommunityUsecase) Search(ctx context.Context, viewerID, q, typ string, page, size int) (any, int64, error) {
+	q, err := normalizeSearchQuery(q)
+	if err != nil {
+		return nil, 0, err
+	}
+	typ = normalizeSearchType(typ)
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 10
+	}
+	if size > 100 {
+		size = 100
+	}
+	offset := (page - 1) * size
+
+	switch typ {
+	case "post":
+		posts, total, err := u.searchPosts(ctx, viewerID, q, offset, size)
+		if err != nil {
+			return nil, 0, err
+		}
+		return posts, total, nil
+	case "topic":
+		topics, total, err := u.ListTopics(ctx, q, page, size)
+		if err != nil {
+			return nil, 0, err
+		}
+		return topics, total, nil
+	case "user":
+		users, total, err := u.searchUsers(ctx, viewerID, q, offset, size)
+		if err != nil {
+			return nil, 0, err
+		}
+		return users, total, nil
+	default:
+		// all：各区共用 page/size（Flutter 默认 size=5）
+		posts, pt, err := u.searchPosts(ctx, viewerID, q, offset, size)
+		if err != nil {
+			return nil, 0, err
+		}
+		topics, tt, err := u.ListTopics(ctx, q, page, size)
+		if err != nil {
+			return nil, 0, err
+		}
+		users, ut, err := u.searchUsers(ctx, viewerID, q, offset, size)
+		if err != nil {
+			return nil, 0, err
+		}
+		return CommunitySearchAllDTO{
+			Q:      q,
+			Posts:  newSearchList(posts, page, size, pt),
+			Topics: newSearchList(topics, page, size, tt),
+			Users:  newSearchList(users, page, size, ut),
+		}, pt + tt + ut, nil
+	}
+}
+
+func (u *CommunityUsecase) searchPosts(ctx context.Context, viewerID, q string, offset, limit int) ([]PostDTO, int64, error) {
+	if q == "" {
+		return []PostDTO{}, 0, nil
+	}
+	list, total, err := u.repo.SearchPosts(ctx, q, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	out, err := u.mapPosts(ctx, list, viewerID)
+	return out, total, err
+}
+
+func (u *CommunityUsecase) searchUsers(ctx context.Context, viewerID, q string, offset, limit int) ([]CommunityUserDTO, int64, error) {
+	if q == "" {
+		return []CommunityUserDTO{}, 0, nil
+	}
+	list, total, err := u.repo.SearchUsers(ctx, q, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	ids := make([]string, 0, len(list))
+	for _, a := range list {
+		ids = append(ids, a.UserID)
+	}
+	followed, err := u.repo.FollowingSet(ctx, viewerID, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]CommunityUserDTO, 0, len(list))
+	for _, a := range list {
+		out = append(out, CommunityUserDTO{
+			UserID: a.UserID, Nickname: a.Nickname, Avatar: a.Avatar,
+			IsFollowed: followed[a.UserID],
 		})
 	}
 	return out, total, nil
