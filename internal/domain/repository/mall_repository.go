@@ -33,7 +33,6 @@ type MallRepository interface {
 	GetProduct(ctx context.Context, productID int64) (*entity.WysMallProduct, error)
 	ListOnShelfSKUs(ctx context.Context, productID int64) ([]entity.WysMallSKU, error)
 	GetSKU(ctx context.Context, skuID int64) (*entity.WysMallSKU, error)
-	ListOnShelfProducts(ctx context.Context, storeID int) ([]entity.MallProductWithSKUs, error)
 	ListShelfItems(ctx context.Context, storeID, offset, limit int) ([]entity.MallShelfItem, int64, error)
 
 	UpsertCartItem(ctx context.Context, item *entity.WysMallCartItem) error

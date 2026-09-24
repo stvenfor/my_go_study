@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -157,14 +156,5 @@ func (ctrl *ShortVideoController) View(c *gin.Context) {
 }
 
 func writeShortVideoError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrShortVideoInvalid):
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
-	case errors.Is(err, usecase.ErrShortVideoNotFound):
-		response.Error(c, http.StatusNotFound, response.CodeNotFound, "资源不存在")
-	case errors.Is(err, usecase.ErrShortVideoForbidden):
-		response.Error(c, http.StatusForbidden, response.CodeForbidden, "无权限")
-	default:
-		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "操作失败")
-	}
+	writeResourceCRUDError(c, err, usecase.ErrShortVideoInvalid, usecase.ErrShortVideoNotFound, usecase.ErrShortVideoForbidden)
 }

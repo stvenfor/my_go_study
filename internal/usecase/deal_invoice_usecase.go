@@ -4,7 +4,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -53,16 +52,7 @@ func (u *DealInvoiceUsecase) Summary(ctx context.Context, actorID string) (*enti
 	if err != nil {
 		return nil, err
 	}
-	storeName := ""
-	positionLabel := ""
-	if u.access != nil {
-		if store, err := u.access.repo.GetStore(ctx, storeID); err == nil && store != nil {
-			storeName = store.Name
-		}
-		if member, err := u.access.repo.GetMember(ctx, actorID, storeID); err == nil && member != nil {
-			positionLabel = entity.StoreRoleLabel(member.Position)
-		}
-	}
+	storeName, positionLabel := accessStoreLabels(ctx, u.access, actorID, storeID)
 	return &entity.DealInvoiceSummary{
 		DisplayName:   name,
 		AvatarURL:     avatar,
@@ -79,20 +69,11 @@ func (u *DealInvoiceUsecase) List(
 	if err != nil {
 		return nil, 0, err
 	}
-	if !validStatusFilter(statusFilter) {
+	if !validReviewStatusFilter(statusFilter) {
 		return nil, 0, ErrDealInvoiceBadFilter
 	}
 	statuses := entity.ParseDealInvoiceStatusFilter(statusFilter)
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 10
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 10, 50)
 	rows, total, err := u.repo.ListInvoices(ctx, storeID, actorID, statuses, offset, size)
 	if err != nil {
 		return nil, 0, err
@@ -194,58 +175,15 @@ func (u *DealInvoiceUsecase) ListCustomers(
 	if err != nil {
 		return nil, 0, err
 	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 20, 50)
 	return u.repo.ListCustomers(ctx, storeID, q, offset, size)
 }
 
 func (u *DealInvoiceUsecase) requireCurrentStore(ctx context.Context, actorID string) (int, error) {
-	if u.access == nil {
-		return 0, ErrDealInvoiceNoStore
-	}
-	cur, err := u.access.repo.CurrentStoreID(ctx, actorID)
-	if err != nil {
-		return 0, err
-	}
-	if cur == nil || *cur <= 0 {
-		return 0, ErrDealInvoiceNoStore
-	}
-	return *cur, nil
-}
-
-func validStatusFilter(raw string) bool {
-	switch strings.TrimSpace(raw) {
-	case "", "all", "pending_review", "approved", "rejected":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeImageURL(url *string) *string {
-	if url == nil {
-		return nil
-	}
-	s := strings.TrimSpace(*url)
-	if s == "" {
-		return nil
-	}
-	return &s
+	return requireAccessCurrentStore(u.access, ctx, actorID, ErrDealInvoiceNoStore)
 }
 
 // ParseDealInvoiceID 路径 id。
 func ParseDealInvoiceID(raw string) (int64, error) {
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, ErrDealInvoiceNotFound
-	}
-	return id, nil
+	return parsePositiveInt64(raw, ErrDealInvoiceNotFound)
 }

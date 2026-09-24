@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -258,13 +257,4 @@ func EnsureDealInvoiceSeed(db *gorm.DB) error {
 		}
 		return nil
 	})
-}
-
-// ParseInvoiceID 路径参数。
-func ParseInvoiceID(raw string) (int64, error) {
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, repository.ErrDealInvoiceNotFound
-	}
-	return id, nil
 }

@@ -182,12 +182,6 @@ type MallShelfItem struct {
 	Subtitle    string  `json:"subtitle,omitempty"`
 }
 
-// MallProductWithSKUs 买家列表用（兼容旧结构）。
-type MallProductWithSKUs struct {
-	Product WysMallProduct `json:"product"`
-	SKUs    []WysMallSKU   `json:"skus"`
-}
-
 // MallSKUOffer 买家可见规格。不含发放地址。
 type MallSKUOffer struct {
 	SKUID       int64           `json:"sku_id"`

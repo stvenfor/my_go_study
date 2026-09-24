@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -220,14 +219,5 @@ func (ctrl *CommunityController) AddComment(c *gin.Context) {
 }
 
 func writeCommunityError(c *gin.Context, err error) {
-	switch {
-	case errors.Is(err, usecase.ErrCommunityInvalid):
-		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
-	case errors.Is(err, usecase.ErrCommunityNotFound):
-		response.Error(c, http.StatusNotFound, response.CodeNotFound, "资源不存在")
-	case errors.Is(err, usecase.ErrCommunityForbidden):
-		response.Error(c, http.StatusForbidden, response.CodeForbidden, "无权限")
-	default:
-		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, "操作失败")
-	}
+	writeResourceCRUDError(c, err, usecase.ErrCommunityInvalid, usecase.ErrCommunityNotFound, usecase.ErrCommunityForbidden)
 }

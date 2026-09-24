@@ -88,35 +88,6 @@ func (r *MallRepository) GetSKU(ctx context.Context, skuID int64) (*entity.WysMa
 	return &s, nil
 }
 
-func (r *MallRepository) ListOnShelfProducts(ctx context.Context, storeID int) ([]entity.MallProductWithSKUs, error) {
-	items, _, err := r.ListShelfItems(ctx, storeID, 0, 1000)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]entity.MallProductWithSKUs, 0, len(items))
-	for _, it := range items {
-		cover := it.CoverURL
-		p := entity.WysMallProduct{
-			ProductID:   it.ProductID,
-			StoreID:     storeID,
-			Kind:        it.Kind,
-			Title:       it.Title,
-			CoverURL:    &cover,
-			CoverAspect: it.CoverAspect,
-			Status:      entity.MallProductOnShelf,
-		}
-		sku := entity.WysMallSKU{
-			SKUID:     it.SKUID,
-			ProductID: it.ProductID,
-			Title:     it.Subtitle,
-			Price:     it.Price,
-			Status:    entity.MallSKUOn,
-		}
-		out = append(out, entity.MallProductWithSKUs{Product: p, SKUs: []entity.WysMallSKU{sku}})
-	}
-	return out, nil
-}
-
 func (r *MallRepository) ListShelfItems(ctx context.Context, storeID, offset, limit int) ([]entity.MallShelfItem, int64, error) {
 	if limit <= 0 {
 		limit = 10

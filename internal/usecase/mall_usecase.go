@@ -184,14 +184,6 @@ func (u *MallUsecase) AddVirtualCodes(ctx context.Context, actorID string, skuID
 	return u.repo.AddVirtualCodes(ctx, skuID, codes)
 }
 
-// ListOnShelfProducts 买家浏览在售（全量，兼容旧调用）。
-func (u *MallUsecase) ListOnShelfProducts(ctx context.Context, storeID int) ([]entity.MallProductWithSKUs, error) {
-	if storeID <= 0 {
-		return nil, repository.ErrAccessInvalidStoreID
-	}
-	return u.repo.ListOnShelfProducts(ctx, storeID)
-}
-
 // GetShelfProduct 买家读一门店的在售商品及上架规格。下架、错店、已删都当不存在。
 func (u *MallUsecase) GetShelfProduct(ctx context.Context, storeID int, productID int64) (*entity.MallProductDetail, error) {
 	if storeID <= 0 {

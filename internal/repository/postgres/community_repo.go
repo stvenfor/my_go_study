@@ -61,6 +61,21 @@ func (r *CommunityRepository) GetTopic(ctx context.Context, id uuid.UUID) (*enti
 	return &t, nil
 }
 
+func (r *CommunityRepository) TopicsByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]entity.WysTopic, error) {
+	out := map[uuid.UUID]entity.WysTopic{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []entity.WysTopic
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, t := range rows {
+		out[t.ID] = t
+	}
+	return out, nil
+}
+
 func (r *CommunityRepository) CreatePost(ctx context.Context, post *entity.WysPost) error {
 	return r.db.WithContext(ctx).Create(post).Error
 }

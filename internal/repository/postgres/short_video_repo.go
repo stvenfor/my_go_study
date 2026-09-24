@@ -189,6 +189,22 @@ func (r *ShortVideoRepository) GetTopic(ctx context.Context, id uuid.UUID) (*ent
 	return &t, nil
 }
 
+func (r *ShortVideoRepository) TopicsByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*entity.WysTopic, error) {
+	out := map[uuid.UUID]*entity.WysTopic{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []entity.WysTopic
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		t := rows[i]
+		out[t.ID] = &t
+	}
+	return out, nil
+}
+
 func (r *ShortVideoRepository) AuthorsByIDs(ctx context.Context, ids []string) (map[string]repository.AuthorProfile, error) {
 	out := map[string]repository.AuthorProfile{}
 	if len(ids) == 0 {

@@ -17,12 +17,7 @@ type Client struct {
 
 // NewAsynqClient 创建 Asynq 客户端（复用 Redis 连接配置）。
 func NewAsynqClient(cfg config.Config) *Client {
-	redisOpt := asynq.RedisClientOpt{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	}
-	return &Client{inner: asynq.NewClient(redisOpt)}
+	return &Client{inner: asynq.NewClient(RedisClientOpt(cfg))}
 }
 
 // Close 关闭 Asynq 客户端。

@@ -26,12 +26,7 @@ func RegisterHourlyNotifyScheduler(scheduler *asynq.Scheduler, cfg config.Config
 
 // NewAsynqScheduler 创建 Asynq Scheduler。
 func NewAsynqScheduler(cfg config.Config) *asynq.Scheduler {
-	redisOpt := asynq.RedisClientOpt{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	}
-	return asynq.NewScheduler(redisOpt, &asynq.SchedulerOpts{
+	return asynq.NewScheduler(RedisClientOpt(cfg), &asynq.SchedulerOpts{
 		Location: cfg.Scheduler.Location(),
 	})
 }

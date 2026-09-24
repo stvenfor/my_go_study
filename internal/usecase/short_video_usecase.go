@@ -400,16 +400,13 @@ func (u *ShortVideoUsecase) toDTOList(ctx context.Context, viewerID string, list
 	if err != nil {
 		return nil, err
 	}
-	topics := map[uuid.UUID]*entity.WysTopic{}
+	topicIDList := make([]uuid.UUID, 0, len(topicIDs))
 	for tid := range topicIDs {
-		t, err := u.repo.GetTopic(ctx, tid)
-		if err != nil {
-			if errors.Is(err, repository.ErrShortVideoNotFound) || errors.Is(err, repository.ErrCommunityNotFound) {
-				continue
-			}
-			return nil, err
-		}
-		topics[tid] = t
+		topicIDList = append(topicIDList, tid)
+	}
+	topics, err := u.repo.TopicsByIDs(ctx, topicIDList)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]ShortVideoDTO, 0, len(list))
 	for _, v := range list {

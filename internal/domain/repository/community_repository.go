@@ -21,6 +21,7 @@ const (
 type CommunityRepository interface {
 	ListTopics(ctx context.Context, q string, offset, limit int) ([]entity.WysTopic, int64, error)
 	GetTopic(ctx context.Context, id uuid.UUID) (*entity.WysTopic, error)
+	TopicsByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]entity.WysTopic, error)
 
 	CreatePost(ctx context.Context, post *entity.WysPost) error
 	GetPost(ctx context.Context, id uuid.UUID) (*entity.WysPost, error)

@@ -589,12 +589,13 @@ func (u *CommunityUsecase) mapPosts(ctx context.Context, list []entity.WysPost, 
 	if err != nil {
 		return nil, err
 	}
-	topics := map[uuid.UUID]entity.WysTopic{}
+	topicIDList := make([]uuid.UUID, 0, len(topicIDs))
 	for tid := range topicIDs {
-		t, err := u.repo.GetTopic(ctx, tid)
-		if err == nil {
-			topics[tid] = *t
-		}
+		topicIDList = append(topicIDList, tid)
+	}
+	topics, err := u.repo.TopicsByIDs(ctx, topicIDList)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]PostDTO, 0, len(list))
 	for _, p := range list {
@@ -674,8 +675,6 @@ func (u *CommunityUsecase) projectPost(
 		IsAskEveryone: p.IsAskEveryone, Topic: topic, PreviewComments: previewDTOs,
 	}, nil
 }
-
-const timeRFC3339 = "2006-01-02T15:04:05Z07:00"
 
 func (u *CommunityUsecase) mapComments(ctx context.Context, list []entity.WysPostComment) ([]CommentDTO, error) {
 	if len(list) == 0 {

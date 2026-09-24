@@ -210,6 +210,19 @@ func (m *memShortVideoRepo) GetTopic(_ context.Context, id uuid.UUID) (*entity.W
 	return &cp, nil
 }
 
+func (m *memShortVideoRepo) TopicsByIDs(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]*entity.WysTopic, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[uuid.UUID]*entity.WysTopic{}
+	for _, id := range ids {
+		if t, ok := m.topics[id]; ok {
+			cp := *t
+			out[id] = &cp
+		}
+	}
+	return out, nil
+}
+
 func (m *memShortVideoRepo) AuthorsByIDs(_ context.Context, ids []string) (map[string]repository.AuthorProfile, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

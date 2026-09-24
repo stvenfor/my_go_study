@@ -4,7 +4,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,16 +54,7 @@ func (u *UsedCarOrderUsecase) Summary(ctx context.Context, actorID string) (*ent
 	if err != nil {
 		return nil, err
 	}
-	storeName := ""
-	positionLabel := ""
-	if u.access != nil {
-		if store, err := u.access.repo.GetStore(ctx, storeID); err == nil && store != nil {
-			storeName = store.Name
-		}
-		if member, err := u.access.repo.GetMember(ctx, actorID, storeID); err == nil && member != nil {
-			positionLabel = entity.StoreRoleLabel(member.Position)
-		}
-	}
+	storeName, positionLabel := accessStoreLabels(ctx, u.access, actorID, storeID)
 	return &entity.UsedCarOrderSummary{
 		DisplayName:   name,
 		AvatarURL:     avatar,
@@ -81,23 +71,14 @@ func (u *UsedCarOrderUsecase) List(
 	if err != nil {
 		return nil, 0, err
 	}
-	if !validUsedCarStatusFilter(statusFilter) {
+	if !validReviewStatusFilter(statusFilter) {
 		return nil, 0, ErrUsedCarOrderBadFilter
 	}
 	kind, filterKind, ok := entity.ParseUsedCarKindFilter(kindFilter)
 	if !ok {
 		return nil, 0, ErrUsedCarOrderBadFilter
 	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 10
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 10, 50)
 	rows, total, err := u.repo.ListOrders(ctx, storeID, actorID, repository.UsedCarOrderListFilter{
 		Statuses:   entity.ParseUsedCarOrderStatusFilter(statusFilter),
 		Kind:       kind,
@@ -192,46 +173,14 @@ func (u *UsedCarOrderUsecase) ListCustomers(
 	if err != nil {
 		return nil, 0, err
 	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 20, 50)
 	return u.repo.ListCustomers(ctx, storeID, q, offset, size)
 }
 
 func (u *UsedCarOrderUsecase) requireCurrentStore(ctx context.Context, actorID string) (int, error) {
-	if u.access == nil {
-		return 0, ErrUsedCarOrderNoStore
-	}
-	cur, err := u.access.repo.CurrentStoreID(ctx, actorID)
-	if err != nil {
-		return 0, err
-	}
-	if cur == nil || *cur <= 0 {
-		return 0, ErrUsedCarOrderNoStore
-	}
-	return *cur, nil
-}
-
-func validUsedCarStatusFilter(raw string) bool {
-	switch strings.TrimSpace(raw) {
-	case "", "all", "pending_review", "approved", "rejected":
-		return true
-	default:
-		return false
-	}
+	return requireAccessCurrentStore(u.access, ctx, actorID, ErrUsedCarOrderNoStore)
 }
 
 func ParseUsedCarOrderID(raw string) (int64, error) {
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, ErrUsedCarOrderNotFound
-	}
-	return id, nil
+	return parsePositiveInt64(raw, ErrUsedCarOrderNotFound)
 }

@@ -3,7 +3,6 @@ package usecase
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
@@ -82,16 +81,7 @@ func (u *NewCarFollowUsecase) Summary(ctx context.Context, actorID string) (*ent
 	if err != nil {
 		return nil, err
 	}
-	storeName := ""
-	positionLabel := ""
-	if u.access != nil {
-		if store, err := u.access.repo.GetStore(ctx, storeID); err == nil && store != nil {
-			storeName = store.Name
-		}
-		if member, err := u.access.repo.GetMember(ctx, actorID, storeID); err == nil && member != nil {
-			positionLabel = entity.StoreRoleLabel(member.Position)
-		}
-	}
+	storeName, positionLabel := accessStoreLabels(ctx, u.access, actorID, storeID)
 	return &entity.NewCarFollowSummary{
 		DisplayName:   name,
 		AvatarURL:     avatar,
@@ -133,16 +123,7 @@ func (u *NewCarFollowUsecase) List(
 		}
 		f.Stage = &st
 	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 10
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 10, 50)
 	rows, total, err := u.repo.ListFiles(ctx, storeID, ownerFilter, f, u.now(), offset, size)
 	if err != nil {
 		return nil, 0, err
@@ -304,16 +285,7 @@ func (u *NewCarFollowUsecase) ListLogs(
 	if _, err := u.loadVisibleFile(ctx, actorID, fileID); err != nil {
 		return nil, 0, err
 	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 20, 50)
 	rows, total, err := u.repo.ListLogs(ctx, fileID, offset, size)
 	if err != nil {
 		return nil, 0, err
@@ -391,31 +363,12 @@ func (u *NewCarFollowUsecase) ListCustomers(
 	if err != nil {
 		return nil, 0, err
 	}
-	if page < 1 {
-		page = 1
-	}
-	if size < 1 {
-		size = 20
-	}
-	if size > 50 {
-		size = 50
-	}
-	offset := (page - 1) * size
+	_, size, offset := pageOffset(page, size, 20, 50)
 	return u.repo.ListCustomers(ctx, storeID, q, offset, size)
 }
 
 func (u *NewCarFollowUsecase) requireCurrentStore(ctx context.Context, actorID string) (int, error) {
-	if u.access == nil {
-		return 0, ErrNewCarFollowNoStore
-	}
-	cur, err := u.access.repo.CurrentStoreID(ctx, actorID)
-	if err != nil {
-		return 0, err
-	}
-	if cur == nil || *cur <= 0 {
-		return 0, ErrNewCarFollowNoStore
-	}
-	return *cur, nil
+	return requireAccessCurrentStore(u.access, ctx, actorID, ErrNewCarFollowNoStore)
 }
 
 // ownerScope 店管 → 空串（全店）；否则 actorID。
@@ -471,9 +424,5 @@ func (u *NewCarFollowUsecase) fillOwnerDisplay(ctx context.Context, dto *entity.
 
 // ParseNewCarFollowFileID 路径 id。
 func ParseNewCarFollowFileID(raw string) (int64, error) {
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, ErrNewCarFollowNotFound
-	}
-	return id, nil
+	return parsePositiveInt64(raw, ErrNewCarFollowNotFound)
 }

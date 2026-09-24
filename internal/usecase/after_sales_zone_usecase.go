@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"strconv"
 	"strings"
 	"time"
 
@@ -213,11 +212,7 @@ func (u *AfterSalesZoneUsecase) ListPendingAppointments(ctx context.Context, act
 }
 
 func ParseAfterSalesRecordID(raw string) (int64, error) {
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, ErrAfterSalesRecordNotFound
-	}
-	return id, nil
+	return parsePositiveInt64(raw, ErrAfterSalesRecordNotFound)
 }
 
 func (u *AfterSalesZoneUsecase) requireMemberStore(ctx context.Context, actorID string) (int, error) {

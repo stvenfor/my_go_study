@@ -51,15 +51,14 @@ func (u *JPushUsecase) RegisterDevice(ctx context.Context, in RegisterDeviceInpu
 
 // SendInput 调试/业务下发推送。
 type SendInput struct {
-	UserID            string
-	Alias             string
-	RegistrationIDs   []string
-	Title             string
-	Body              string
-	Deeplink          string
-	Extras            map[string]any
-	Platform          string
-	PreferRegistration bool
+	UserID          string
+	Alias           string
+	RegistrationIDs []string
+	Title           string
+	Body            string
+	Deeplink        string
+	Extras          map[string]any
+	Platform        string
 }
 
 // SendResult 下发结果。
@@ -80,18 +79,6 @@ func (u *JPushUsecase) Send(ctx context.Context, in SendInput) (SendResult, erro
 		alias = strings.TrimSpace(in.UserID)
 	}
 	rids := in.RegistrationIDs
-	if in.PreferRegistration && len(rids) == 0 && u.repo != nil && alias != "" {
-		devices, err := u.repo.ListByAlias(ctx, alias)
-		if err != nil {
-			return SendResult{}, err
-		}
-		for _, d := range devices {
-			if d.Mock || strings.TrimSpace(d.RegistrationID) == "" {
-				continue
-			}
-			rids = append(rids, d.RegistrationID)
-		}
-	}
 
 	n := jpush.Notification{
 		Title:                   strings.TrimSpace(in.Title),

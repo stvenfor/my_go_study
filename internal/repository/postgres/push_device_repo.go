@@ -67,18 +67,6 @@ func (r *PushDeviceRepository) Upsert(ctx context.Context, device entity.WysPush
 	return &out, nil
 }
 
-func (r *PushDeviceRepository) ListByUser(ctx context.Context, userID string) ([]entity.WysPushDevice, error) {
-	var rows []entity.WysPushDevice
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("updated_at desc").Find(&rows).Error
-	return rows, err
-}
-
-func (r *PushDeviceRepository) ListByAlias(ctx context.Context, alias string) ([]entity.WysPushDevice, error) {
-	var rows []entity.WysPushDevice
-	err := r.db.WithContext(ctx).Where("alias = ?", alias).Order("updated_at desc").Find(&rows).Error
-	return rows, err
-}
-
 func normalizePlatform(p string) string {
 	switch strings.ToLower(strings.TrimSpace(p)) {
 	case "ios":

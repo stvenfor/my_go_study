@@ -44,5 +44,6 @@ type ShortVideoRepository interface {
 	Stats(ctx context.Context, authorID string, includeReviewing bool, now time.Time, delay time.Duration) (entity.ShortVideoStats, error)
 
 	GetTopic(ctx context.Context, id uuid.UUID) (*entity.WysTopic, error)
+	TopicsByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*entity.WysTopic, error)
 	AuthorsByIDs(ctx context.Context, ids []string) (map[string]AuthorProfile, error)
 }

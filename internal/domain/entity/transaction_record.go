@@ -2,7 +2,6 @@
 package entity
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -22,24 +21,4 @@ type TransactionRecord struct {
 // TableName 遗留 uint 交易表（已弃用；本地 UUID 路径使用 entity.Transaction → transactions）。
 func (TransactionRecord) TableName() string {
 	return "transaction_records"
-}
-
-// ToTransaction 转为 API 领域模型。
-func (r TransactionRecord) ToTransaction() Transaction {
-	userID := formatUintID(r.UserID)
-	return Transaction{
-		ID:        r.ID,
-		UserID:    &userID,
-		Type:      r.Type,
-		Category:  r.Category,
-		Amount:    r.Amount,
-		Date:      r.Date,
-		Note:      r.Note,
-		CreatedAt: &r.CreatedAt,
-		UpdatedAt: &r.UpdatedAt,
-	}
-}
-
-func formatUintID(id uint) string {
-	return fmt.Sprintf("%d", id)
 }

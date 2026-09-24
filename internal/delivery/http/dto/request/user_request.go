@@ -52,8 +52,3 @@ type RefreshTokenRequest struct {
 	SessionID    string `json:"session_id"`
 	Platform     string `json:"platform" binding:"omitempty,oneof=android ios"`
 }
-
-// LogoutRequest 退出登录请求体（refresh_token 可选，用于 Supabase sign-out）。
-type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}

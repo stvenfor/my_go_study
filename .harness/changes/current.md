@@ -2,17 +2,14 @@
 
 | 字段 | 值 |
 |------|-----|
-| Active slice | new-car-follow（ui-parity + C2 + C4 均 Partial 落地） |
-| Epic | `plans/epics/new-car-follow.md` |
-| Role | **人**（人证 / commit） |
-| Brief | 三份已批并已执行完毕 |
-| agent:post | `go test … -run 'Follow\|NewCarFollow'` 绿；`go build ./cmd/api` 绿 |
-| 验收 tick | Partial ×3 — 待真机人证 |
-| Next | 人证后如需 commit 再下指令；C3 深链仍 Deferred |
+| Active | **P2 deep-simplify 结束** |
+| Epic | `plans/epics/dual-deep-simplify-r2.md` |
+| Role | **人**（commit/push 等人指令） |
+| 报告 R1 | `docs/simplify-reports/README.md` |
+| 报告 R2 | `docs/simplify-reports-r2/README.md` |
+| 烟测 | OTP `13400000000`/`123456` 绿 |
 
 ## Notes
 
-- Go：流水表/API；店管 `role.assign_store` 全店口径；owner 字段
-- Flutter：成交对标 UI + 假上传 + 详情流水 + 列表销售名
-- 证据：`docs/acceptance-records/2026-09-23-new-car-follow-{ui-parity,c2,c4}.md`
-- 迁移：`migrations/20260923160000_new_car_follow_log.*`（或 EnsureSchema 兜底）
+- R1：死代码卫生；R2：结构共享 + API 守卫 + Topics N+1 批量 + 测试
+- 对外契约 / 页面布局未改

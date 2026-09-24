@@ -51,11 +51,6 @@ func NewHandler(
 	return &Handler{hub: hub, ticketUC: ticketUC, presenceUC: presenceUC, log: log}
 }
 
-// Hub 暴露给 main，供 PushUsecase 注入广播能力。
-func (h *Handler) Hub() *Hub {
-	return h.hub
-}
-
 // ServeWS 挂载在 GET /realtime/v1/connect，Gin 收到请求后调用。
 func (h *Handler) ServeWS(c *gin.Context) {
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)

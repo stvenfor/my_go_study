@@ -32,12 +32,11 @@ func (ctrl *PaymentController) Prepay(c *gin.Context) {
 		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "支付服务未启用")
 		return
 	}
-	user, _, ok := supabaseAuthContext(c)
+	_, _, ok := supabaseAuthContext(c)
 	if !ok {
 		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未登录")
 		return
 	}
-	_ = user // 预支付需登录；订单归属后续可按 user.ID 落库
 
 	var req prepayRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -27,26 +27,6 @@ func (m *memPushDeviceRepo) Upsert(ctx context.Context, device entity.WysPushDev
 	return &out, nil
 }
 
-func (m *memPushDeviceRepo) ListByUser(ctx context.Context, userID string) ([]entity.WysPushDevice, error) {
-	var out []entity.WysPushDevice
-	for _, r := range m.rows {
-		if r.UserID == userID {
-			out = append(out, r)
-		}
-	}
-	return out, nil
-}
-
-func (m *memPushDeviceRepo) ListByAlias(ctx context.Context, alias string) ([]entity.WysPushDevice, error) {
-	var out []entity.WysPushDevice
-	for _, r := range m.rows {
-		if r.Alias == alias {
-			out = append(out, r)
-		}
-	}
-	return out, nil
-}
-
 func TestJPushUsecaseRegisterDefaultsAlias(t *testing.T) {
 	repo := &memPushDeviceRepo{}
 	uc := NewJPushUsecase(repo, jpush.NewClient(jpush.Config{}))

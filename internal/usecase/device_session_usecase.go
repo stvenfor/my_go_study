@@ -174,45 +174,25 @@ func (u *DeviceSessionUsecase) RenewOnRefresh(ctx context.Context, input RenewSe
 	if err != nil {
 		return "", err
 	}
-	if stored == nil {
-		session := domainrepo.DeviceSession{
-			SessionID: newSessionID,
-			DeviceID:  deviceID,
-			Platform:  platform,
-			CreatedAt: time.Now().Unix(),
-		}
-		if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
-			return "", err
-		}
-		return newSessionID, nil
-	}
-
-	if stored.DeviceID == deviceID {
-		session := domainrepo.DeviceSession{
-			SessionID: newSessionID,
-			DeviceID:  deviceID,
-			Platform:  platform,
-			CreatedAt: time.Now().Unix(),
-		}
-		if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
-			return "", err
-		}
-		return newSessionID, nil
-	}
-
-	// device_id 变更但客户端仍持有当前 session_id：视为同设备 id 迁移，续期并更新 device。
-	if clientSessionID != "" && stored.SessionID == clientSessionID {
-		session := domainrepo.DeviceSession{
-			SessionID: newSessionID,
-			DeviceID:  deviceID,
-			Platform:  platform,
-			CreatedAt: time.Now().Unix(),
-		}
-		if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
-			return "", err
-		}
-		return newSessionID, nil
+	if stored == nil || stored.DeviceID == deviceID ||
+		(clientSessionID != "" && stored.SessionID == clientSessionID) {
+		return u.saveDeviceSession(ctx, userID, newSessionID, deviceID, platform)
 	}
 
 	return "", ErrSessionReplaced
+}
+
+func (u *DeviceSessionUsecase) saveDeviceSession(
+	ctx context.Context, userID, sessionID, deviceID, platform string,
+) (string, error) {
+	session := domainrepo.DeviceSession{
+		SessionID: sessionID,
+		DeviceID:  deviceID,
+		Platform:  platform,
+		CreatedAt: time.Now().Unix(),
+	}
+	if err := u.sessions.Save(ctx, userID, session, u.cfg.SessionTTL()); err != nil {
+		return "", err
+	}
+	return sessionID, nil
 }
