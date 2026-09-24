@@ -84,6 +84,22 @@ func (r *ImFriendRepository) FindPending(ctx context.Context, fromUserID, toUser
 	return &row, nil
 }
 
+func (r *ImFriendRepository) ListPendingTo(ctx context.Context, toUserID string) ([]*entity.WysImFriendRequest, error) {
+	var rows []entity.WysImFriendRequest
+	err := r.db.WithContext(ctx).
+		Where("to_user_id = ? AND status = ?", toUserID, entity.ImFriendRequestPending).
+		Order("created_at DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*entity.WysImFriendRequest, 0, len(rows))
+	for i := range rows {
+		out = append(out, &rows[i])
+	}
+	return out, nil
+}
+
 func (r *ImFriendRepository) AreFriends(ctx context.Context, userA, userB string) (bool, error) {
 	a, b := orderedPair(userA, userB)
 	var n int64
@@ -252,6 +268,35 @@ func (r *ImUserLookupRepository) FindByUserID(ctx context.Context, userID string
 		return nil, err
 	}
 	return &row, nil
+}
+
+func (r *ImUserLookupRepository) FindByUserIDs(ctx context.Context, userIDs []string) ([]*entity.User, error) {
+	ids := make([]string, 0, len(userIDs))
+	seen := map[string]struct{}{}
+	for _, id := range userIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []entity.User
+	err := r.db.WithContext(ctx).Where("user_id IN ? AND deleted_at IS NULL", ids).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*entity.User, 0, len(rows))
+	for i := range rows {
+		out = append(out, &rows[i])
+	}
+	return out, nil
 }
 
 func (r *ImUserLookupRepository) FindByPhone(ctx context.Context, phoneDigits string) (*entity.User, error) {

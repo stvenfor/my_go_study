@@ -58,6 +58,16 @@ func (m *memFriendRepo) FindPending(_ context.Context, from, to string) (*entity
 	}
 	return nil, nil
 }
+func (m *memFriendRepo) ListPendingTo(_ context.Context, to string) ([]*entity.WysImFriendRequest, error) {
+	var out []*entity.WysImFriendRequest
+	for _, r := range m.reqs {
+		if r.ToUserID == to && r.Status == entity.ImFriendRequestPending {
+			cp := *r
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
 func (m *memFriendRepo) AreFriends(_ context.Context, a, b string) (bool, error) {
 	return m.friends[friendKey(a, b)], nil
 }
@@ -86,6 +96,15 @@ func (m memUsers) FindByUserID(_ context.Context, id string) (*entity.User, erro
 		return nil, errors.New("missing")
 	}
 	return u, nil
+}
+func (m memUsers) FindByUserIDs(_ context.Context, ids []string) ([]*entity.User, error) {
+	var out []*entity.User
+	for _, id := range ids {
+		if u, ok := m[id]; ok {
+			out = append(out, u)
+		}
+	}
+	return out, nil
 }
 func (m memUsers) FindByPhone(_ context.Context, phone string) (*entity.User, error) {
 	for _, u := range m {
@@ -132,5 +151,28 @@ func TestImFriendUsecase_RejectSelf(t *testing.T) {
 	_, err := uc.Request(context.Background(), "a", "a")
 	if !errors.Is(err, ErrImFriendSelf) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestImFriendUsecase_ListIncoming(t *testing.T) {
+	users := memUsers{
+		"a": {UserID: "a", UserName: "Alice", Phone: "13400000000"},
+		"b": {UserID: "b", UserName: "Bob", Phone: "13400000001"},
+	}
+	repo := newMemFriendRepo()
+	uc := NewImFriendUsecase(repo, users)
+	if _, err := uc.Request(context.Background(), "a", "b"); err != nil {
+		t.Fatal(err)
+	}
+	items, err := uc.ListIncoming(context.Background(), "b")
+	if err != nil || len(items) != 1 {
+		t.Fatalf("incoming %+v err=%v", items, err)
+	}
+	if items[0].FromUserID != "a" || items[0].DisplayName != "Alice" {
+		t.Fatalf("item %+v", items[0])
+	}
+	empty, err := uc.ListIncoming(context.Background(), "a")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("sender should see empty inbox, got %+v err=%v", empty, err)
 	}
 }

@@ -63,6 +63,36 @@ func (ctrl *ImController) CreateSession(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// GetUserProfiles GET /api/v1/im/users/profile?user_ids=a,b,c
+func (ctrl *ImController) GetUserProfiles(c *gin.Context) {
+	if _, _, ok := supabaseAuthContext(c); !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未登录")
+		return
+	}
+	if ctrl.friendUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "im 未启用")
+		return
+	}
+	raw := strings.TrimSpace(c.Query("user_ids"))
+	if raw == "" {
+		response.Success(c, gin.H{"items": []any{}})
+		return
+	}
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if id := strings.TrimSpace(p); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	out, err := ctrl.friendUC.ListProfiles(c.Request.Context(), ids)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"items": out})
+}
+
 // SearchUsers GET /api/v1/im/users/search?q=
 func (ctrl *ImController) SearchUsers(c *gin.Context) {
 	user, _, ok := supabaseAuthContext(c)
@@ -94,6 +124,25 @@ func (ctrl *ImController) ListFriends(c *gin.Context) {
 		return
 	}
 	out, err := ctrl.friendUC.ListFriends(c.Request.Context(), user.ID)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"items": out})
+}
+
+// ListFriendRequests GET /api/v1/im/friends/requests
+func (ctrl *ImController) ListFriendRequests(c *gin.Context) {
+	user, _, ok := supabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未登录")
+		return
+	}
+	if ctrl.friendUC == nil {
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, "im 未启用")
+		return
+	}
+	out, err := ctrl.friendUC.ListIncoming(c.Request.Context(), user.ID)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, response.CodeInternalError, err.Error())
 		return

@@ -15,7 +15,9 @@ func registerImRoutes(v1 *gin.RouterGroup, sessionAuth gin.HandlerFunc, ctrl *co
 
 	g.POST("/session", ctrl.CreateSession)
 	g.GET("/users/search", ctrl.SearchUsers)
+	g.GET("/users/profile", ctrl.GetUserProfiles)
 	g.GET("/friends", ctrl.ListFriends)
+	g.GET("/friends/requests", ctrl.ListFriendRequests)
 	g.POST("/friends/requests", ctrl.RequestFriend)
 	g.POST("/friends/requests/:id/respond", ctrl.RespondFriend)
 	g.GET("/private/admission", ctrl.CheckPrivateAdmission)

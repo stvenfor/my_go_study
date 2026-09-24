@@ -36,6 +36,7 @@ func NewImFriendUsecase(friends repository.ImFriendRepository, users repository.
 type ImUserBrief struct {
 	UserID      string `json:"user_id"`
 	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
 	PhoneMasked string `json:"phone_masked,omitempty"`
 }
 
@@ -45,6 +46,17 @@ type ImFriendRequestOut struct {
 	FromUserID string `json:"from_user_id"`
 	ToUserID   string `json:"to_user_id"`
 	Status     string `json:"status"`
+}
+
+// ImFriendRequestItem 待处理申请（收件箱）。
+type ImFriendRequestItem struct {
+	ID          string `json:"id"`
+	FromUserID  string `json:"from_user_id"`
+	DisplayName string `json:"display_name"`
+	AvatarURL   string `json:"avatar_url,omitempty"`
+	PhoneMasked string `json:"phone_masked,omitempty"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // Search 按手机号或 UUID 精确查找（不含自己）。
@@ -73,6 +85,7 @@ func (u *ImFriendUsecase) Search(ctx context.Context, selfID, q string) ([]ImUse
 	return []ImUserBrief{{
 		UserID:      user.UserID,
 		DisplayName: user.UserName,
+		AvatarURL:   user.AvatarURL,
 		PhoneMasked: maskPhone(user.Phone),
 	}}, nil
 }
@@ -92,10 +105,39 @@ func (u *ImFriendUsecase) ListFriends(ctx context.Context, userID string) ([]ImU
 		if u.users != nil {
 			if user, err := u.users.FindByUserID(ctx, id); err == nil && user != nil {
 				brief.DisplayName = user.UserName
+				brief.AvatarURL = user.AvatarURL
 				brief.PhoneMasked = maskPhone(user.Phone)
 			}
 		}
 		out = append(out, brief)
+	}
+	return out, nil
+}
+
+// ListProfiles 按业务 UUID（= 融云 userId）批量查昵称/头像。
+func (u *ImFriendUsecase) ListProfiles(ctx context.Context, userIDs []string) ([]ImUserBrief, error) {
+	if u == nil || u.users == nil {
+		return nil, fmt.Errorf("im friend usecase not ready")
+	}
+	users, err := u.users.FindByUserIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ImUserBrief, 0, len(users))
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		name := strings.TrimSpace(user.UserName)
+		if name == "" {
+			name = user.UserID
+		}
+		out = append(out, ImUserBrief{
+			UserID:      user.UserID,
+			DisplayName: name,
+			AvatarURL:   user.AvatarURL,
+			PhoneMasked: maskPhone(user.Phone),
+		})
 	}
 	return out, nil
 }
@@ -141,6 +183,42 @@ func (u *ImFriendUsecase) Request(ctx context.Context, fromUserID, toUserID stri
 	return &ImFriendRequestOut{
 		ID: req.ID, FromUserID: req.FromUserID, ToUserID: req.ToUserID, Status: req.Status,
 	}, nil
+}
+
+// ListIncoming 当前用户待处理的好友申请。
+func (u *ImFriendUsecase) ListIncoming(ctx context.Context, toUserID string) ([]ImFriendRequestItem, error) {
+	if u == nil || u.friends == nil {
+		return nil, fmt.Errorf("im friend usecase not ready")
+	}
+	reqs, err := u.friends.ListPendingTo(ctx, strings.TrimSpace(toUserID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ImFriendRequestItem, 0, len(reqs))
+	for _, req := range reqs {
+		if req == nil {
+			continue
+		}
+		item := ImFriendRequestItem{
+			ID:         req.ID,
+			FromUserID: req.FromUserID,
+			DisplayName: req.FromUserID,
+			Status:     req.Status,
+			CreatedAt:  req.CreatedAt.UTC().Format(time.RFC3339),
+		}
+		if u.users != nil {
+			if user, err := u.users.FindByUserID(ctx, req.FromUserID); err == nil && user != nil {
+				name := strings.TrimSpace(user.UserName)
+				if name != "" {
+					item.DisplayName = name
+				}
+				item.AvatarURL = user.AvatarURL
+				item.PhoneMasked = maskPhone(user.Phone)
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 // Respond 同意或拒绝申请。

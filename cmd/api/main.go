@@ -99,7 +99,7 @@ func run() error {
 
 	jwtMgr := jwtmanager.NewManager(cfg.JWT)
 	sessionRepo := redisrepo.NewSessionRepository(redisClient)
-	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth)
+	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth, cfg.AppEnv)
 	var sessionAuthUC usecase.SessionAuth
 	var phoneOTPUC usecase.PhoneOTPAuth
 	var wechatLoginUC usecase.WeChatLoginAuth
@@ -137,7 +137,7 @@ func run() error {
 	var accountGate gin.HandlerFunc
 	businessEnabled := cfg.Auth.IsLocalProvider() || cfg.Supabase.Enabled()
 	if cfg.Auth.IsLocalProvider() {
-		localAuth := usecase.NewLocalAuthUsecase(db, jwtMgr, cfg.Auth, cfg.Server.Mode)
+		localAuth := usecase.NewLocalAuthUsecase(db, jwtMgr, cfg.Auth, cfg.AppEnv)
 		sessionAuthUC = localAuth
 		phoneOTPUC = localAuth
 		wechatLoginUC = usecase.NewWeChatAuthUsecase(cfg.ThirdParty, localAuth)
@@ -164,7 +164,7 @@ func run() error {
 		paymentUCForMembership := usecase.NewPaymentUsecase(cfg.ThirdParty)
 		huaweiVerifier := usecase.NewLiveHuaweiSubscriptionVerifier(cfg.ThirdParty.HuaweiIAP)
 		appleVerifier := usecase.NewLiveAppleReceiptVerifier(cfg.ThirdParty.AppleIAP)
-		membershipUC := usecase.NewMembershipUsecase(membershipRepo, cashUC, paymentUCForMembership, huaweiVerifier, appleVerifier, cfg.Server.Mode)
+		membershipUC := usecase.NewMembershipUsecase(membershipRepo, cashUC, paymentUCForMembership, huaweiVerifier, appleVerifier, cfg.AppEnv)
 		membershipController = controller.NewMembershipController(membershipUC)
 		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC, cashUC)
 		mallController = controller.NewMallController(mallUC)
@@ -249,6 +249,12 @@ func run() error {
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
 		log.Info("Auth provider=local（本机 Postgres Auth + 业务表）")
+		if phones := cfg.Auth.DevTestPhones(); len(phones) > 0 {
+			log.Info("测试 OTP 账号已启用（多端 session 豁免）",
+				zap.Strings("phones", phones),
+				zap.Int("session_whitelist_emails", len(cfg.Auth.SessionWhitelistEmails)),
+			)
+		}
 	} else if cfg.Supabase.Enabled() {
 		var err error
 		sbClient, err = pkgsb.New(cfg.Supabase)
@@ -257,7 +263,7 @@ func run() error {
 		}
 		supabaseAuthUC := usecase.NewSupabaseAuthUsecase(sbClient)
 		sessionAuthUC = supabaseAuthUC
-		phoneOTPUC = usecase.NewPhoneOTPUsecase(sbClient, cfg.Auth, cfg.Server.Mode)
+		phoneOTPUC = usecase.NewPhoneOTPUsecase(sbClient, cfg.Auth, cfg.AppEnv)
 		profileRepo := sbrepo.NewProfileRepository(sbClient)
 		storeStatsRepo := postgres.NewStoreStatsRepository(db)
 		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
@@ -366,8 +372,9 @@ func run() error {
 			AppSecret:  cfg.ThirdParty.RongCloudAppSecret,
 			APIBaseURL: cfg.ThirdParty.RongCloudAPIBaseURL,
 		})
-		imSessionUC := usecase.NewImSessionUsecase(rcClient)
-		imFriendUC := usecase.NewImFriendUsecase(postgres.NewImFriendRepository(db), postgres.NewImUserLookupRepository(db))
+		imUserLookup := postgres.NewImUserLookupRepository(db)
+		imSessionUC := usecase.NewImSessionUsecase(rcClient, imUserLookup)
+		imFriendUC := usecase.NewImFriendUsecase(postgres.NewImFriendRepository(db), imUserLookup)
 		imGroupUC := usecase.NewImGroupUsecase(postgres.NewImGroupRepository(db), rcClient)
 		imBackupUC := usecase.NewImBackupUsecase(postgres.NewImBackupRepository(db))
 		imController = controller.NewImController(imSessionUC, imFriendUC, imGroupUC, imBackupUC)

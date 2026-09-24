@@ -21,6 +21,7 @@ type ImFriendRepository interface {
 	GetRequest(ctx context.Context, id string) (*entity.WysImFriendRequest, error)
 	UpdateRequestStatus(ctx context.Context, id, status string) error
 	FindPending(ctx context.Context, fromUserID, toUserID string) (*entity.WysImFriendRequest, error)
+	ListPendingTo(ctx context.Context, toUserID string) ([]*entity.WysImFriendRequest, error)
 	AreFriends(ctx context.Context, userA, userB string) (bool, error)
 	UpsertFriendship(ctx context.Context, userA, userB string) error
 	ListFriendIDs(ctx context.Context, userID string) ([]string, error)
@@ -46,5 +47,6 @@ type ImBackupRepository interface {
 // ImUserLookup 按 UUID / 手机号查本地用户（users 表）。
 type ImUserLookup interface {
 	FindByUserID(ctx context.Context, userID string) (*entity.User, error)
+	FindByUserIDs(ctx context.Context, userIDs []string) ([]*entity.User, error)
 	FindByPhone(ctx context.Context, phoneDigits string) (*entity.User, error)
 }

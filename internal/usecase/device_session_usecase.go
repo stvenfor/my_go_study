@@ -28,10 +28,11 @@ const (
 type DeviceSessionUsecase struct {
 	sessions domainrepo.SessionRepository
 	cfg      config.AuthConfig
+	appEnv   string
 }
 
-func NewDeviceSessionUsecase(sessions domainrepo.SessionRepository, cfg config.AuthConfig) *DeviceSessionUsecase {
-	return &DeviceSessionUsecase{sessions: sessions, cfg: cfg}
+func NewDeviceSessionUsecase(sessions domainrepo.SessionRepository, cfg config.AuthConfig, appEnv string) *DeviceSessionUsecase {
+	return &DeviceSessionUsecase{sessions: sessions, cfg: cfg, appEnv: appEnv}
 }
 
 type IssueSessionInput struct {
@@ -43,7 +44,10 @@ type IssueSessionInput struct {
 
 // IsExempt 账号是否豁免单设备 session 限制。
 func (u *DeviceSessionUsecase) IsExempt(userID, email string) bool {
-	return u.cfg.IsSessionExempt(userID, email)
+	if u.cfg.IsSessionExempt(userID, email) {
+		return true
+	}
+	return u.cfg.DevTestSessionExempt(u.appEnv, email)
 }
 
 // IssueOnLogin 登录成功后签发新 session；普通用户覆盖旧设备，白名单用户仅返回 session_id。
@@ -62,7 +66,7 @@ func (u *DeviceSessionUsecase) IssueOnLogin(ctx context.Context, input IssueSess
 	}
 
 	sessionID := uuid.NewString()
-	if u.cfg.IsSessionExempt(userID, input.Email) {
+	if u.IsExempt(userID, input.Email) {
 		log.Printf("[auth] session exempt login user=%s email=%s device=%s platform=%s",
 			userID, strings.TrimSpace(input.Email), deviceID, platform)
 		return sessionID, nil
@@ -83,7 +87,7 @@ func (u *DeviceSessionUsecase) IssueOnLogin(ctx context.Context, input IssueSess
 // RevokeOnLogout 主动退出时删除当前活跃 session。
 func (u *DeviceSessionUsecase) RevokeOnLogout(ctx context.Context, userID, email, sessionID, deviceID string) error {
 	userID = strings.TrimSpace(userID)
-	if u.cfg.IsSessionExempt(userID, email) {
+	if u.IsExempt(userID, email) {
 		return nil
 	}
 	if err := u.Validate(ctx, userID, email, sessionID, deviceID); err != nil {
@@ -95,7 +99,7 @@ func (u *DeviceSessionUsecase) RevokeOnLogout(ctx context.Context, userID, email
 // Validate 校验请求携带的 session 是否为当前活跃会话；白名单用户直接放行。
 func (u *DeviceSessionUsecase) Validate(ctx context.Context, userID, email, sessionID, deviceID string) error {
 	userID = strings.TrimSpace(userID)
-	if u.cfg.IsSessionExempt(userID, email) {
+	if u.IsExempt(userID, email) {
 		return nil
 	}
 
@@ -163,7 +167,7 @@ func (u *DeviceSessionUsecase) RenewOnRefresh(ctx context.Context, input RenewSe
 	}
 
 	newSessionID := uuid.NewString()
-	if u.cfg.IsSessionExempt(userID, input.Email) {
+	if u.IsExempt(userID, input.Email) {
 		if clientSessionID != "" {
 			return clientSessionID, nil
 		}

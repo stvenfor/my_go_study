@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "rongcloud-im": {
+      "source": "rongcloud/rongcloud-skills",
+      "sourceType": "github",
+      "skillPath": "skills/rongcloud-im/SKILL.md",
+      "computedHash": "3141927538766450c529ffe70991372bc43c651fd8f8a072a282cf872acc8c5f"
+    }
+  }
+}

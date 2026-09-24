@@ -161,7 +161,7 @@ func TestMembershipBalanceBuyoutAndExtend(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 100000}}
 	wallet := usecase.NewCashWalletUsecase(cash)
-	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "debug")
+	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "dev")
 
 	out, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance")
 	if err != nil {
@@ -193,7 +193,7 @@ func TestMembershipBalanceInsufficient(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 100}}
 	wallet := usecase.NewCashWalletUsecase(cash)
-	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "debug")
+	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "dev")
 	_, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance")
 	if !errors.Is(err, usecase.ErrCashInsufficient) {
 		t.Fatalf("got %v", err)
@@ -204,7 +204,7 @@ func TestMembershipDualTierIndependent(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 1000000}}
 	wallet := usecase.NewCashWalletUsecase(cash)
-	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "debug")
+	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "dev")
 	if _, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance"); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestMembershipDualTierIndependent(t *testing.T) {
 
 func TestMembershipHuaweiDevVerify(t *testing.T) {
 	repo := newMemMembershipRepo()
-	uc := usecase.NewMembershipUsecase(repo, nil, nil, nil, nil, "debug")
+	uc := usecase.NewMembershipUsecase(repo, nil, nil, nil, nil, "dev")
 	ent, err := uc.VerifyHuawei(context.Background(), "u1", usecase.HuaweiVerifyInput{
 		ProductID:     "wys_svip_1m",
 		PurchaseToken: "tok-dev-1",
@@ -250,7 +250,7 @@ func TestMembershipHuaweiDevVerify(t *testing.T) {
 
 func TestMembershipAppleDevVerify(t *testing.T) {
 	repo := newMemMembershipRepo()
-	uc := usecase.NewMembershipUsecase(repo, nil, nil, nil, nil, "debug")
+	uc := usecase.NewMembershipUsecase(repo, nil, nil, nil, nil, "dev")
 	ent, err := uc.VerifyApple(context.Background(), "u1", usecase.AppleVerifyInput{
 		ProductID:     "wys_svip_1m",
 		TransactionID: "tx-dev-1",
@@ -272,7 +272,7 @@ func TestMembershipAppleDevVerify(t *testing.T) {
 
 func TestMembershipConfirmIdempotent(t *testing.T) {
 	repo := newMemMembershipRepo()
-	uc := usecase.NewMembershipUsecase(repo, nil, nil, nil, nil, "debug")
+	uc := usecase.NewMembershipUsecase(repo, nil, nil, nil, nil, "dev")
 	order := &entity.WysMembershipOrder{
 		UserID: "u1", Tier: "svip", PlanID: "svip_1m", Channel: "wechat",
 		AmountFen: 3000, Status: entity.MembershipOrderPending, OutTradeNo: "ot1",

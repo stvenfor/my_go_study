@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/supabase-community/gotrue-go/types"
@@ -18,14 +17,14 @@ var (
 
 // PhoneOTPUsecase 处理测试环境手机号 OTP 登录。
 type PhoneOTPUsecase struct {
-	sb         *pkgsb.Client
-	auth       config.AuthConfig
-	serverMode string
+	sb     *pkgsb.Client
+	auth   config.AuthConfig
+	appEnv string
 }
 
 // NewPhoneOTPUsecase 创建手机号 OTP 用例。
-func NewPhoneOTPUsecase(sb *pkgsb.Client, auth config.AuthConfig, serverMode string) *PhoneOTPUsecase {
-	return &PhoneOTPUsecase{sb: sb, auth: auth, serverMode: serverMode}
+func NewPhoneOTPUsecase(sb *pkgsb.Client, auth config.AuthConfig, appEnv string) *PhoneOTPUsecase {
+	return &PhoneOTPUsecase{sb: sb, auth: auth, appEnv: appEnv}
 }
 
 // SendPhoneOTP 发送短信验证码；dev 测试号 no-op。
@@ -33,7 +32,7 @@ func (u *PhoneOTPUsecase) SendPhoneOTP(ctx context.Context, phone string) error 
 	if u.sb == nil {
 		return ErrSupabaseUnavailable
 	}
-	if !u.auth.DevBypassEnabled(u.serverMode) {
+	if !u.auth.DevBypassEnabled(u.appEnv) {
 		return ErrPhoneLoginNotAvailable
 	}
 	if !u.auth.IsDevTestPhone(phone) {
@@ -47,7 +46,7 @@ func (u *PhoneOTPUsecase) VerifyPhoneOTP(ctx context.Context, phone, otp string)
 	if u.sb == nil {
 		return nil, ErrSupabaseUnavailable
 	}
-	if !u.auth.DevBypassEnabled(u.serverMode) {
+	if !u.auth.DevBypassEnabled(u.appEnv) {
 		return nil, ErrPhoneLoginNotAvailable
 	}
 	if !u.auth.IsDevTestPhone(phone) {
@@ -64,7 +63,7 @@ func (u *PhoneOTPUsecase) VerifyPhoneOTP(ctx context.Context, phone, otp string)
 	e164 := config.ToE164China(phone)
 	devEmail := config.DevPhoneEmail(digits)
 	password := u.auth.DevTestPasswordOrDefault()
-	displayName := fmt.Sprintf("用户%s", lastNDigits(digits, 4))
+	displayName := config.DevTestDisplayName(digits)
 
 	if _, err := u.sb.EnsureDevPhoneUser(e164, devEmail, password, displayName); err != nil {
 		return nil, ErrSupabaseUnavailable
@@ -85,11 +84,4 @@ func (u *PhoneOTPUsecase) VerifyPhoneOTP(ctx context.Context, phone, otp string)
 func (u *PhoneOTPUsecase) withAuthTimeout(ctx context.Context, fn func(context.Context) error) error {
 	authUC := &SupabaseAuthUsecase{}
 	return authUC.withAuthTimeout(ctx, fn)
-}
-
-func lastNDigits(digits string, n int) string {
-	if len(digits) <= n {
-		return digits
-	}
-	return digits[len(digits)-n:]
 }

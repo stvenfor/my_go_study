@@ -13,9 +13,9 @@ database:
 redis:
   addr: localhost:6379
 
-# 测试环境固定手机号 OTP（仅 server.mode=debug 生效）
+  # 测试环境固定手机号 OTP（仅非 prod APP_ENV（如 dev/lan）生效；逗号分隔多号）
 auth:
-  dev_test_phone: "13400000000"
+  dev_test_phone: "13400000000,13400000001,13400000002,13400000003,13400000004"
   dev_test_otp: "123456"
   dev_test_password: "dev-test-phone-secret"
 

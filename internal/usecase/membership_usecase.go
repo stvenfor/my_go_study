@@ -111,7 +111,7 @@ func NewMembershipUsecase(
 	pay *PaymentUsecase,
 	huawei HuaweiSubscriptionVerifier,
 	apple AppleReceiptVerifier,
-	serverMode string,
+	appEnv string,
 ) *MembershipUsecase {
 	return &MembershipUsecase{
 		repo:    repo,
@@ -119,7 +119,7 @@ func NewMembershipUsecase(
 		pay:     pay,
 		huawei:  huawei,
 		apple:   apple,
-		devMode: config.IsDevMode(serverMode),
+		devMode: config.IsLabAppEnv(appEnv),
 	}
 }
 

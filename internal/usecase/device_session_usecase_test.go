@@ -48,7 +48,7 @@ func (m *mockSessionRepo) ListActiveUserIDs(_ context.Context) ([]string, error)
 
 func TestDeviceSessionIssueAndValidate(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{SessionTTLHours: 24})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{SessionTTLHours: 24}, "debug")
 
 	sessionA, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
@@ -86,7 +86,7 @@ func TestDeviceSessionIssueAndValidate(t *testing.T) {
 
 func TestDeviceSessionSameDeviceStaleSessionID(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{}, "debug")
 
 	sessionID, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
@@ -106,7 +106,7 @@ func TestDeviceSessionSameDeviceStaleSessionID(t *testing.T) {
 
 func TestDeviceSessionRenewOnRefreshSameDevice(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{}, "debug")
 
 	oldSession, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
@@ -136,7 +136,7 @@ func TestDeviceSessionRenewOnRefreshSameDevice(t *testing.T) {
 
 func TestDeviceSessionRenewOnRefreshOtherDevice(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{}, "debug")
 
 	_, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
@@ -159,7 +159,7 @@ func TestDeviceSessionRenewOnRefreshOtherDevice(t *testing.T) {
 
 func TestDeviceSessionRenewOnRefreshDeviceMigration(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{}, "debug")
 
 	oldSession, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
@@ -188,7 +188,7 @@ func TestDeviceSessionWhitelistExempt(t *testing.T) {
 	repo := &mockSessionRepo{}
 	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{
 		SessionWhitelistUserIDs: []string{"user-wl"},
-	})
+	}, "debug")
 
 	sessionA, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-wl",
@@ -222,8 +222,61 @@ func TestDeviceSessionWhitelistExempt(t *testing.T) {
 	}
 }
 
+func TestDeviceSessionDevTestPhoneExempt(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{
+		DevTestPhone: "13400000000,13400000001,13400000002,13400000003,13400000004",
+		DevTestOTP:   "123456",
+	}, "lan")
+	email := "13400000000@dev.test.local"
+	sessionA, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-dev",
+		Email:    email,
+		DeviceID: "sim-a",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue A: %v", err)
+	}
+	sessionB, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID:   "user-dev",
+		Email:    email,
+		DeviceID: "sim-b",
+		Platform: "ios",
+	})
+	if err != nil {
+		t.Fatalf("issue B: %v", err)
+	}
+	if len(repo.sessions) != 0 {
+		t.Fatalf("dev test phone should not write redis session, got %d", len(repo.sessions))
+	}
+	if err := uc.Validate(context.Background(), "user-dev", email, sessionA, "sim-a"); err != nil {
+		t.Fatalf("validate A: %v", err)
+	}
+	if err := uc.Validate(context.Background(), "user-dev", email, sessionB, "sim-b"); err != nil {
+		t.Fatalf("validate B: %v", err)
+	}
+}
+
+func TestDeviceSessionDevTestPhoneNotExemptInProd(t *testing.T) {
+	repo := &mockSessionRepo{}
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{
+		DevTestPhone: "13400000000",
+		DevTestOTP:   "123456",
+	}, "prod")
+	email := "13400000000@dev.test.local"
+	if _, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
+		UserID: "user-dev", Email: email, DeviceID: "sim-a", Platform: "ios",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.sessions) != 1 {
+		t.Fatalf("prod must enforce single-device, got %d redis entries", len(repo.sessions))
+	}
+}
+
 func TestDeviceSessionInvalidPlatform(t *testing.T) {
-	uc := usecase.NewDeviceSessionUsecase(&mockSessionRepo{}, config.AuthConfig{})
+	uc := usecase.NewDeviceSessionUsecase(&mockSessionRepo{}, config.AuthConfig{}, "debug")
 	_, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
 		DeviceID: "device-a",
@@ -236,7 +289,7 @@ func TestDeviceSessionInvalidPlatform(t *testing.T) {
 
 func TestDeviceSessionMissingHeaders(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{}, "debug")
 	sessionID, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",
 		DeviceID: "device-a",
@@ -255,7 +308,7 @@ func TestDeviceSessionMissingHeaders(t *testing.T) {
 
 func TestDeviceSessionRevokeOnLogout(t *testing.T) {
 	repo := &mockSessionRepo{}
-	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{SessionTTLHours: 0})
+	uc := usecase.NewDeviceSessionUsecase(repo, config.AuthConfig{SessionTTLHours: 0}, "debug")
 
 	sessionID, err := uc.IssueOnLogin(context.Background(), usecase.IssueSessionInput{
 		UserID:   "user-1",

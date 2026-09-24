@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,8 +14,10 @@ import (
 func abortDeviceSessionError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrSessionReplaced):
+		log.Printf("[auth] session replaced path=%s", c.Request.URL.Path)
 		response.Error(c, http.StatusUnauthorized, response.CodeSessionReplaced, usecase.MsgSessionReplaced)
 	default:
+		log.Printf("[auth] session invalid path=%s err=%v", c.Request.URL.Path, err)
 		response.Error(c, http.StatusUnauthorized, response.CodeSessionInvalid, usecase.MsgSessionInvalid)
 	}
 	c.Abort()

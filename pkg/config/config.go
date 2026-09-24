@@ -14,18 +14,20 @@ import (
 
 // Config 聚合所有运行时配置项。
 type Config struct {
-	Server    ServerConfig    `mapstructure:"server"`
-	GRPC      GRPCConfig      `mapstructure:"grpc"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Redis     RedisConfig     `mapstructure:"redis"`
-	JWT       JWTConfig       `mapstructure:"jwt"`
-	Auth      AuthConfig      `mapstructure:"auth"`
-	Log       LogConfig       `mapstructure:"log"`
-	Supabase  SupabaseConfig  `mapstructure:"supabase"`
-	Realtime  RealtimeConfig  `mapstructure:"realtime"`
-	Queue     QueueConfig     `mapstructure:"queue"`
-	Scheduler SchedulerConfig `mapstructure:"scheduler"`
-	SSE       SSEConfig       `mapstructure:"sse"`
+	// AppEnv 来自 APP_ENV（dev/lan/prod…），与 gin server.mode（debug/release）无关。
+	AppEnv     string          `mapstructure:"-"`
+	Server     ServerConfig    `mapstructure:"server"`
+	GRPC       GRPCConfig      `mapstructure:"grpc"`
+	Database   DatabaseConfig  `mapstructure:"database"`
+	Redis      RedisConfig     `mapstructure:"redis"`
+	JWT        JWTConfig       `mapstructure:"jwt"`
+	Auth       AuthConfig      `mapstructure:"auth"`
+	Log        LogConfig       `mapstructure:"log"`
+	Supabase   SupabaseConfig  `mapstructure:"supabase"`
+	Realtime   RealtimeConfig  `mapstructure:"realtime"`
+	Queue      QueueConfig     `mapstructure:"queue"`
+	Scheduler  SchedulerConfig `mapstructure:"scheduler"`
+	SSE        SSEConfig       `mapstructure:"sse"`
 	Community  CommunityConfig  `mapstructure:"community"`
 	ShortVideo ShortVideoConfig `mapstructure:"short_video"`
 	ThirdParty ThirdPartyConfig `mapstructure:"third_party"`
@@ -129,6 +131,7 @@ func (a AuthConfig) SessionTTL() time.Duration {
 }
 
 // IsSessionExempt 账号是否在单设备 session 白名单（可多设备同时在线）。
+// 仅认显式白名单；测试号多端见 [DevTestSessionExempt]。
 func (a AuthConfig) IsSessionExempt(userID, email string) bool {
 	userID = strings.TrimSpace(userID)
 	if userID != "" {
@@ -149,25 +152,114 @@ func (a AuthConfig) IsSessionExempt(userID, email string) bool {
 	return false
 }
 
-// IsDevMode 是否为非生产运行模式（debug 等），用于启用测试手机号 bypass。
-func IsDevMode(serverMode string) bool {
-	return strings.ToLower(strings.TrimSpace(serverMode)) != "release"
+// DevTestSessionExempt 测试 OTP 账号是否允许多端（须非 prod APP_ENV + 已配 DevTest*）。
+func (a AuthConfig) DevTestSessionExempt(appEnv, email string) bool {
+	if !a.DevBypassEnabled(appEnv) {
+		return false
+	}
+	return a.IsDevTestEmail(email)
+}
+
+// IsDevTestEmail 是否为测试 OTP 账号邮箱（与 LocalAuth VerifyPhoneOTP 一致）。
+func (a AuthConfig) IsDevTestEmail(email string) bool {
+	email = strings.ToLower(strings.TrimSpace(email))
+	const suffix = "@dev.test.local"
+	if !strings.HasSuffix(email, suffix) {
+		return false
+	}
+	local := strings.TrimSuffix(email, suffix)
+	return a.IsDevTestPhone(local)
+}
+
+// IsLabAppEnv APP_ENV 是否为联调/开发类（非正式）。与 gin server.mode、二进制 debug/release 无关。
+func IsLabAppEnv(appEnv string) bool {
+	switch strings.ToLower(strings.TrimSpace(appEnv)) {
+	case "prod", "production":
+		return false
+	default:
+		return true
+	}
+}
+
+// IsDevMode 兼容旧名：按 APP_ENV 判断是否非正式环境（勿传 server.mode）。
+func IsDevMode(appEnv string) bool {
+	return IsLabAppEnv(appEnv)
 }
 
 // IsDevTestPhone 是否为配置的测试手机号（仅比较数字部分）。
+// DevTestPhone 支持逗号分隔多个号，例如 "13400000000,13400000001"。
 func (a AuthConfig) IsDevTestPhone(phone string) bool {
-	configured := NormalizePhoneDigits(a.DevTestPhone)
-	if configured == "" {
+	digits := NormalizePhoneDigits(phone)
+	if digits == "" {
 		return false
 	}
-	return NormalizePhoneDigits(phone) == configured
+	for _, configured := range a.DevTestPhones() {
+		if digits == configured {
+			return true
+		}
+	}
+	return false
 }
 
-// DevBypassEnabled 是否启用测试手机号 OTP bypass。
-func (a AuthConfig) DevBypassEnabled(serverMode string) bool {
-	return IsDevMode(serverMode) &&
-		strings.TrimSpace(a.DevTestPhone) != "" &&
+// DevTestPhones 解析配置的测试手机号列表（已规范化为 11 位数字）。
+func (a AuthConfig) DevTestPhones() []string {
+	raw := strings.TrimSpace(a.DevTestPhone)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		digits := NormalizePhoneDigits(part)
+		if digits == "" {
+			continue
+		}
+		if _, ok := seen[digits]; ok {
+			continue
+		}
+		seen[digits] = struct{}{}
+		out = append(out, digits)
+	}
+	return out
+}
+
+// DevBypassEnabled 是否启用测试手机号 OTP bypass（看 APP_ENV，不看 server.mode）。
+func (a AuthConfig) DevBypassEnabled(appEnv string) bool {
+	return IsLabAppEnv(appEnv) &&
+		len(a.DevTestPhones()) > 0 &&
 		strings.TrimSpace(a.DevTestOTP) != ""
+}
+
+// DevTestDisplayName 测试号默认展示名（方便双端 IM 区分）。
+func DevTestDisplayName(digits string) string {
+	switch NormalizePhoneDigits(digits) {
+	case "13400000000":
+		return "测试甲"
+	case "13400000001":
+		return "测试乙"
+	case "13400000002":
+		return "测试丙"
+	case "13400000003":
+		return "测试丁"
+	case "13400000004":
+		return "测试戊"
+	default:
+		d := NormalizePhoneDigits(digits)
+		if len(d) >= 4 {
+			return "用户" + d[len(d)-4:]
+		}
+		return "测试用户"
+	}
+}
+
+// DevTestAvatarURL 测试号固定 http 头像（可同步融云 portraitUri）。
+func DevTestAvatarURL(digits string) string {
+	d := NormalizePhoneDigits(digits)
+	if d == "" {
+		d = "im"
+	}
+	return "https://picsum.photos/seed/im_" + d + "/200/200"
 }
 
 // DevTestPasswordOrDefault 返回 Admin 创建测试用户用的内部密码。
@@ -603,7 +695,8 @@ func Load(configPath, env string) (*Config, error) {
 		cfg.Scheduler.HourlyNotify.Action.Route = "/home"
 	}
 	applySSEDefaults(&cfg)
-	applyAuthWhitelistEnv(&cfg.Auth)
+	cfg.AppEnv = strings.TrimSpace(env)
+	applyAuthWhitelistEnv(&cfg.Auth, cfg.AppEnv)
 	applyCommunityEnv(&cfg.Community)
 	applyShortVideoEnv(&cfg.ShortVideo)
 
@@ -714,12 +807,29 @@ func applyLocalEnvDefaults(configPath string, cfg *Config) error {
 }
 
 // applyAuthWhitelistEnv 用逗号分隔的环境变量覆盖 session 白名单（便于生产注入）。
-func applyAuthWhitelistEnv(auth *AuthConfig) {
+// 仅在非 prod APP_ENV + 已配测试 OTP 时，把测试号邮箱并入白名单（多端联调）。
+func applyAuthWhitelistEnv(auth *AuthConfig, appEnv string) {
 	if raw := strings.TrimSpace(os.Getenv("AUTH_SESSION_WHITELIST_USER_IDS")); raw != "" {
 		auth.SessionWhitelistUserIDs = splitCommaTrimmed(raw)
 	}
 	if raw := strings.TrimSpace(os.Getenv("AUTH_SESSION_WHITELIST_EMAILS")); raw != "" {
 		auth.SessionWhitelistEmails = splitCommaTrimmed(raw)
+	}
+	if !auth.DevBypassEnabled(appEnv) {
+		return
+	}
+	for _, phone := range auth.DevTestPhones() {
+		email := phone + "@dev.test.local"
+		found := false
+		for _, item := range auth.SessionWhitelistEmails {
+			if strings.EqualFold(strings.TrimSpace(item), email) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			auth.SessionWhitelistEmails = append(auth.SessionWhitelistEmails, email)
+		}
 	}
 }
 

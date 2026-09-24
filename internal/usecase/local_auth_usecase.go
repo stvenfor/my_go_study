@@ -39,11 +39,11 @@ type LocalAuthUsecase struct {
 	db     *gorm.DB
 	jwt    *jwtmanager.Manager
 	auth   config.AuthConfig
-	server string
+	appEnv string
 }
 
-func NewLocalAuthUsecase(db *gorm.DB, jwtMgr *jwtmanager.Manager, authCfg config.AuthConfig, serverMode string) *LocalAuthUsecase {
-	return &LocalAuthUsecase{db: db, jwt: jwtMgr, auth: authCfg, server: serverMode}
+func NewLocalAuthUsecase(db *gorm.DB, jwtMgr *jwtmanager.Manager, authCfg config.AuthConfig, appEnv string) *LocalAuthUsecase {
+	return &LocalAuthUsecase{db: db, jwt: jwtMgr, auth: authCfg, appEnv: appEnv}
 }
 
 func (u *LocalAuthUsecase) Register(ctx context.Context, input RegisterInput) (*SupabaseAuthOutput, error) {
@@ -194,14 +194,14 @@ func (u *LocalAuthUsecase) AllowsRequest(ctx context.Context, userID string) err
 }
 
 func (u *LocalAuthUsecase) SendPhoneOTP(ctx context.Context, phone string) error {
-	if !u.auth.DevBypassEnabled(u.server) || !u.auth.IsDevTestPhone(phone) {
+	if !u.auth.DevBypassEnabled(u.appEnv) || !u.auth.IsDevTestPhone(phone) {
 		return ErrPhoneLoginNotAvailable
 	}
 	return nil
 }
 
 func (u *LocalAuthUsecase) VerifyPhoneOTP(ctx context.Context, phone, otp string) (*SupabaseAuthOutput, error) {
-	if !u.auth.DevBypassEnabled(u.server) || !u.auth.IsDevTestPhone(phone) {
+	if !u.auth.DevBypassEnabled(u.appEnv) || !u.auth.IsDevTestPhone(phone) {
 		return nil, ErrPhoneLoginNotAvailable
 	}
 	if strings.TrimSpace(otp) != strings.TrimSpace(u.auth.DevTestOTP) {
@@ -216,13 +216,34 @@ func (u *LocalAuthUsecase) VerifyPhoneOTP(ctx context.Context, phone, otp string
 		if herr != nil {
 			return nil, herr
 		}
-		created := newLocalUser(email, "dev-"+digits, digits, string(hash))
+		created := newLocalUser(email, config.DevTestDisplayName(digits), digits, string(hash))
+		created.AvatarURL = config.DevTestAvatarURL(digits)
 		if err := u.db.WithContext(ctx).Create(&created).Error; err != nil {
 			return nil, fmt.Errorf("创建测试用户失败: %w", err)
 		}
 		user = &created
 	} else if err != nil {
 		return nil, err
+	} else {
+		// 已存在：补齐展示名/头像，便于双端 IM 区分。
+		updates := map[string]any{}
+		wantName := config.DevTestDisplayName(digits)
+		wantAvatar := config.DevTestAvatarURL(digits)
+		if strings.TrimSpace(user.UserName) == "" || user.UserName == digits || strings.HasPrefix(user.UserName, "dev-") {
+			updates["user_name"] = wantName
+		}
+		if strings.TrimSpace(user.AvatarURL) == "" || strings.HasPrefix(user.AvatarURL, "data:") {
+			updates["avatar_url"] = wantAvatar
+		}
+		if len(updates) > 0 {
+			_ = u.db.WithContext(ctx).Model(user).Updates(updates).Error
+			if v, ok := updates["user_name"].(string); ok {
+				user.UserName = v
+			}
+			if v, ok := updates["avatar_url"].(string); ok {
+				user.AvatarURL = v
+			}
+		}
 	}
 	return u.issueTokens(ctx, user)
 }

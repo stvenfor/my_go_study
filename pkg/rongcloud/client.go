@@ -61,7 +61,8 @@ type TokenResult struct {
 }
 
 // GetToken 注册/换取用户 Token（userId=业务 UUID）。
-func (c *Client) GetToken(ctx context.Context, userID, name string) (TokenResult, error) {
+// portraitURI 仅传 http(s) 头像；空或 data: 等本地 URI 时不传给融云。
+func (c *Client) GetToken(ctx context.Context, userID, name, portraitURI string) (TokenResult, error) {
 	if c == nil || !c.cfg.Configured() {
 		return TokenResult{}, ErrNotConfigured
 	}
@@ -76,6 +77,9 @@ func (c *Client) GetToken(ctx context.Context, userID, name string) (TokenResult
 	form := url.Values{}
 	form.Set("userId", userID)
 	form.Set("name", name)
+	if p := httpPortraitURI(portraitURI); p != "" {
+		form.Set("portraitUri", p)
+	}
 	var out TokenResult
 	if err := c.postForm(ctx, "/user/getToken.json", form, &out); err != nil {
 		return TokenResult{}, err
@@ -90,6 +94,43 @@ func (c *Client) GetToken(ctx context.Context, userID, name string) (TokenResult
 		out.UserID = userID
 	}
 	return out, nil
+}
+
+// RefreshUser 更新融云侧用户昵称/头像（/user/refresh.json）。
+func (c *Client) RefreshUser(ctx context.Context, userID, name, portraitURI string) error {
+	if c == nil || !c.cfg.Configured() {
+		return ErrNotConfigured
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return fmt.Errorf("rongcloud userId empty")
+	}
+	form := url.Values{}
+	form.Set("userId", userID)
+	if n := strings.TrimSpace(name); n != "" {
+		form.Set("name", n)
+	}
+	if p := httpPortraitURI(portraitURI); p != "" {
+		form.Set("portraitUri", p)
+	}
+	var out struct {
+		Code int `json:"code"`
+	}
+	if err := c.postForm(ctx, "/user/refresh.json", form, &out); err != nil {
+		return err
+	}
+	if out.Code != 200 {
+		return fmt.Errorf("rongcloud refreshUser code=%d", out.Code)
+	}
+	return nil
+}
+
+func httpPortraitURI(raw string) string {
+	u := strings.TrimSpace(raw)
+	if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
+		return u
+	}
+	return ""
 }
 
 // CreateGroup 创建群组并把成员加入。
