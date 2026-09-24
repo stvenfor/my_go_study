@@ -4,11 +4,9 @@
 
 **Blocked by:** 01 — IM 真连（Token + 连接）
 
-**Status:** partial
+**Status:** done
 
-- [ ] 双方 IM 已连接时可发收文本；消息出现在对方会话中
-- [ ] 会话列表反映真实单聊会话（非 Mock 固定三人）
-- [ ] Flutter 聊天详情/列表走 SDK，不再写 Mock store 作为真相源
-- [ ] 与 Realtime / AI SSE 无耦合
-
-**Partial:** BFF/会话准入与连接已就绪；聊天列表/发收仍可走 Mock store，真 SDK 会话同步待补齐（需真机 App Key）。
+- [x] 双方 IM 已连接时可发收文本；消息出现在对方会话中
+- [x] 会话列表反映真实单聊会话（非 Mock 固定三人）
+- [x] Flutter 聊天详情/列表走 SDK，不再写 Mock store 作为真相源
+- [x] 与 Realtime / AI SSE 无耦合

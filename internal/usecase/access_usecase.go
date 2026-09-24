@@ -4,6 +4,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
@@ -28,12 +29,20 @@ var (
 
 // AccessUsecase 管理门店、成员与内置角色分配。
 type AccessUsecase struct {
-	repo repository.AccessRepository
+	repo           repository.AccessRepository
+	storeGroupSync ImStoreGroupSyncer
 }
 
 // NewAccessUsecase 创建。
 func NewAccessUsecase(repo repository.AccessRepository) *AccessUsecase {
 	return &AccessUsecase{repo: repo}
+}
+
+// SetStoreGroupSync 接线门店群：入店拉人 / 离店踢人。
+func (u *AccessUsecase) SetStoreGroupSync(s ImStoreGroupSyncer) {
+	if u != nil {
+		u.storeGroupSync = s
+	}
 }
 
 // CreateStore 建店。不自动让操作者成为成员。
@@ -88,6 +97,9 @@ func (u *AccessUsecase) UpsertMember(ctx context.Context, actorID string, storeI
 	if err := u.repo.UpsertMember(ctx, member); err != nil {
 		return nil, err
 	}
+	if u.storeGroupSync != nil {
+		_, _ = u.storeGroupSync.EnsureStoreMembership(ctx, strconv.Itoa(storeID), targetUserID)
+	}
 	return &member, nil
 }
 
@@ -103,7 +115,13 @@ func (u *AccessUsecase) RemoveMember(ctx context.Context, actorID string, storeI
 	if err := u.require(ctx, actorID, entity.PermMemberWrite, &storeID); err != nil {
 		return err
 	}
-	return u.repo.RemoveMember(ctx, targetUserID, storeID)
+	if err := u.repo.RemoveMember(ctx, targetUserID, storeID); err != nil {
+		return err
+	}
+	if u.storeGroupSync != nil {
+		_ = u.storeGroupSync.RemoveStoreMembership(ctx, strconv.Itoa(storeID), targetUserID)
+	}
+	return nil
 }
 
 // AssignRole 分配内置角色。店内角色要求对方已是成员。

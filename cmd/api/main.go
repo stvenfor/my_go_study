@@ -106,6 +106,8 @@ func run() error {
 	var huaweiLoginUC usecase.HuaweiLoginAuth
 	var profileController *controller.ProfileController
 	var accessController *controller.AccessController
+	var profileUC *usecase.ProfileUsecase
+	var accessUC *usecase.AccessUsecase
 	var mallController *controller.MallController
 	var pointsController *controller.PointsController
 	var cashWalletController *controller.CashWalletController
@@ -143,10 +145,10 @@ func run() error {
 		accountGate = middleware.RequireActiveAccount(localAuth)
 		profileRepo := postgres.NewProfileRepository(db)
 		storeStatsRepo := postgres.NewStoreStatsRepository(db)
-		profileUC := usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
+		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
 		accessRepo := postgres.NewAccessRepository(db)
-		accessUC := usecase.NewAccessUsecase(accessRepo)
+		accessUC = usecase.NewAccessUsecase(accessRepo)
 		accessController = controller.NewAccessController(accessUC)
 		mallRepo := postgres.NewMallRepository(db)
 		pointsRepo := postgres.NewPointsRepository(db)
@@ -258,7 +260,7 @@ func run() error {
 		phoneOTPUC = usecase.NewPhoneOTPUsecase(sbClient, cfg.Auth, cfg.Server.Mode)
 		profileRepo := sbrepo.NewProfileRepository(sbClient)
 		storeStatsRepo := postgres.NewStoreStatsRepository(db)
-		profileUC := usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
+		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
 		transactionRepo := sbrepo.NewTransactionRepository(sbClient)
 		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
@@ -369,6 +371,12 @@ func run() error {
 		imGroupUC := usecase.NewImGroupUsecase(postgres.NewImGroupRepository(db), rcClient)
 		imBackupUC := usecase.NewImBackupUsecase(postgres.NewImBackupRepository(db))
 		imController = controller.NewImController(imSessionUC, imFriendUC, imGroupUC, imBackupUC)
+		if profileUC != nil {
+			profileUC.SetStoreGroupSync(imGroupUC)
+		}
+		if accessUC != nil {
+			accessUC.SetStoreGroupSync(imGroupUC)
+		}
 		if cfg.ThirdParty.RongCloudConfigured() {
 			log.Info("融云 IM 服务端已配置")
 		} else {

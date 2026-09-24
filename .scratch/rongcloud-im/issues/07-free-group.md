@@ -4,11 +4,9 @@
 
 **Blocked by:** 01 — IM 真连（Token + 连接）；02 — 单聊文本 + 会话列表
 
-**Status:** partial
+**Status:** done
 
 - [x] 创建自由群成功且创建者为群主
 - [x] 仅群主邀请 / 踢人 / 解散；非群主操作被拒绝
 - [x] 成员可退群；退群后不再收到该群消息（以融云成员状态为准）
 - [x] Flutter 有可用的建群/管理入口；相关 usecase 缝有测试
-
-**Partial:** Go 自由群 API + usecase 测试已就绪；Flutter 建群/管理入口待补齐。

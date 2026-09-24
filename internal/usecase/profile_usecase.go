@@ -16,15 +16,29 @@ import (
 // 约 1.5MB 原始图对应的 base64 上限（字符数）。
 const maxAvatarBase64Len = 2_000_000
 
+// ImStoreGroupSyncer 门店群幂等补拉（可选；未接线时 noop）。
+type ImStoreGroupSyncer interface {
+	EnsureStoreMembership(ctx context.Context, storeID, userID string) (*ImStoreGroupOut, error)
+	RemoveStoreMembership(ctx context.Context, storeID, userID string) error
+}
+
 // ProfileUsecase 处理用户资料读写。
 type ProfileUsecase struct {
-	repo  repository.ProfileRepository
-	stats repository.StoreStatsRepository
+	repo           repository.ProfileRepository
+	stats          repository.StoreStatsRepository
+	storeGroupSync ImStoreGroupSyncer
 }
 
 // NewProfileUsecase 创建 Profile 用例。stats 可为 nil（则 stats 全 0）。
 func NewProfileUsecase(repo repository.ProfileRepository, stats repository.StoreStatsRepository) *ProfileUsecase {
 	return &ProfileUsecase{repo: repo, stats: stats}
+}
+
+// SetStoreGroupSync 接线门店群同步（登录切换门店后幂等入群）。
+func (u *ProfileUsecase) SetStoreGroupSync(s ImStoreGroupSyncer) {
+	if u != nil {
+		u.storeGroupSync = s
+	}
 }
 
 // ErrInvalidStoreID store_id 不是正整数。
@@ -67,6 +81,10 @@ func (u *ProfileUsecase) SwitchStore(ctx context.Context, userID string, storeID
 			return entity.ZeroUserStoreStats(), ErrStoreNotFound
 		}
 		return entity.ZeroUserStoreStats(), err
+	}
+	// 切换门店成功后幂等拉入该店群；失败不阻断切换。
+	if u.storeGroupSync != nil {
+		_, _ = u.storeGroupSync.EnsureStoreMembership(ctx, strconv.Itoa(storeID), userID)
 	}
 	return stats, nil
 }
