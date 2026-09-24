@@ -38,6 +38,7 @@ import (
 	"github.com/stvenfor/my_go_study/pkg/logger"
 	"github.com/stvenfor/my_go_study/pkg/jpush"
 	"github.com/stvenfor/my_go_study/pkg/queue"
+	"github.com/stvenfor/my_go_study/pkg/rongcloud"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -121,6 +122,7 @@ func run() error {
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var jpushController *controller.JPushController
+	var imController *controller.ImController
 	var realtimeController *controller.RealtimeController
 	var pushUC *usecase.RealtimePushUsecase
 	var sseController *controller.SseController
@@ -351,6 +353,27 @@ func run() error {
 		} else {
 			log.Info("JPush 服务端未配置（跳过真实下发；登记 API 仍可用）")
 		}
+
+		if err := postgres.EnsureImSchema(db); err != nil {
+			log.Warn("融云 IM 表初始化失败", zap.Error(err))
+		} else {
+			log.Info("融云 IM 表已就绪")
+		}
+		rcClient := rongcloud.NewClient(rongcloud.Config{
+			AppKey:     cfg.ThirdParty.RongCloudAppKey,
+			AppSecret:  cfg.ThirdParty.RongCloudAppSecret,
+			APIBaseURL: cfg.ThirdParty.RongCloudAPIBaseURL,
+		})
+		imSessionUC := usecase.NewImSessionUsecase(rcClient)
+		imFriendUC := usecase.NewImFriendUsecase(postgres.NewImFriendRepository(db), postgres.NewImUserLookupRepository(db))
+		imGroupUC := usecase.NewImGroupUsecase(postgres.NewImGroupRepository(db), rcClient)
+		imBackupUC := usecase.NewImBackupUsecase(postgres.NewImBackupRepository(db))
+		imController = controller.NewImController(imSessionUC, imFriendUC, imGroupUC, imBackupUC)
+		if cfg.ThirdParty.RongCloudConfigured() {
+			log.Info("融云 IM 服务端已配置")
+		} else {
+			log.Info("融云 IM 服务端未配置（/im/session 将返回未配置）")
+		}
 	}
 
 	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC, wechatLoginUC, huaweiLoginUC)
@@ -394,6 +417,7 @@ func run() error {
 		TransactionController:        transactionController,
 		RealtimeController:           realtimeController,
 		JPushController:              jpushController,
+		ImController:                 imController,
 		SseController:                sseController,
 		WSHandler:                    wsGateway,
 		Config:                       *cfg,

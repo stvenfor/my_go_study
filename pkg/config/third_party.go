@@ -21,6 +21,9 @@ type ThirdPartyConfig struct {
 	JPushAppKey         string `mapstructure:"jpush_app_key"`
 	JPushMasterSecret   string `mapstructure:"jpush_master_secret"`
 	JPushAPNsProduction bool   `mapstructure:"jpush_apns_production"`
+	RongCloudAppKey     string `mapstructure:"rongcloud_app_key"`
+	RongCloudAppSecret  string `mapstructure:"rongcloud_app_secret"`
+	RongCloudAPIBaseURL string `mapstructure:"rongcloud_api_base_url"`
 }
 
 // HuaweiIAPConfig AGC 应用内支付服务端密钥（JWT）。
@@ -81,6 +84,16 @@ func (t ThirdPartyConfig) HuaweiLoginConfigured() bool {
 func (t ThirdPartyConfig) JPushConfigured() bool {
 	key := strings.TrimSpace(t.JPushAppKey)
 	secret := strings.TrimSpace(t.JPushMasterSecret)
+	if key == "" || secret == "" {
+		return false
+	}
+	return !strings.Contains(strings.ToUpper(key), "PLACEHOLDER")
+}
+
+// RongCloudConfigured 融云服务端签发 Token 所需字段是否齐全（占位 AppKey 不算）。
+func (t ThirdPartyConfig) RongCloudConfigured() bool {
+	key := strings.TrimSpace(t.RongCloudAppKey)
+	secret := strings.TrimSpace(t.RongCloudAppSecret)
 	if key == "" || secret == "" {
 		return false
 	}

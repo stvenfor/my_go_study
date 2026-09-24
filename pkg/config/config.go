@@ -530,6 +530,9 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("third_party.jpush_app_key", "JPUSH_APP_KEY")
 	_ = v.BindEnv("third_party.jpush_master_secret", "JPUSH_MASTER_SECRET")
 	_ = v.BindEnv("third_party.jpush_apns_production", "JPUSH_APNS_PRODUCTION")
+	_ = v.BindEnv("third_party.rongcloud_app_key", "RONGCLOUD_APP_KEY")
+	_ = v.BindEnv("third_party.rongcloud_app_secret", "RONGCLOUD_APP_SECRET")
+	_ = v.BindEnv("third_party.rongcloud_api_base_url", "RONGCLOUD_API_BASE_URL")
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
