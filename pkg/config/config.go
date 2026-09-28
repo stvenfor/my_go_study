@@ -32,6 +32,55 @@ type Config struct {
 	ShortVideo    ShortVideoConfig    `mapstructure:"short_video"`
 	ThirdParty    ThirdPartyConfig    `mapstructure:"third_party"`
 	Elasticsearch ElasticsearchConfig `mapstructure:"elasticsearch"`
+	CsAgent       CsAgentConfig       `mapstructure:"cs_agent"`
+}
+
+// CsAgentConfig 客服 Agent（Eino Tool + SSE）。
+type CsAgentConfig struct {
+	Enabled               bool   `mapstructure:"enabled"`
+	Provider              string `mapstructure:"provider"` // mock | openai_compatible（本轮 mock 主路径）
+	ChunkDelayMS          int    `mapstructure:"chunk_delay_ms"`
+	KeepaliveSeconds      int    `mapstructure:"keepalive_seconds"`
+	RequestTimeoutSeconds int    `mapstructure:"request_timeout_seconds"`
+	Model                 string `mapstructure:"model"`
+}
+
+// ModelName 对外 meta.model。
+func (c CsAgentConfig) ModelName() string {
+	if m := strings.TrimSpace(c.Model); m != "" {
+		return m
+	}
+	if strings.EqualFold(strings.TrimSpace(c.Provider), "openai_compatible") {
+		return "cs-openai"
+	}
+	return "cs-mock"
+}
+
+// ChunkDelay 吐字间隔；测试可配 0。
+func (c CsAgentConfig) ChunkDelay() time.Duration {
+	if c.ChunkDelayMS < 0 {
+		return 0
+	}
+	if c.ChunkDelayMS == 0 && strings.TrimSpace(c.Provider) == "" {
+		return 20 * time.Millisecond
+	}
+	return time.Duration(c.ChunkDelayMS) * time.Millisecond
+}
+
+// KeepaliveOrDefault SSE 注释心跳。
+func (c CsAgentConfig) KeepaliveOrDefault() time.Duration {
+	if c.KeepaliveSeconds <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(c.KeepaliveSeconds) * time.Second
+}
+
+// RequestTimeout 单次对话超时。
+func (c CsAgentConfig) RequestTimeout() time.Duration {
+	if c.RequestTimeoutSeconds <= 0 {
+		return 120 * time.Second
+	}
+	return time.Duration(c.RequestTimeoutSeconds) * time.Second
 }
 
 // ElasticsearchConfig 交易全文索引（空 URL 表示关闭）。
@@ -637,6 +686,10 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("sse.openai.base_url", "SSE_OPENAI_BASE_URL")
 	_ = v.BindEnv("sse.openai.model", "SSE_OPENAI_MODEL")
 	_ = v.BindEnv("sse.openai.api_key", "SSE_OPENAI_API_KEY")
+	_ = v.BindEnv("cs_agent.enabled", "CS_AGENT_ENABLED")
+	_ = v.BindEnv("cs_agent.provider", "CS_AGENT_PROVIDER")
+	_ = v.BindEnv("cs_agent.chunk_delay_ms", "CS_AGENT_CHUNK_DELAY_MS")
+	_ = v.BindEnv("cs_agent.model", "CS_AGENT_MODEL")
 	_ = v.BindEnv("community.ask_everyone_invite_user_ids", "COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")
 	_ = v.BindEnv("third_party.wechat_app_id", "WECHAT_APP_ID")
 	_ = v.BindEnv("third_party.wechat_app_secret", "WECHAT_APP_SECRET")

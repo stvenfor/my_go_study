@@ -130,6 +130,7 @@ func run() error {
 	var realtimeController *controller.RealtimeController
 	var pushUC *usecase.RealtimePushUsecase
 	var sseController *controller.SseController
+	var csAgentController *controller.CsAgentController
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
@@ -352,6 +353,15 @@ func run() error {
 				zap.Int("max_turns", cfg.SSE.MaxTurnsOrDefault()),
 			)
 		}
+
+		if cfg.CsAgent.Enabled {
+			csUC := usecase.NewCsAgentUsecase(transactionUC, cfg.CsAgent)
+			csAgentController = controller.NewCsAgentController(csUC, cfg.CsAgent)
+			log.Info("客服 Agent 已启用",
+				zap.String("provider", cfg.CsAgent.Provider),
+				zap.String("model", cfg.CsAgent.ModelName()),
+			)
+		}
 	}
 
 	if businessEnabled {
@@ -449,6 +459,7 @@ func run() error {
 		JPushController:              jpushController,
 		ImController:                 imController,
 		SseController:                sseController,
+		CsAgentController:            csAgentController,
 		WSHandler:                    wsGateway,
 		Config:                       *cfg,
 		Supabase:                     cfg.Supabase,

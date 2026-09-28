@@ -40,6 +40,7 @@ type Options struct {
 	JPushController              *controller.JPushController
 	ImController                 *controller.ImController
 	SseController                *controller.SseController
+	CsAgentController            *controller.CsAgentController
 	WSHandler                    *wshandler.Handler
 	Config                       config.Config
 	Supabase                     config.SupabaseConfig
@@ -154,6 +155,10 @@ func Setup(opts Options) *gin.Engine {
 
 	if businessAuth && opts.SseController != nil && sessionAuth != nil && opts.Config.SSE.Enabled {
 		registerSseRoutes(v1, sessionAuth, opts.SseController, opts.AccountGate)
+	}
+
+	if businessAuth && opts.CsAgentController != nil && sessionAuth != nil && opts.Config.CsAgent.Enabled {
+		registerCsAgentRoutes(v1, sessionAuth, opts.CsAgentController, opts.AccountGate)
 	}
 
 	if opts.WSHandler != nil {

@@ -45,9 +45,9 @@
 - Accept 模式: Partial
 
 ## Context Card — cs-agent-c4-eino-cs-agent
-- 已完成:
-- 未做/Deferred:
-- 关键文件:
-- harness: post ok?
+- 已完成: Eino Tool + `/api/v1/cs-agent/chat` SSE mock；交易搜索 Tool；配置与文档
+- 未做/Deferred: 完整 ReAct/ChatModel；Flutter 页；真人证 curl
+- 关键文件: internal/repository/csagent；usecase/cs_agent_*；controller/router/config
+- harness: post ok? Partial（机跑绿）
 - 下一 Slice 建议: Flutter 客服页（my_ai_project）
-- 已知坑:
+- 已知坑: 避免 InferTool（sonic 升级链）；手写 InvokableTool 更稳

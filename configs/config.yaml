@@ -98,3 +98,12 @@ sse:
     base_url: "https://api.openai.com/v1"
     model: "gpt-4o-mini"
     # api_key 仅环境变量 SSE_OPENAI_API_KEY；勿写入仓库
+
+# 客服 Agent（Eino Tool + SSE；与小石头路由分离）
+cs_agent:
+  enabled: true
+  provider: mock
+  chunk_delay_ms: 20
+  keepalive_seconds: 15
+  request_timeout_seconds: 120
+  model: cs-mock
