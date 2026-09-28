@@ -1,4 +1,4 @@
-// asynq_handler.go Asynq 任务处理器。
+// handler.go RabbitMQ 任务业务处理。
 package queue
 
 import (
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 	"github.com/stvenfor/my_go_study/internal/domain/repository"
 	"github.com/stvenfor/my_go_study/internal/usecase"
@@ -17,16 +16,16 @@ import (
 
 const schedulerDedupKeyFmt = "scheduler:dedup:%s"
 
-// Handler 注册 Asynq 任务处理函数。
+// Handler 按任务类型分发业务逻辑。
 type Handler struct {
-	deliver    *usecase.RealtimePushUsecase
-	sessions   repository.SessionRepository
-	enqueue    *Client
-	hourly     *usecase.HourlyNotifyUsecase
-	jpushUC    *usecase.JPushUsecase
-	cfg        config.Config
-	redis      *redis.Client
-	log        *zap.Logger
+	deliver  *usecase.RealtimePushUsecase
+	sessions repository.SessionRepository
+	enqueue  *Client
+	hourly   *usecase.HourlyNotifyUsecase
+	jpushUC  *usecase.JPushUsecase
+	cfg      config.Config
+	redis    *redis.Client
+	log      *zap.Logger
 }
 
 // NewHandler 创建任务处理器。
@@ -57,26 +56,38 @@ func (h *Handler) WithJPush(uc *usecase.JPushUsecase) *Handler {
 	return h
 }
 
-// Register 向 ServeMux 注册所有任务路由。
-func (h *Handler) Register(mux *asynq.ServeMux) {
-	mux.HandleFunc(TypeRealtimePushNotify, h.handlePushNotify)
-	mux.HandleFunc(TypeScheduledBroadcastNotify, h.handleBroadcastNotify)
-	mux.HandleFunc(TypeSendSMS, h.handleSendSMS)
-	mux.HandleFunc(TypeJPushRegister, h.handleJPushRegister)
+// Dispatch 按 envelope.type 分发。
+func (h *Handler) Dispatch(ctx context.Context, body []byte) error {
+	var env Envelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		return fmt.Errorf("unmarshal envelope: %w", err)
+	}
+	switch env.Type {
+	case TypeRealtimePushNotify:
+		return h.handlePushNotify(ctx, env.Payload)
+	case TypeScheduledBroadcastNotify:
+		return h.handleBroadcastNotify(ctx, env.Payload)
+	case TypeSendSMS:
+		return h.handleSendSMS(ctx, env.Payload)
+	case TypeJPushRegister:
+		return h.handleJPushRegister(ctx, env.Payload)
+	default:
+		return fmt.Errorf("unknown task type: %s", env.Type)
+	}
 }
 
-func (h *Handler) handlePushNotify(ctx context.Context, t *asynq.Task) error {
-	payload, err := ParsePushNotifyPayload(t)
+func (h *Handler) handlePushNotify(ctx context.Context, payload []byte) error {
+	p, err := ParsePushNotifyPayload(payload)
 	if err != nil {
 		return err
 	}
 	_, _, err = h.deliver.DeliverPush(ctx, usecase.RealtimePushInput{
-		UserID: payload.UserID,
-		Topic:  payload.Topic,
-		Title:  payload.Title,
-		Body:   payload.Body,
-		Name:   payload.Name,
-		Extra:  payload.Extra,
+		UserID: p.UserID,
+		Topic:  p.Topic,
+		Title:  p.Title,
+		Body:   p.Body,
+		Name:   p.Name,
+		Extra:  p.Extra,
 	})
 	if err != nil {
 		return fmt.Errorf("deliver push: %w", err)
@@ -84,15 +95,15 @@ func (h *Handler) handlePushNotify(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
-func (h *Handler) handleBroadcastNotify(ctx context.Context, t *asynq.Task) error {
-	payload, err := ParseBroadcastNotifyPayload(t)
+func (h *Handler) handleBroadcastNotify(ctx context.Context, payload []byte) error {
+	p, err := ParseBroadcastNotifyPayload(payload)
 	if err != nil {
 		return err
 	}
 
 	slot := time.Now().In(h.cfg.Scheduler.Location()).Truncate(time.Hour)
-	if payload.ScheduleSlot != "" {
-		if parsed, parseErr := time.Parse(time.RFC3339, payload.ScheduleSlot); parseErr == nil {
+	if p.ScheduleSlot != "" {
+		if parsed, parseErr := time.Parse(time.RFC3339, p.ScheduleSlot); parseErr == nil {
 			slot = parsed.In(h.cfg.Scheduler.Location()).Truncate(time.Hour)
 		}
 	}
@@ -137,51 +148,44 @@ func (h *Handler) handleBroadcastNotify(ctx context.Context, t *asynq.Task) erro
 	return nil
 }
 
-func (h *Handler) handleSendSMS(ctx context.Context, t *asynq.Task) error {
-	var payload SendSMSPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+func (h *Handler) handleSendSMS(ctx context.Context, payload []byte) error {
+	var p SendSMSPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
 		return fmt.Errorf("unmarshal sms payload: %w", err)
 	}
 	h.log.Info("sms task stub — integrate SMS provider in production",
-		zap.String("phone", payload.Phone),
+		zap.String("phone", p.Phone),
 	)
 	return nil
 }
 
-func (h *Handler) handleJPushRegister(ctx context.Context, t *asynq.Task) error {
-	var payload JPushRegisterPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+func (h *Handler) handleJPushRegister(ctx context.Context, payload []byte) error {
+	var p JPushRegisterPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
 		return fmt.Errorf("unmarshal jpush payload: %w", err)
 	}
 	if h.jpushUC == nil {
 		h.log.Info("jpush register skipped — usecase nil",
-			zap.String("userId", payload.UserID),
-			zap.String("deviceId", payload.DeviceID),
+			zap.String("userId", p.UserID),
+			zap.String("deviceId", p.DeviceID),
 		)
 		return nil
 	}
 	_, err := h.jpushUC.RegisterDevice(ctx, usecase.RegisterDeviceInput{
-		UserID:         payload.UserID,
-		DeviceID:       payload.DeviceID,
-		Platform:       payload.Platform,
-		RegistrationID: payload.RegisterID,
+		UserID:         p.UserID,
+		DeviceID:       p.DeviceID,
+		Platform:       p.Platform,
+		RegistrationID: p.RegisterID,
 	})
 	if err != nil {
 		return fmt.Errorf("jpush register: %w", err)
 	}
 	h.log.Info("jpush device registered",
-		zap.String("userId", payload.UserID),
-		zap.String("deviceId", payload.DeviceID),
-		zap.String("platform", payload.Platform),
+		zap.String("userId", p.UserID),
+		zap.String("deviceId", p.DeviceID),
+		zap.String("platform", p.Platform),
 	)
 	return nil
-}
-
-// NewAsynqServer 创建 Asynq Worker Server。
-func NewAsynqServer(cfg config.Config) *asynq.Server {
-	return asynq.NewServer(RedisClientOpt(cfg), asynq.Config{
-		Concurrency: cfg.Queue.AsynqConcurrency(),
-	})
 }
 
 // NewDeliveryPushUsecase 创建 Worker 侧推送投递 Usecase（经 Pub/Sub 广播）。

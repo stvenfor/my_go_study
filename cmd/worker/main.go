@@ -1,7 +1,7 @@
 // =============================================================================
-// main.go — Asynq Worker 入口（make run-worker → go run ./cmd/worker）
+// main.go — RabbitMQ Worker 入口（make run-worker → go run ./cmd/worker）
 //
-// 职责：消费 Asynq 任务（Push/SMS/JPush/定时广播），经 Redis Pub/Sub 广播到各 BFF 实例。
+// 职责：消费 RabbitMQ 任务（Push/SMS/JPush/定时广播），经 Redis Pub/Sub 广播到各 BFF 实例。
 // =============================================================================
 package main
 
@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/hibiken/asynq"
 	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	redisrepo "github.com/stvenfor/my_go_study/internal/repository/redis"
 	"github.com/stvenfor/my_go_study/internal/usecase"
@@ -65,10 +64,13 @@ func run() error {
 	sessionRepo := redisrepo.NewSessionRepository(redisClient)
 	publisher := queue.NewFanoutPublisher(redisClient, cfg.Queue.PubSubChannel())
 	pushUC := queue.NewDeliveryPushUsecase(eventRepo, *cfg, publisher)
-	queueClient := queue.NewAsynqClient(*cfg)
+	queueClient, err := queue.NewClient(*cfg)
+	if err != nil {
+		return fmt.Errorf("连接 RabbitMQ 失败: %w", err)
+	}
 	defer func() {
 		if err := queueClient.Close(); err != nil {
-			log.Warn("关闭 Asynq 客户端失败", zap.Error(err))
+			log.Warn("关闭 RabbitMQ 客户端失败", zap.Error(err))
 		}
 	}()
 
@@ -98,52 +100,38 @@ func run() error {
 		}
 	}
 
-	server := queue.NewAsynqServer(*cfg)
-	mux := asynq.NewServeMux()
-	queue.NewHandler(pushUC, sessionRepo, queueClient, *cfg, redisClient, log).WithJPush(jpushUC).Register(mux)
+	handler := queue.NewHandler(pushUC, sessionRepo, queueClient, *cfg, redisClient, log).WithJPush(jpushUC)
+	consumer, err := queue.NewConsumer(*cfg, log)
+	if err != nil {
+		return fmt.Errorf("创建 RabbitMQ 消费者失败: %w", err)
+	}
+	defer func() {
+		if err := consumer.Close(); err != nil {
+			log.Warn("关闭 RabbitMQ 消费者失败", zap.Error(err))
+		}
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		log.Info("Asynq Worker 启动",
-			zap.Int("concurrency", cfg.Queue.AsynqConcurrency()),
+		log.Info("RabbitMQ Worker 启动",
+			zap.Int("prefetch", consumer.Prefetch()),
+			zap.String("queue", consumer.Queue()),
 			zap.String("pubsub_channel", cfg.Queue.PubSubChannel()),
 		)
-		if err := server.Run(mux); err != nil {
-			log.Fatal("Asynq Worker 异常退出", zap.Error(err))
+		if err := consumer.Run(ctx, handler); err != nil && err != context.Canceled {
+			log.Fatal("RabbitMQ Worker 异常退出", zap.Error(err))
 		}
 	}()
 
-	if cfg.Scheduler.Enabled && cfg.Scheduler.HourlyNotify.Enabled {
-		scheduler := queue.NewAsynqScheduler(*cfg)
-		entryID, err := queue.RegisterHourlyNotifyScheduler(scheduler, *cfg)
-		if err != nil {
-			return fmt.Errorf("注册定时任务失败: %w", err)
-		}
-		go func() {
-			log.Info("Asynq Scheduler 启动",
-				zap.String("cron", cfg.Scheduler.HourlyNotify.CronSpec()),
-				zap.String("timezone", cfg.Scheduler.Timezone),
-				zap.String("entry_id", entryID),
-			)
-			if err := scheduler.Run(); err != nil {
-				log.Error("Asynq Scheduler 异常退出", zap.Error(err))
-			}
-		}()
-	} else {
-		log.Info("定时广播未启用（scheduler.hourly_notify.enabled=false）")
-	}
+	go queue.RunHourlyNotifyTicker(ctx, queueClient, *cfg, log)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-quit:
-		log.Info("收到关机信号，停止 Worker...")
-	case <-ctx.Done():
-	}
-
-	server.Shutdown()
+	<-quit
+	log.Info("收到关机信号，停止 Worker...")
+	cancel()
 	log.Info("Worker 已关闭")
 	return nil
 }

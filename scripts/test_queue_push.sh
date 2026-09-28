@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 异步 Push（Asynq + Pub/Sub）联调脚本。
-# 前置：make run（API）+ make run-worker（Worker），queue.enabled=true（config.dev.yaml 默认开启）。
+# 异步 Push（RabbitMQ + Redis Pub/Sub）联调脚本。
+# 前置：make run（API）+ make run-worker（Worker），queue.enabled=true（config.dev.yaml 默认开启）；RabbitMQ 可达。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -71,7 +71,7 @@ enqueue_push() {
     -H "X-Session-ID: $SESSION_ID" \
     -H "X-Device-ID: $DEVICE_ID" \
     -H "Content-Type: application/json" \
-    -d '{"title":"Queue Test","body":"async push via Asynq"}')
+    -d '{"title":"Queue Test","body":"async push via RabbitMQ"}')
   echo "$PUSH_RESP" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)['data']

@@ -323,15 +323,17 @@ type LogConfig struct {
 
 // QueueConfig 异步任务队列与多实例 WS 广播配置。
 type QueueConfig struct {
-	Enabled   bool              `mapstructure:"enabled"`
-	PushAsync *bool             `mapstructure:"push_async"`
-	Asynq     QueueAsynqConfig  `mapstructure:"asynq"`
-	PubSub    QueuePubSubConfig `mapstructure:"pubsub"`
+	Enabled  bool                 `mapstructure:"enabled"`
+	PushAsync *bool               `mapstructure:"push_async"`
+	RabbitMQ QueueRabbitMQConfig  `mapstructure:"rabbitmq"`
+	PubSub   QueuePubSubConfig    `mapstructure:"pubsub"`
 }
 
-// QueueAsynqConfig Asynq 任务队列参数（后端复用 Redis）。
-type QueueAsynqConfig struct {
-	Concurrency int `mapstructure:"concurrency"`
+// QueueRabbitMQConfig RabbitMQ 任务队列参数。
+type QueueRabbitMQConfig struct {
+	URL      string `mapstructure:"url"`
+	Queue    string `mapstructure:"queue"`
+	Prefetch int    `mapstructure:"prefetch"`
 }
 
 // QueuePubSubConfig Redis Pub/Sub 多实例 WS 广播参数。
@@ -339,12 +341,28 @@ type QueuePubSubConfig struct {
 	Channel string `mapstructure:"channel"`
 }
 
-// AsynqConcurrency 返回 Worker 并发数。
-func (q QueueConfig) AsynqConcurrency() int {
-	if q.Asynq.Concurrency <= 0 {
+// RabbitMQURL 返回 AMQP URL。
+func (q QueueConfig) RabbitMQURL() string {
+	if u := strings.TrimSpace(q.RabbitMQ.URL); u != "" {
+		return u
+	}
+	return "amqp://guest:guest@localhost:5672/"
+}
+
+// RabbitMQQueue 返回任务队列名。
+func (q QueueConfig) RabbitMQQueue() string {
+	if n := strings.TrimSpace(q.RabbitMQ.Queue); n != "" {
+		return n
+	}
+	return "my_go_study.tasks"
+}
+
+// Prefetch 返回消费者 QoS prefetch（原 asynq concurrency 语义）。
+func (q QueueConfig) Prefetch() int {
+	if q.RabbitMQ.Prefetch <= 0 {
 		return 10
 	}
-	return q.Asynq.Concurrency
+	return q.RabbitMQ.Prefetch
 }
 
 // PubSubChannel 返回 Pub/Sub 广播频道名。
@@ -583,7 +601,9 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("auth.dev_test_password", "AUTH_DEV_TEST_PASSWORD")
 	_ = v.BindEnv("queue.enabled", "QUEUE_ENABLED")
 	_ = v.BindEnv("queue.push_async", "QUEUE_PUSH_ASYNC")
-	_ = v.BindEnv("queue.asynq.concurrency", "QUEUE_ASYNQ_CONCURRENCY")
+	_ = v.BindEnv("queue.rabbitmq.url", "RABBITMQ_URL")
+	_ = v.BindEnv("queue.rabbitmq.queue", "RABBITMQ_QUEUE")
+	_ = v.BindEnv("queue.rabbitmq.prefetch", "RABBITMQ_PREFETCH")
 	_ = v.BindEnv("queue.pubsub.channel", "QUEUE_PUBSUB_CHANNEL")
 	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
 	_ = v.BindEnv("scheduler.hourly_notify.enabled", "SCHEDULER_HOURLY_NOTIFY_ENABLED")
@@ -664,8 +684,14 @@ func Load(configPath, env string) (*Config, error) {
 	if cfg.Realtime.EventRetention <= 0 {
 		cfg.Realtime.EventRetention = 200
 	}
-	if cfg.Queue.Asynq.Concurrency <= 0 {
-		cfg.Queue.Asynq.Concurrency = 10
+	if strings.TrimSpace(cfg.Queue.RabbitMQ.URL) == "" {
+		cfg.Queue.RabbitMQ.URL = "amqp://guest:guest@localhost:5672/"
+	}
+	if strings.TrimSpace(cfg.Queue.RabbitMQ.Queue) == "" {
+		cfg.Queue.RabbitMQ.Queue = "my_go_study.tasks"
+	}
+	if cfg.Queue.RabbitMQ.Prefetch <= 0 {
+		cfg.Queue.RabbitMQ.Prefetch = 10
 	}
 	if strings.TrimSpace(cfg.Queue.PubSub.Channel) == "" {
 		cfg.Queue.PubSub.Channel = "realtime:fanout"

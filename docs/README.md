@@ -45,7 +45,7 @@
 | ORM（本地库） | GORM → 本地 PostgreSQL（遗留 `users` 等） |
 | 业务数据 | Supabase PostgREST + RLS |
 | 缓存 / Session / Realtime | Redis |
-| 异步 | Asynq（`cmd/worker`） |
+| 异步 | RabbitMQ（`cmd/worker`） |
 | 默认端口 | `8080` |
 | 模块路径 | `github.com/stvenfor/my_go_study` |
 
@@ -54,7 +54,7 @@ Flutter ──HTTP/WS──▶ Gin BFF(:8080)
                        ├─ Supabase Auth / PostgREST
                        ├─ Redis（session / ticket / PubSub）
                        ├─ 本地 Postgres（GORM，遗留）
-                       └─ Asynq Worker（可选）
+                       └─ RabbitMQ Worker（可选）
 ```
 
 更细的架构、优缺点、时序图 → [architecture-learning-guide.md](./architecture-learning-guide.md)

@@ -54,11 +54,13 @@ realtime:
   event_retention: 200
   public_ws_host: "127.0.0.1"
 
-# 异步任务队列（Asynq + Redis Pub/Sub 多实例 WS 广播）
+# 异步任务队列（RabbitMQ + Redis Pub/Sub 多实例 WS 广播）
 queue:
   enabled: false
-  asynq:
-    concurrency: 10
+  rabbitmq:
+    url: amqp://guest:guest@localhost:5672/
+    queue: my_go_study.tasks
+    prefetch: 10
   pubsub:
     channel: realtime:fanout
 

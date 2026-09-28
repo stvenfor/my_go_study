@@ -22,6 +22,7 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       QUEUE_ENABLED: "true"
       REALTIME_PUBLIC_WS_HOST: ${REALTIME_PUBLIC_WS_HOST:?set REALTIME_PUBLIC_WS_HOST in .env.lan}
       AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
@@ -47,6 +48,7 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       QUEUE_ENABLED: "true"
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}

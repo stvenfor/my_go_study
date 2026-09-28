@@ -26,7 +26,7 @@ auth:
 
 # Supabase 常量见 configs/supabase.env（入库）；service_role 见 .env.local
 
-# 开发环境启用 Asynq（定时广播等）；Push 同步直投本地 WS，避免 Pub/Sub 延迟/丢投
+# 开发环境启用 RabbitMQ 队列；Push 同步直投本地 WS，避免 Pub/Sub 延迟/丢投
 queue:
   enabled: true
   push_async: false

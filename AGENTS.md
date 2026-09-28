@@ -139,7 +139,7 @@ make test-phone-otp-login
 | [auth-beginner-walkthrough.md](./docs/auth-beginner-walkthrough.md) | 认证导读 |
 | [transactions-beginner-walkthrough.md](./docs/transactions-beginner-walkthrough.md) | 收支 API 导读 |
 | [realtime-beginner-walkthrough.md](./docs/realtime-beginner-walkthrough.md) | Realtime 导读 |
-| [message-queue.md](./docs/message-queue.md) | Asynq + Pub/Sub 异步队列 |
+| [message-queue.md](./docs/message-queue.md) | RabbitMQ + Redis Pub/Sub 异步队列 |
 | [lan-backend-host.md](./docs/lan-backend-host.md) | 本机 Mac 当局域网 BFF（现为本地 Auth） |
 | [dual-end-lan-startup.md](./docs/dual-end-lan-startup.md) | **Go + Flutter 两端启动配置手册** |
 | [ios-lan-device-debug-2026-09-16.md](./docs/ios-lan-device-debug-2026-09-16.md) | iOS 真机「无法连接服务端 / 127.0.0.1」调试记录 |
@@ -180,7 +180,7 @@ make test-phone-otp-login
 
 ```text
 cmd/api/main.go                 # 依赖注入、启动 HTTP+WS+gRPC
-cmd/worker/main.go              # Asynq Worker（异步 Push / SMS / JPush 占位）
+cmd/worker/main.go              # RabbitMQ Worker（异步 Push / SMS / JPush 占位）
 api/
   proto/analytics/v1/           # Protobuf 契约（单一真相源）
   gen/go/analytics/v1/          # make proto 生成的 Go stubs
@@ -201,7 +201,7 @@ internal/
     supabase/                   # Supabase PostgREST
 pkg/
   config/                       # Viper 配置（含 grpc.*）
-  queue/                        # Asynq 客户端/处理器、Redis Pub/Sub 广播
+  queue/                        # RabbitMQ 客户端/消费者、Redis Pub/Sub 广播
   supabase/                     # Supabase 客户端封装
   auth/                         # Token 校验（/auth/v1/user）
   jwt/                          # 自建 JWT（遗留路由）
@@ -270,10 +270,10 @@ cp .env.local.example .env.local   # service_role
 6. 若业务启用（Supabase 或 local Auth）：
      Auth / Profile / Transactions
      Realtime：Hub → Ticket/Sync/Push/Presence → WS + Controller
-     若 queue.enabled：Asynq 入队 + Pub/Sub 订阅（API）；Worker 消费并入队广播
+     若 queue.enabled：RabbitMQ 入队 + Pub/Sub 订阅（API）；Worker 消费并入队广播
 7. router.Setup（仅 API，HTTP）
 8. 若 grpc.enabled：AnalyticsUsecase（空表种子）→ gRPC Listen :9090（需 DeviceSession + Auth）
-9. HTTP ListenAndServe / Asynq Server.Run
+9. HTTP ListenAndServe / RabbitMQ Consumer.Run
 10. SIGTERM → HTTP Shutdown + gRPC GracefulStop
 ```
 

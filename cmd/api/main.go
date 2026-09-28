@@ -288,7 +288,11 @@ func run() error {
 
 		var pushEnqueuer usecase.PushEnqueuer
 		if cfg.Queue.Enabled {
-			queueClient = queue.NewAsynqClient(*cfg)
+			var qErr error
+			queueClient, qErr = queue.NewClient(*cfg)
+			if qErr != nil {
+				return fmt.Errorf("连接 RabbitMQ 失败: %w", qErr)
+			}
 			pushEnqueuer = queueClient
 			fanoutSub = queue.NewFanoutSubscriber(
 				redisClient,
@@ -497,7 +501,7 @@ func run() error {
 
 	if queueClient != nil {
 		if err := queueClient.Close(); err != nil {
-			log.Warn("关闭 Asynq 客户端失败", zap.Error(err))
+			log.Warn("关闭 RabbitMQ 客户端失败", zap.Error(err))
 		}
 	}
 

@@ -28,6 +28,18 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: my_go_study_rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build:
       context: ..
@@ -40,6 +52,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     # 宿主机 env 由 scripts/docker-compose.sh / lan-compose.sh source 后注入下方 ${VAR}
     environment:
       APP_ENV: ${APP_ENV:-dev}
@@ -51,6 +65,7 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       GRPC_ENABLED: ${GRPC_ENABLED:-true}
@@ -88,6 +103,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       app:
         condition: service_started
     environment:
@@ -99,6 +116,7 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       SUPABASE_URL: ${SUPABASE_URL:-}

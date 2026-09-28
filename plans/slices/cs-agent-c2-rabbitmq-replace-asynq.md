@@ -56,10 +56,27 @@
 
 ## Context Card — cs-agent-c2-rabbitmq-replace-asynq
 - 已完成:
+  - RabbitMQ 替换 Asynq（client/consumer/handler/tasks envelope）
+  - Worker 整点 ticker 替代 Asynq Scheduler
+  - compose rabbitmq + RABBITMQ_URL；go.mod 去掉 hibiken/asynq
+  - docs/message-queue.md、env 示例、AGENTS 队列表述；acceptance Partial
 - 未做/Deferred:
+  - lan-up 人证 test-queue-push / test-scheduled-notify
+  - DLX / 镜像队列生产加固
 - 关键文件:
+  - go.mod / go.sum
+  - pkg/queue/{tasks,client,handler,consumer,hourly_ticker}.go（删 asynq_* / scheduler）
+  - pkg/config/config.go
+  - cmd/{api,worker,scheduler-trigger}/main.go
+  - docker/docker-compose.yml + docker-compose.lan.yml
+  - configs/config.yaml + config.dev.yaml
+  - .env.example / .env.lan.example
+  - docs/message-queue.md / docs/README.md / AGENTS.md
+  - scripts/test_queue_push.sh
+  - docs/acceptance-records/2026-09-28-cs-agent-c2-rabbitmq-replace-asynq.md
 - harness: post ok?
 - 下一 Slice 建议: cs-agent-c3-es-transactions
 - 已知坑:
-  - Asynq 独有的 Cron/唯一任务需显式替代
-  - 勿误删 Redis Pub/Sub
+  - 本机 `make run` 需本机 RabbitMQ（或改 RABBITMQ_URL）；Docker 已注入
+  - 勿误删 Redis Pub/Sub（仍用于 WS 扇出）
+  - 任务幂等仍靠 Redis SetNX + envelope.task_id，非 RabbitMQ 原生去重
