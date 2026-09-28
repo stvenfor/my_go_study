@@ -1,0 +1,60 @@
+# Slice — cs-agent-c3-es-transactions
+
+## Slice Brief
+- SOURCE_MODULE: transactions CRUD
+- TARGET_MODULE: Elasticsearch 交易全文
+- Source entry: `TransactionController` / usecase
+- Target entry: ES 索引 + `GET/POST` 搜索 API（SessionAuth）
+- 本轮 ONLY:
+  - compose 增加 Elasticsearch（单节点、开发配置）；**`make lan-up` 默认拉起**
+  - 索引 mapping：至少 `user_id`、`type`、`category`、`note`、`amount`、`date`、`id`（字段以 entity 为准）
+  - 写路径：Create/Update/Delete 交易后同步索引（失败打日志 + 指标；本轮可不做可靠 outbox，用 `ponytail:` 注明天花板）
+  - 搜索 API：仅当前会话 `user_id`；全文查 note/category 等；返回与现有列表 JSON 风格兼容或明确新 DTO
+  - 可选：启动时对当前用户空索引不强制全量 rebuild；提供 `scripts/` 简易 reindex（可 Partial）
+  - 配置 `ELASTICSEARCH_URL`；文档 `docs/elasticsearch-transactions.md`
+  - Prometheus 可加索引失败计数（若 C1 已有 metrics 包）
+- 不做:
+  - 二手车/其它业务表进 ES
+  - RabbitMQ 再改一轮
+  - Eino（C4）
+  - 跨用户搜索 / service_role 绕过
+- 验收:
+  - `go build ./cmd/api`
+  - 定向 `go test`（repository 或 usecase，可用 mock ES）
+  - lan-up：创建带 note 的交易 → 搜索命中（人证）；ES down 时写交易不 500（降级 Partial）
+- 文件白名单:
+  - go.mod
+  - go.sum
+  - docker/
+  - pkg/config/
+  - configs/
+  - .env.example
+  - .env.lan.example
+  - internal/repository/es/
+  - internal/domain/
+  - internal/usecase/（transaction 相关）
+  - internal/delivery/http/controller/
+  - internal/delivery/http/router/
+  - internal/delivery/http/dto/
+  - cmd/api/main.go
+  - scripts/
+  - docs/elasticsearch-transactions.md
+  - docs/transactions-beginner-walkthrough.md（若需一句索引说明）
+  - plans/slices/cs-agent-c3-es-transactions.md
+- 文件黑名单:
+  - pkg/queue/（C2 已迁则勿回退 Asynq）
+  - internal/repository/llm/
+- 验证命令:
+  - go build ./cmd/api
+  - go test ./internal/repository/es/... ./internal/usecase/ -count=1 -run 'Transaction|Elastic|Search'
+- 证据: docs/acceptance-records/YYYY-MM-DD-cs-agent-c3-es-transactions.md
+- Accept 模式: Partial（全量 reindex 脚本可 Deferred）
+
+## Context Card — cs-agent-c3-es-transactions
+- 已完成:
+- 未做/Deferred:
+- 关键文件:
+- harness: post ok?
+- 下一 Slice 建议: cs-agent-c4-eino-cs-agent
+- 已知坑:
+  - 必须 Eq user_id；索引文档勿漏隔离字段

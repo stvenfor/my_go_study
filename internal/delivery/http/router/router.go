@@ -9,6 +9,7 @@ import (
 	"github.com/stvenfor/my_go_study/internal/usecase"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
+	"github.com/stvenfor/my_go_study/pkg/metrics"
 	"go.uber.org/zap"
 )
 
@@ -52,11 +53,14 @@ func Setup(opts Options) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(middleware.CORS())
+	r.Use(middleware.PrometheusHTTP())
 	r.Use(middleware.RequestLogger(opts.Log))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+	// /metrics 不经 SessionAuth；仅本机 / Docker 内网可达即可。
+	r.GET("/metrics", gin.WrapH(metrics.Handler()))
 
 	v1 := r.Group("/api/v1")
 

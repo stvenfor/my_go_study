@@ -1,0 +1,35 @@
+groups:
+  - name: api
+    rules:
+      - alert: APIHigh5xxRate
+        expr: |
+          sum(rate(http_requests_total{status_class="5xx"}[5m]))
+            /
+          clamp_min(sum(rate(http_requests_total[5m])), 0.001)
+            > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API 5xx rate > 5%"
+          description: "HTTP 5xx ratio is elevated on my_go_study API."
+
+      - alert: APITargetDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API Prometheus target down"
+          description: "Prometheus cannot scrape app:8080/metrics."
+
+      - alert: APIHighLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+            > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API P99 latency > 2s"
+          description: "Overall HTTP P99 latency is above 2 seconds."

@@ -1,0 +1,58 @@
+# Slice — cs-agent-c1-observability-lan
+
+## Slice Brief
+- SOURCE_MODULE: （新建观测栈）
+- TARGET_MODULE: lan-up 可观测
+- Source entry: —
+- Target entry: `GET /metrics` + Grafana/Alertmanager/飞书
+- 本轮 ONLY:
+  - BFF：Prometheus client；`GET /metrics`（**不**走 SessionAuth；仅 Docker 内网/本机可达即可）
+  - HTTP 请求计数与延迟直方图（防高基数：聚合 path 模板或 handler 名）
+  - `docker/docker-compose.yml`（及 lan overlay 如需）：服务 `prometheus`、`grafana`、`alertmanager`
+  - 配置：`deploy/observability/`（或等价）— scrape `app:8080/metrics`、基础 dashboard 导入卷、Alertmanager 路由
+  - **飞书 webhook**：Alertmanager receiver 指向可配 URL（`.env.lan` / env `FEISHU_ALERT_WEBHOOK_URL`）；无 URL 时告警仍落 Alertmanager 本地（Partial 可）
+  - 告警规则草稿：API 5xx、进程 down、（可选）queue/worker 后续 C2 再补
+  - 文档：`docs/observability-lan.md` — `make lan-up` 后访问 Grafana/Prometheus 端口与默认账密
+  - `make lan-up` **默认拉起**上述服务（人已确认环境 = lan-up）
+- 不做:
+  - RabbitMQ / ES / Eino / 改 Asynq
+  - 飞书卡片交互机器人（仅 webhook 告警文本）
+  - 生产 TLS / 外网暴露 Grafana
+- 验收:
+  - `go build ./cmd/api`
+  - lan-up 后：`curl` app `/metrics` 有指标；Prometheus targets 至少 app UP（人证或 compose logs）
+  - Alertmanager 配置含飞书 receiver 占位；无 webhook URL 时不导致 compose 起不来
+- 文件白名单:
+  - go.mod
+  - go.sum
+  - cmd/api/main.go
+  - internal/delivery/http/router/
+  - internal/delivery/http/middleware/
+  - pkg/metrics/
+  - pkg/config/
+  - configs/
+  - docker/
+  - deploy/observability/
+  - Makefile
+  - scripts/
+  - .env.lan.example
+  - .env.example
+  - docs/observability-lan.md
+  - plans/slices/cs-agent-c1-observability-lan.md
+- 文件黑名单:
+  - pkg/queue/
+  - internal/usecase/completion_usecase.go
+  - internal/repository/llm/
+- 验证命令:
+  - go build ./cmd/api
+  - go test ./pkg/metrics/... ./internal/delivery/http/middleware/... -count=1
+- 证据: docs/acceptance-records/YYYY-MM-DD-cs-agent-c1-observability-lan.md
+- Accept 模式: Partial（无真实飞书 URL 时 webhook 人证 Deferred）
+
+## Context Card — cs-agent-c1-observability-lan
+- 已完成: /metrics + HTTP 指标；compose 观测栈；飞书 adapter；文档与 env 占位
+- 未做/Deferred: 真实飞书 URL 人证；lan-up Targets UP 人证
+- 关键文件: pkg/metrics；middleware/prometheus；docker-compose；deploy/observability
+- harness: post ok? Partial（机跑绿）
+- 下一 Slice 建议: cs-agent-c2-rabbitmq-replace-asynq
+- 已知坑: 仓库根有 `api/` 目录，勿 `go build ./cmd/api` 默认输出到当前目录名冲突；用 `-o`

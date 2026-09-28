@@ -1,0 +1,29 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: [alertname, severity]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - receiver: feishu
+      matchers:
+        - severity =~ "warning|critical"
+      continue: true
+
+receivers:
+  - name: default
+  - name: feishu
+    webhook_configs:
+      # feishu-adapter 将 Alertmanager payload 转成飞书文本；无 FEISHU_ALERT_WEBHOOK_URL 时 adapter 吞掉并 204
+      - url: http://feishu-adapter:8089/webhook
+        send_resolved: true
+
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: [alertname]

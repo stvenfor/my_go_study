@@ -2,14 +2,14 @@
 
 | 字段 | 值 |
 |------|-----|
-| Active | **P2 deep-simplify 结束** |
-| Epic | `plans/epics/dual-deep-simplify-r2.md` |
-| Role | **人**（commit/push 等人指令） |
-| 报告 R1 | `docs/simplify-reports/README.md` |
-| 报告 R2 | `docs/simplify-reports-r2/README.md` |
-| 烟测 | OTP `13400000000`/`123456` 绿 |
+| Active | **cs-agent-c1-observability-lan** |
+| Program | `plans/2026-09-28-cs-agent-infra-program.md` |
+| Epic | `plans/epics/cs-agent-infra.md` |
+| Role | **executor** |
+| Slice | `plans/slices/cs-agent-c1-observability-lan.md` |
+| Next | C1 完成后 commit → C2 |
 
 ## Notes
 
-- R1：死代码卫生；R2：结构共享 + API 守卫 + Topics N+1 批量 + 测试
-- 对外契约 / 页面布局未改
+- 人指令：按顺序执行 C1–C4，每个完成后自动提交
+- Redis Pub/Sub / session 保留
