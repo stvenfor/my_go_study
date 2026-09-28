@@ -61,7 +61,7 @@ my_ai_project (Flutter)
     │  gRPC :9090（数据分析试验）
     ▼
 my_go_study (同进程双端口)    ← 你在这里
-    │  Auth / Postgres / Redis / PostgREST
+    │  Auth / Postgres / Redis / RabbitMQ / ES / PostgREST
     ▼
 Supabase Cloud 或 local Auth + 本地 Postgres
 ```
@@ -69,11 +69,16 @@ Supabase Cloud 或 local Auth + 本地 Postgres
 | 能力 | Flutter | Go（本仓库） | 外部 |
 |------|---------|--------------|------|
 | 登录注册 | `BackendAuthService` | `UserHandler` → Auth usecase + `DeviceSessionUsecase` | Auth + Redis session |
-| 收支/二手车 | `TransactionApi` | `TransactionController` | PostgREST + RLS |
+| 收支/二手车 | `TransactionApi` | `TransactionController` | PostgREST/本地 PG + RLS；全文见 ES |
+| 交易全文搜索 | — | `GET /api/v1/transactions/search` | Elasticsearch |
 | 实时消息 | `AppRealtimeClient` | `RealtimeController` + WS Hub | Redis |
+| 异步 Push | — | `cmd/worker` 消费 | RabbitMQ + Redis Pub/Sub |
 | 用户资料 | — | `ProfileController` | PostgREST |
 | 门店统计 | Mine 统计栏 | `Profile` + `wys_user_store_stats`（数字列 + role 0/1/2） | 本地 Postgres |
 | 数据分析 | `AnalyticsGrpcApi`（gRPC） | `AnalyticsService` → `AnalyticsUsecase` | 本地表 `analytics_records` |
+| AI 小石头 | SSE 客户端 | `POST /api/v1/sse/completions` | mock / OpenAI 兼容 |
+| 客服 Agent | —（页可后置） | `POST /api/v1/cs-agent/chat`（Eino Tool） | 可选 ES 交易搜索 |
+| 可观测 | — | `GET /metrics` | Prometheus / Grafana / Alertmanager（`lan-up`） |
 
 **表命名**：新建业务表一律 `wys_` 前缀（规范见 [docs/local-auth-postgres.md](./docs/local-auth-postgres.md) §3）。
 
@@ -82,7 +87,8 @@ Supabase Cloud 或 local Auth + 本地 Postgres
 > **工作目录**：以下命令均在 **`my_go_study/`** 目录执行（`cd my_go_study`），不要在工作区根目录 `my_code_study/` 运行 `make`。
 
 ```bash
-# 方案 A（推荐联调）：Docker 统一管理 HTTP:8080 + gRPC:9090 + PG + Redis + Worker
+# 方案 A（推荐联调）：Docker 统一管理 HTTP:8080 + gRPC:9090
+# + PG + Redis + RabbitMQ + ES + Worker + Prometheus/Grafana/Alertmanager
 # cp .env.lan.example .env.lan 后：
 # 不用手改 IP：启动时按 scripts/lan-ip.clients 自动写 Go 与全部客户端（Flutter / KMP / RN / Kuikly / uni-app）
 make lan-up                 # docs/lan-backend-host.md；改 Go 后需再执行（会 --build）
@@ -90,7 +96,7 @@ make lan-down
 # 勿与本机 make run 同时开，会抢 :8080
 
 # 方案 B：本机进程
-make deps-up                # 首次：PostgreSQL + Redis
+make deps-up                # 首次：PostgreSQL + Redis（RabbitMQ/ES 建议用 compose）
 make run                    # HTTP :8080 + gRPC :9090（同进程）
 make run-worker             # queue.enabled=true 时另开终端
 
@@ -100,8 +106,9 @@ flutter run --dart-define-from-file=.env.lan   # 真机：BACKEND_HOST=局域网
 
 # 验证
 curl http://127.0.0.1:8080/health
+curl -s http://127.0.0.1:8080/metrics | head
 make test-realtime          # 需 API 已启动
-make test-queue-push        # 需 API + Worker
+make test-queue-push        # 需 API + Worker + RabbitMQ
 make trigger-hourly-notify
 make test-scheduled-notify
 make test-single-device-login
@@ -111,6 +118,7 @@ make test-phone-otp-login
 | 检查项 | 说明 |
 |--------|------|
 | 健康 | `GET /health` |
+| 指标 | `GET /metrics`（Prometheus；无 SessionAuth） |
 | 登录 | `POST /api/v1/user/login` |
 | 刷新 Token | `POST /api/v1/user/refresh` |
 | 退出登录 | `POST /api/v1/user/logout` |
@@ -118,10 +126,13 @@ make test-phone-otp-login
 | 微信登录 | `POST /api/v1/user/wechat/login`（需 `WECHAT_APP_ID` + `WECHAT_APP_SECRET`；仅 local Auth） |
 | 华为一键登录 | `POST /api/v1/user/huawei/login`（需 `HUAWEI_CLIENT_ID` + `HUAWEI_CLIENT_SECRET`；仅 local Auth；AGC 须申请 `quickLoginMobilePhone`） |
 | 预支付 | `POST /api/v1/payments/prepay`（需登录；微信商户 / 支付宝私钥见 `.env.example`） |
+| 交易全文 | `GET /api/v1/transactions/search?q=`（需登录 + ES；见 [elasticsearch-transactions.md](./docs/elasticsearch-transactions.md)） |
+| 客服 Agent | `POST /api/v1/cs-agent/chat`（SSE；见 [cs-agent-eino.md](./docs/cs-agent-eino.md)） |
 | Realtime | Flutter 设置 → Realtime 调试 |
-| 异步 Push | `make test-queue-push`（需 Worker） |
+| 异步 Push | `make test-queue-push`（需 Worker + RabbitMQ） |
 | 定时通知 | `make trigger-hourly-notify` + `make test-scheduled-notify` |
-| 局域网 / Docker | `make lan-up`：映射 **8080 + 9090**；Flutter 只需 `BACKEND_HOST`（gRPC 端口默认 9090） |
+| 局域网 / Docker | `make lan-up`：映射 **8080 + 9090**；观测本机 `9091`/`9093`/`3000`；Flutter 只需 `BACKEND_HOST`（gRPC 默认 9090） |
+| 可观测 | Prometheus `127.0.0.1:9091` · Grafana `3000` · Alertmanager `9093`；飞书 [observability-lan.md](./docs/observability-lan.md) |
 | 数据分析 gRPC | Flutter 首页「数据分析」；冒烟见 [analytics-flutter-trial.md](./docs/grpc/analytics-flutter-trial.md) |
 | 密钥 | `make check-secrets` |
 
@@ -139,7 +150,11 @@ make test-phone-otp-login
 | [auth-beginner-walkthrough.md](./docs/auth-beginner-walkthrough.md) | 认证导读 |
 | [transactions-beginner-walkthrough.md](./docs/transactions-beginner-walkthrough.md) | 收支 API 导读 |
 | [realtime-beginner-walkthrough.md](./docs/realtime-beginner-walkthrough.md) | Realtime 导读 |
-| [message-queue.md](./docs/message-queue.md) | Asynq + Pub/Sub 异步队列 |
+| [message-queue.md](./docs/message-queue.md) | RabbitMQ + Redis Pub/Sub 异步队列 |
+| [observability-lan.md](./docs/observability-lan.md) | Prometheus / Grafana / Alertmanager / 飞书 webhook（`lan-up`） |
+| [elasticsearch-transactions.md](./docs/elasticsearch-transactions.md) | 交易全文索引与搜索 API |
+| [cs-agent-eino.md](./docs/cs-agent-eino.md) | 客服 Agent（Eino Tool + SSE） |
+| [sse-streaming.md](./docs/sse-streaming.md) | AI 小石头 SSE（与客服路由分离） |
 | [lan-backend-host.md](./docs/lan-backend-host.md) | 本机 Mac 当局域网 BFF（现为本地 Auth） |
 | [dual-end-lan-startup.md](./docs/dual-end-lan-startup.md) | **Go + Flutter 两端启动配置手册** |
 | [ios-lan-device-debug-2026-09-16.md](./docs/ios-lan-device-debug-2026-09-16.md) | iOS 真机「无法连接服务端 / 127.0.0.1」调试记录 |
@@ -171,37 +186,41 @@ make test-phone-otp-login
 
 ### 项目定位
 
-- **框架**：Gin + gRPC + GORM + PostgreSQL + Redis + Clean Architecture
+- **框架**：Gin + gRPC + GORM + PostgreSQL + Redis + RabbitMQ + Elasticsearch + Clean Architecture
 - **模块路径**：`github.com/stvenfor/my_go_study`
-- **默认端口**：HTTP `8080`；gRPC `9090`（`GRPC_ENABLED` / `GRPC_PORT`）
+- **默认端口**：HTTP `8080`；gRPC `9090`（`GRPC_ENABLED` / `GRPC_PORT`）；观测本机 `9091`/`9093`/`3000`（见 observability-lan）
 - **配对客户端**：Flutter `my_ai_project`
 
 ### 分层结构
 
 ```text
 cmd/api/main.go                 # 依赖注入、启动 HTTP+WS+gRPC
-cmd/worker/main.go              # Asynq Worker（异步 Push / SMS / JPush 占位）
+cmd/worker/main.go              # RabbitMQ Worker（异步 Push / SMS / JPush 占位）
 api/
   proto/analytics/v1/           # Protobuf 契约（单一真相源）
   gen/go/analytics/v1/          # make proto 生成的 Go stubs
 internal/
   delivery/http/
     handler/                    # 自建用户 HTTP（UserHandler）
-    controller/                 # 业务 HTTP（Profile / Transaction / Realtime）
-    middleware/                 # JWT / SessionAuth / CORS / Logger
+    controller/                 # 业务 HTTP（Profile / Transaction / Realtime / SSE / CsAgent）
+    middleware/                 # JWT / SessionAuth / CORS / Logger / PrometheusHTTP
     router/                     # 按模块拆分路由
     dto/request|response/       # 请求/响应 DTO
   delivery/grpc/                # gRPC Server + AnalyticsService + 鉴权 interceptor
   delivery/ws/                  # WebSocket Hub / Handler / Client
-  usecase/                      # 业务用例（含 AnalyticsUsecase）
+  usecase/                      # 业务用例（含 Analytics / Completion / CsAgent）
   domain/entity|repository/     # 领域实体与仓储接口
   repository/
     postgres/                   # 本地 PostgreSQL（含 analytics_records）
     redis/                      # Realtime ticket / 事件 / presence
+    es/                         # 交易全文 Elasticsearch
+    csagent/                    # 客服 Eino Tool 适配
     supabase/                   # Supabase PostgREST
+    llm/                        # SSE StreamProvider（mock / openai_compatible）
 pkg/
-  config/                       # Viper 配置（含 grpc.*）
-  queue/                        # Asynq 客户端/处理器、Redis Pub/Sub 广播
+  config/                       # Viper 配置（含 grpc.* / queue.rabbitmq / elasticsearch / cs_agent）
+  metrics/                      # Prometheus Registry + /metrics Handler
+  queue/                        # RabbitMQ 客户端/消费者、Redis Pub/Sub 广播
   supabase/                     # Supabase 客户端封装
   auth/                         # Token 校验（/auth/v1/user）
   jwt/                          # 自建 JWT（遗留路由）
@@ -217,7 +236,9 @@ pkg/
 | Token 校验 | `middleware.SupabaseSessionAuth` | `GET /auth/v1/user` + Redis session |
 | Profile CRUD | `ProfileController` | PostgREST + `WithUserToken` |
 | Transactions CRUD | `TransactionController` | PostgREST + `user_id` + RLS |
+| Transactions 全文 | `GET /transactions/search` | Elasticsearch（会话 `user_id`）；CUD best-effort 同步 |
 | Realtime WS | `RealtimeController` + `ws.Handler` | Redis ticket → Hub 广播 |
+| 异步任务 | API Publish → Worker | RabbitMQ；扇出仍 Redis Pub/Sub |
 
 **启用条件**：`SUPABASE_URL` + `SUPABASE_ANON_KEY` 非空。Realtime 随 Supabase 启用一并注册。
 
@@ -268,20 +289,25 @@ cp .env.local.example .env.local   # service_role
 4. Redis
 5. UserUsecase（遗留 JWT 路由）+ DeviceSessionUsecase（Redis session）
 6. 若业务启用（Supabase 或 local Auth）：
-     Auth / Profile / Transactions
+     Auth / Profile / Transactions（可选挂 ES SearchStore）
      Realtime：Hub → Ticket/Sync/Push/Presence → WS + Controller
-     若 queue.enabled：Asynq 入队 + Pub/Sub 订阅（API）；Worker 消费并入队广播
-7. router.Setup（仅 API，HTTP）
+     若 queue.enabled：RabbitMQ 入队 + Pub/Sub 订阅（API）；Worker 消费并入队广播
+     若 sse.enabled：CompletionUsecase → `/api/v1/sse/completions`
+     若 cs_agent.enabled：CsAgentUsecase → `/api/v1/cs-agent/chat`
+7. router.Setup（仅 API，HTTP；含 `/metrics`）
 8. 若 grpc.enabled：AnalyticsUsecase（空表种子）→ gRPC Listen :9090（需 DeviceSession + Auth）
-9. HTTP ListenAndServe / Asynq Server.Run
+9. HTTP ListenAndServe / Worker：RabbitMQ Consumer + 整点 ticker
 10. SIGTERM → HTTP Shutdown + gRPC GracefulStop
 ```
 
 | 组件 | 未配业务后端 | 已配（Supabase 或 local） |
 |------|--------------|---------------------------|
 | `/api/v1/user/login` | 503 / 按 provider | 正常 |
-| `/api/v1/transactions*` | 未注册 | 正常 |
+| `/api/v1/transactions*` | 未注册 | 正常；search 需 `ELASTICSEARCH_URL` |
 | `/api/v1/realtime/*` | 未注册 | 需 Redis |
+| `/api/v1/sse/completions` | 未注册 | `sse.enabled` |
+| `/api/v1/cs-agent/chat` | 未注册 | `cs_agent.enabled` |
+| `/metrics` | 始终注册 | Prometheus 抓取 |
 | gRPC `AnalyticsService` | 跳过或未启 | `:9090`（需 session 鉴权） |
 
 **新增 HTTP 组件**：`main.go` 构造 → `router.Options` → `router/` 挂路由。  
@@ -308,15 +334,20 @@ make check-secrets
 3. 新增 gRPC：proto（本仓库）→ `make proto` → delivery/grpc + usecase/repo；同步更新 Flutter `commons/network` codegen 与页面
 4. 认证错误：`mapSupabaseAuthError` + `UserHandler.handleUsecaseError`（HTTP）；gRPC 返回合适的 `status` 码
 5. PostgREST 必须 `WithUserToken`，禁止 Admin 绕过 RLS
-6. transactions 必须用会话中的 `userID` 做 `.Eq("user_id", userID)` + RLS 迁移（勿信任客户端传的 user_id）
+6. transactions 必须用会话中的 `userID` 做 `.Eq("user_id", userID)` + RLS 迁移（勿信任客户端传的 user_id）；ES 搜索同样强制会话 `user_id`
 7. Flutter 兼容响应注意 snake_case / `{ items: [] }`（HTTP）；gRPC 字段以 proto 为准
 8. service_role 仅 `.env.local`；推送前 `make check-secrets`
+9. 客服 Agent 与小石头 SSE **分路由**；异步任务走 RabbitMQ，勿再引入 Asynq
 
 ### 相关文档
 
 - [文档总览（架构 + 使用）](./docs/README.md)
 - [启动指南](./docs/startup-guide.md)
 - [架构学习指南](./docs/architecture-learning-guide.md)
+- [消息队列（RabbitMQ）](./docs/message-queue.md)
+- [可观测 lan-up](./docs/observability-lan.md)
+- [交易全文 ES](./docs/elasticsearch-transactions.md)
+- [客服 Agent Eino](./docs/cs-agent-eino.md)
 - [Supabase 集成说明](./docs/supabase-integration.md)
 - [Realtime WebSocket 协议](./docs/realtime-websocket.md)
 - [认证初学者导读](./docs/auth-beginner-walkthrough.md)

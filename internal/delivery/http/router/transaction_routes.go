@@ -14,6 +14,7 @@ func registerTransactionRoutes(v1 *gin.RouterGroup, sbAuth gin.HandlerFunc, txCt
 	{
 		flutterGroup.GET("", txCtrl.List) // 无 page 参数时走 Flutter 格式
 		flutterGroup.POST("", txCtrl.CreateLegacy)
+		flutterGroup.GET("/search", txCtrl.Search) // 须在 /:id 之前
 		flutterGroup.GET("/:id", txCtrl.GetLegacy)
 		flutterGroup.PUT("/:id", txCtrl.UpdateLegacy)
 		flutterGroup.DELETE("/:id", txCtrl.DeleteLegacy)

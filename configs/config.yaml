@@ -54,13 +54,19 @@ realtime:
   event_retention: 200
   public_ws_host: "127.0.0.1"
 
-# 异步任务队列（Asynq + Redis Pub/Sub 多实例 WS 广播）
+# 异步任务队列（RabbitMQ + Redis Pub/Sub 多实例 WS 广播）
 queue:
   enabled: false
-  asynq:
-    concurrency: 10
+  rabbitmq:
+    url: amqp://guest:guest@localhost:5672/
+    queue: my_go_study.tasks
+    prefetch: 10
   pubsub:
     channel: realtime:fanout
+
+# 交易全文（空 url 关闭；lan-up 默认 http://elasticsearch:9200）
+elasticsearch:
+  url: ""
 
 # 定时任务（每小时系统通知，需 make run-worker）
 scheduler:
@@ -92,3 +98,12 @@ sse:
     base_url: "https://api.openai.com/v1"
     model: "gpt-4o-mini"
     # api_key 仅环境变量 SSE_OPENAI_API_KEY；勿写入仓库
+
+# 客服 Agent（Eino Tool + SSE；与小石头路由分离）
+cs_agent:
+  enabled: true
+  provider: mock
+  chunk_delay_ms: 20
+  keepalive_seconds: 15
+  request_timeout_seconds: 120
+  model: cs-mock

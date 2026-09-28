@@ -15,22 +15,87 @@ import (
 // Config 聚合所有运行时配置项。
 type Config struct {
 	// AppEnv 来自 APP_ENV（dev/lan/prod…），与 gin server.mode（debug/release）无关。
-	AppEnv     string          `mapstructure:"-"`
-	Server     ServerConfig    `mapstructure:"server"`
-	GRPC       GRPCConfig      `mapstructure:"grpc"`
-	Database   DatabaseConfig  `mapstructure:"database"`
-	Redis      RedisConfig     `mapstructure:"redis"`
-	JWT        JWTConfig       `mapstructure:"jwt"`
-	Auth       AuthConfig      `mapstructure:"auth"`
-	Log        LogConfig       `mapstructure:"log"`
-	Supabase   SupabaseConfig  `mapstructure:"supabase"`
-	Realtime   RealtimeConfig  `mapstructure:"realtime"`
-	Queue      QueueConfig     `mapstructure:"queue"`
-	Scheduler  SchedulerConfig `mapstructure:"scheduler"`
-	SSE        SSEConfig       `mapstructure:"sse"`
-	Community  CommunityConfig  `mapstructure:"community"`
-	ShortVideo ShortVideoConfig `mapstructure:"short_video"`
-	ThirdParty ThirdPartyConfig `mapstructure:"third_party"`
+	AppEnv        string              `mapstructure:"-"`
+	Server        ServerConfig        `mapstructure:"server"`
+	GRPC          GRPCConfig          `mapstructure:"grpc"`
+	Database      DatabaseConfig      `mapstructure:"database"`
+	Redis         RedisConfig         `mapstructure:"redis"`
+	JWT           JWTConfig           `mapstructure:"jwt"`
+	Auth          AuthConfig          `mapstructure:"auth"`
+	Log           LogConfig           `mapstructure:"log"`
+	Supabase      SupabaseConfig      `mapstructure:"supabase"`
+	Realtime      RealtimeConfig      `mapstructure:"realtime"`
+	Queue         QueueConfig         `mapstructure:"queue"`
+	Scheduler     SchedulerConfig     `mapstructure:"scheduler"`
+	SSE           SSEConfig           `mapstructure:"sse"`
+	Community     CommunityConfig     `mapstructure:"community"`
+	ShortVideo    ShortVideoConfig    `mapstructure:"short_video"`
+	ThirdParty    ThirdPartyConfig    `mapstructure:"third_party"`
+	Elasticsearch ElasticsearchConfig `mapstructure:"elasticsearch"`
+	CsAgent       CsAgentConfig       `mapstructure:"cs_agent"`
+}
+
+// CsAgentConfig 客服 Agent（Eino Tool + SSE）。
+type CsAgentConfig struct {
+	Enabled               bool   `mapstructure:"enabled"`
+	Provider              string `mapstructure:"provider"` // mock | openai_compatible（本轮 mock 主路径）
+	ChunkDelayMS          int    `mapstructure:"chunk_delay_ms"`
+	KeepaliveSeconds      int    `mapstructure:"keepalive_seconds"`
+	RequestTimeoutSeconds int    `mapstructure:"request_timeout_seconds"`
+	Model                 string `mapstructure:"model"`
+}
+
+// ModelName 对外 meta.model。
+func (c CsAgentConfig) ModelName() string {
+	if m := strings.TrimSpace(c.Model); m != "" {
+		return m
+	}
+	if strings.EqualFold(strings.TrimSpace(c.Provider), "openai_compatible") {
+		return "cs-openai"
+	}
+	return "cs-mock"
+}
+
+// ChunkDelay 吐字间隔；测试可配 0。
+func (c CsAgentConfig) ChunkDelay() time.Duration {
+	if c.ChunkDelayMS < 0 {
+		return 0
+	}
+	if c.ChunkDelayMS == 0 && strings.TrimSpace(c.Provider) == "" {
+		return 20 * time.Millisecond
+	}
+	return time.Duration(c.ChunkDelayMS) * time.Millisecond
+}
+
+// KeepaliveOrDefault SSE 注释心跳。
+func (c CsAgentConfig) KeepaliveOrDefault() time.Duration {
+	if c.KeepaliveSeconds <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(c.KeepaliveSeconds) * time.Second
+}
+
+// RequestTimeout 单次对话超时。
+func (c CsAgentConfig) RequestTimeout() time.Duration {
+	if c.RequestTimeoutSeconds <= 0 {
+		return 120 * time.Second
+	}
+	return time.Duration(c.RequestTimeoutSeconds) * time.Second
+}
+
+// ElasticsearchConfig 交易全文索引（空 URL 表示关闭）。
+type ElasticsearchConfig struct {
+	URL string `mapstructure:"url"`
+}
+
+// Enabled 是否配置了 ES。
+func (e ElasticsearchConfig) Enabled() bool {
+	return strings.TrimSpace(e.URL) != ""
+}
+
+// BaseURL 去掉尾斜杠。
+func (e ElasticsearchConfig) BaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(e.URL), "/")
 }
 
 // CommunityConfig 社区动态。
@@ -323,15 +388,17 @@ type LogConfig struct {
 
 // QueueConfig 异步任务队列与多实例 WS 广播配置。
 type QueueConfig struct {
-	Enabled   bool              `mapstructure:"enabled"`
-	PushAsync *bool             `mapstructure:"push_async"`
-	Asynq     QueueAsynqConfig  `mapstructure:"asynq"`
-	PubSub    QueuePubSubConfig `mapstructure:"pubsub"`
+	Enabled   bool                `mapstructure:"enabled"`
+	PushAsync *bool               `mapstructure:"push_async"`
+	RabbitMQ  QueueRabbitMQConfig `mapstructure:"rabbitmq"`
+	PubSub    QueuePubSubConfig   `mapstructure:"pubsub"`
 }
 
-// QueueAsynqConfig Asynq 任务队列参数（后端复用 Redis）。
-type QueueAsynqConfig struct {
-	Concurrency int `mapstructure:"concurrency"`
+// QueueRabbitMQConfig RabbitMQ 任务队列参数。
+type QueueRabbitMQConfig struct {
+	URL      string `mapstructure:"url"`
+	Queue    string `mapstructure:"queue"`
+	Prefetch int    `mapstructure:"prefetch"`
 }
 
 // QueuePubSubConfig Redis Pub/Sub 多实例 WS 广播参数。
@@ -339,12 +406,28 @@ type QueuePubSubConfig struct {
 	Channel string `mapstructure:"channel"`
 }
 
-// AsynqConcurrency 返回 Worker 并发数。
-func (q QueueConfig) AsynqConcurrency() int {
-	if q.Asynq.Concurrency <= 0 {
+// RabbitMQURL 返回 AMQP URL。
+func (q QueueConfig) RabbitMQURL() string {
+	if u := strings.TrimSpace(q.RabbitMQ.URL); u != "" {
+		return u
+	}
+	return "amqp://guest:guest@localhost:5672/"
+}
+
+// RabbitMQQueue 返回任务队列名。
+func (q QueueConfig) RabbitMQQueue() string {
+	if n := strings.TrimSpace(q.RabbitMQ.Queue); n != "" {
+		return n
+	}
+	return "my_go_study.tasks"
+}
+
+// Prefetch 返回消费者 QoS prefetch（原 asynq concurrency 语义）。
+func (q QueueConfig) Prefetch() int {
+	if q.RabbitMQ.Prefetch <= 0 {
 		return 10
 	}
-	return q.Asynq.Concurrency
+	return q.RabbitMQ.Prefetch
 }
 
 // PubSubChannel 返回 Pub/Sub 广播频道名。
@@ -583,8 +666,11 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("auth.dev_test_password", "AUTH_DEV_TEST_PASSWORD")
 	_ = v.BindEnv("queue.enabled", "QUEUE_ENABLED")
 	_ = v.BindEnv("queue.push_async", "QUEUE_PUSH_ASYNC")
-	_ = v.BindEnv("queue.asynq.concurrency", "QUEUE_ASYNQ_CONCURRENCY")
+	_ = v.BindEnv("queue.rabbitmq.url", "RABBITMQ_URL")
+	_ = v.BindEnv("queue.rabbitmq.queue", "RABBITMQ_QUEUE")
+	_ = v.BindEnv("queue.rabbitmq.prefetch", "RABBITMQ_PREFETCH")
 	_ = v.BindEnv("queue.pubsub.channel", "QUEUE_PUBSUB_CHANNEL")
+	_ = v.BindEnv("elasticsearch.url", "ELASTICSEARCH_URL")
 	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
 	_ = v.BindEnv("scheduler.hourly_notify.enabled", "SCHEDULER_HOURLY_NOTIFY_ENABLED")
 	_ = v.BindEnv("realtime.public_ws_host", "REALTIME_PUBLIC_WS_HOST")
@@ -600,6 +686,10 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("sse.openai.base_url", "SSE_OPENAI_BASE_URL")
 	_ = v.BindEnv("sse.openai.model", "SSE_OPENAI_MODEL")
 	_ = v.BindEnv("sse.openai.api_key", "SSE_OPENAI_API_KEY")
+	_ = v.BindEnv("cs_agent.enabled", "CS_AGENT_ENABLED")
+	_ = v.BindEnv("cs_agent.provider", "CS_AGENT_PROVIDER")
+	_ = v.BindEnv("cs_agent.chunk_delay_ms", "CS_AGENT_CHUNK_DELAY_MS")
+	_ = v.BindEnv("cs_agent.model", "CS_AGENT_MODEL")
 	_ = v.BindEnv("community.ask_everyone_invite_user_ids", "COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")
 	_ = v.BindEnv("third_party.wechat_app_id", "WECHAT_APP_ID")
 	_ = v.BindEnv("third_party.wechat_app_secret", "WECHAT_APP_SECRET")
@@ -664,8 +754,14 @@ func Load(configPath, env string) (*Config, error) {
 	if cfg.Realtime.EventRetention <= 0 {
 		cfg.Realtime.EventRetention = 200
 	}
-	if cfg.Queue.Asynq.Concurrency <= 0 {
-		cfg.Queue.Asynq.Concurrency = 10
+	if strings.TrimSpace(cfg.Queue.RabbitMQ.URL) == "" {
+		cfg.Queue.RabbitMQ.URL = "amqp://guest:guest@localhost:5672/"
+	}
+	if strings.TrimSpace(cfg.Queue.RabbitMQ.Queue) == "" {
+		cfg.Queue.RabbitMQ.Queue = "my_go_study.tasks"
+	}
+	if cfg.Queue.RabbitMQ.Prefetch <= 0 {
+		cfg.Queue.RabbitMQ.Prefetch = 10
 	}
 	if strings.TrimSpace(cfg.Queue.PubSub.Channel) == "" {
 		cfg.Queue.PubSub.Channel = "realtime:fanout"

@@ -1,0 +1,53 @@
+# Slice — cs-agent-c4-eino-cs-agent
+
+## Slice Brief
+- SOURCE_MODULE: CloudWeGo Eino + SSE
+- TARGET_MODULE: 客服 Agent
+- Source entry: `github.com/cloudwego/eino`
+- Target entry: `POST /api/v1/cs-agent/chat`（SSE；推荐独立路由）
+- 本轮 ONLY:
+  - 引入 `cloudwego/eino`（及最小 ChatModel 实现依赖）
+  - 客服 System 指令 + Tools：至少「交易搜索」Tool（有 C3 则调 ES 搜索；无则 stub）
+  - 流式复用小石头 SSE 帧；SessionAuth
+  - 无 API Key → mock 流（对齐现有 sse 行为）
+  - 配置开关；文档 `docs/cs-agent-eino.md`
+  - 最小 `go test` mock 路径
+- 不做:
+  - 替换 `/api/v1/sse/completions`
+  - 人机转接工单
+  - Flutter 整页（可另 Slice）
+  - 再引入第二套 MQ
+- 验收:
+  - `go build ./cmd/api`
+  - usecase mock 测试绿
+  - mock 下 curl SSE 有 delta（人证可 Partial）
+- 文件白名单:
+  - go.mod
+  - go.sum
+  - cmd/api/main.go
+  - pkg/config/
+  - configs/
+  - internal/usecase/（客服相关）
+  - internal/domain/
+  - internal/delivery/http/controller/
+  - internal/delivery/http/router/
+  - internal/delivery/http/dto/
+  - internal/repository/（agent 适配）
+  - docs/cs-agent-eino.md
+  - plans/slices/cs-agent-c4-eino-cs-agent.md
+- 文件黑名单:
+  - 破坏小石头 completions 契约的改动
+  - pkg/queue/ 大改
+- 验证命令:
+  - go build ./cmd/api
+  - go test ./internal/usecase/ -count=1 -run 'CsAgent|CSAgent|CustomerService'
+- 证据: docs/acceptance-records/YYYY-MM-DD-cs-agent-c4-eino-cs-agent.md
+- Accept 模式: Partial
+
+## Context Card — cs-agent-c4-eino-cs-agent
+- 已完成: Eino Tool + `/api/v1/cs-agent/chat` SSE mock；交易搜索 Tool；配置与文档
+- 未做/Deferred: 完整 ReAct/ChatModel；Flutter 页；真人证 curl
+- 关键文件: internal/repository/csagent；usecase/cs_agent_*；controller/router/config
+- harness: post ok? Partial（机跑绿）
+- 下一 Slice 建议: Flutter 客服页（my_ai_project）
+- 已知坑: 避免 InferTool（sonic 升级链）；手写 InvokableTool 更稳

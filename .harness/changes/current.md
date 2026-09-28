@@ -2,14 +2,13 @@
 
 | 字段 | 值 |
 |------|-----|
-| Active | **P2 deep-simplify 结束** |
-| Epic | `plans/epics/dual-deep-simplify-r2.md` |
-| Role | **人**（commit/push 等人指令） |
-| 报告 R1 | `docs/simplify-reports/README.md` |
-| 报告 R2 | `docs/simplify-reports-r2/README.md` |
-| 烟测 | OTP `13400000000`/`123456` 绿 |
+| Active | **cs-agent-infra C1–C4 完成（Partial）** |
+| Program | `plans/2026-09-28-cs-agent-infra-program.md` |
+| Epic | `plans/epics/cs-agent-infra.md` |
+| Role | **人**（commit 已按指令自动；push 等人） |
+| Commits | C1 `bd116e1` · C2 `089dfa1` · C3 `748e517` · C4（本轮） |
 
 ## Notes
 
-- R1：死代码卫生；R2：结构共享 + API 守卫 + Topics N+1 批量 + 测试
-- 对外契约 / 页面布局未改
+- lan-up / 飞书 / ES / queue / Agent curl 人证均为 Partial Deferred
+- Flutter 客服页未做

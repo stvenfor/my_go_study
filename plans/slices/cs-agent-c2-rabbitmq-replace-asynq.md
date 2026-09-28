@@ -1,0 +1,82 @@
+# Slice — cs-agent-c2-rabbitmq-replace-asynq
+
+## Slice Brief
+- SOURCE_MODULE: Asynq (`pkg/queue`)
+- TARGET_MODULE: RabbitMQ 任务队列
+- Source entry: `pkg/queue/asynq_*.go`、`cmd/worker`
+- Target entry: RabbitMQ publish/consume；`make lan-up` 含 `rabbitmq`
+- 本轮 ONLY:
+  - compose 增加 RabbitMQ（管理插件可开；端口仅本机或文档说明）
+  - 抽象/重写 `pkg/queue`：**入队与消费走 AMQP**；任务类型对齐现有：
+    - `realtime:push_notify`
+    - `scheduled:broadcast_notify`
+    - `sms:send`
+    - `jpush:register`
+  - `cmd/api` 入队点、`cmd/worker` 消费循环改为 RabbitMQ
+  - **定时广播**：Asynq Scheduler 移除后，用 worker 内 ticker **或** delayed message（选更短实现）；行为对齐现有小时通知
+  - **保留** Redis Pub/Sub 扇出（`pubsub_broadcaster`）；Redis 仍给 session/realtime
+  - 配置：`RABBITMQ_URL` 等；`QUEUE_ENABLED` 语义保留
+  - 文档更新 `docs/message-queue.md`：Asynq → RabbitMQ；`make test-queue-push` 等脚本改通或标注
+  - 去掉运行时对 `hibiken/asynq` 的依赖（go.mod tidy）；测试改写
+- 不做:
+  - ES / Eino / Grafana 大改
+  - 用 RabbitMQ 替换 Redis session 或 WS Pub/Sub
+  - 消息持久化集群镜像队列生产加固（单节点开发即可）
+- 验收:
+  - `go build ./cmd/api ./cmd/worker`
+  - 定向测试：入队/消费（可用 testcontainers 或接口 fake；最短可跑）
+  - lan-up：`make test-queue-push` 或等价冒烟绿（人证可 Partial）
+- 文件白名单:
+  - go.mod
+  - go.sum
+  - pkg/queue/
+  - pkg/config/
+  - configs/
+  - cmd/api/main.go
+  - cmd/worker/main.go
+  - cmd/scheduler-trigger/
+  - docker/
+  - Makefile
+  - scripts/
+  - .env.example
+  - .env.lan.example
+  - docs/message-queue.md
+  - docs/README.md
+  - AGENTS.md（队列表述若过时则改一句）
+  - plans/slices/cs-agent-c2-rabbitmq-replace-asynq.md
+- 文件黑名单:
+  - internal/repository/es/
+  - deploy/observability/（除非 scrape worker 指标一行）
+  - internal/usecase/completion_usecase.go
+- 验证命令:
+  - go build ./cmd/api ./cmd/worker
+  - go test ./pkg/queue/... -count=1
+- 证据: docs/acceptance-records/YYYY-MM-DD-cs-agent-c2-rabbitmq-replace-asynq.md
+- Accept 模式: Partial（定时广播人证可后补）
+
+## Context Card — cs-agent-c2-rabbitmq-replace-asynq
+- 已完成:
+  - RabbitMQ 替换 Asynq（client/consumer/handler/tasks envelope）
+  - Worker 整点 ticker 替代 Asynq Scheduler
+  - compose rabbitmq + RABBITMQ_URL；go.mod 去掉 hibiken/asynq
+  - docs/message-queue.md、env 示例、AGENTS 队列表述；acceptance Partial
+- 未做/Deferred:
+  - lan-up 人证 test-queue-push / test-scheduled-notify
+  - DLX / 镜像队列生产加固
+- 关键文件:
+  - go.mod / go.sum
+  - pkg/queue/{tasks,client,handler,consumer,hourly_ticker}.go（删 asynq_* / scheduler）
+  - pkg/config/config.go
+  - cmd/{api,worker,scheduler-trigger}/main.go
+  - docker/docker-compose.yml + docker-compose.lan.yml
+  - configs/config.yaml + config.dev.yaml
+  - .env.example / .env.lan.example
+  - docs/message-queue.md / docs/README.md / AGENTS.md
+  - scripts/test_queue_push.sh
+  - docs/acceptance-records/2026-09-28-cs-agent-c2-rabbitmq-replace-asynq.md
+- harness: post ok?
+- 下一 Slice 建议: cs-agent-c3-es-transactions
+- 已知坑:
+  - 本机 `make run` 需本机 RabbitMQ（或改 RABBITMQ_URL）；Docker 已注入
+  - 勿误删 Redis Pub/Sub（仍用于 WS 扇出）
+  - 任务幂等仍靠 Redis SetNX + envelope.task_id，非 RabbitMQ 原生去重

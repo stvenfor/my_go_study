@@ -28,6 +28,37 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: my_go_study_rabbitmq
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: my_go_study_elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
   app:
     build:
       context: ..
@@ -40,6 +71,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
     # 宿主机 env 由 scripts/docker-compose.sh / lan-compose.sh source 后注入下方 ${VAR}
     environment:
       APP_ENV: ${APP_ENV:-dev}
@@ -51,6 +86,8 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       GRPC_ENABLED: ${GRPC_ENABLED:-true}
@@ -88,6 +125,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       app:
         condition: service_started
     environment:
@@ -99,6 +138,7 @@ services:
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
       REDIS_ADDR: redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       SUPABASE_URL: ${SUPABASE_URL:-}
@@ -111,5 +151,66 @@ services:
     healthcheck:
       disable: true
 
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: my_go_study_prometheus
+    depends_on:
+      - app
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=24h
+      - --web.enable-lifecycle
+    volumes:
+      - ../deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../deploy/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9091:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: my_go_study_alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ../deploy/observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  feishu-adapter:
+    image: python:3.12-alpine
+    container_name: my_go_study_feishu_adapter
+    environment:
+      FEISHU_ALERT_WEBHOOK_URL: ${FEISHU_ALERT_WEBHOOK_URL:-}
+      FEISHU_ADAPTER_PORT: "8089"
+    volumes:
+      - ../deploy/observability/feishu_adapter.py:/app/feishu_adapter.py:ro
+    working_dir: /app
+    command: ["python", "/app/feishu_adapter.py"]
+    # 无对外端口：仅 Docker 网络内供 Alertmanager 调用
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: my_go_study_grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_HTTP_PORT: "3000"
+    volumes:
+      - ../deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+
 volumes:
   postgres_data:
+  elasticsearch_data:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

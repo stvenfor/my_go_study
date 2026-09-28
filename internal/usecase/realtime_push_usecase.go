@@ -6,7 +6,7 @@
 //   1. 用户离线时 delivered=0，但 sync 仍能补拉
 //   2. seq 持久化后，客户端可按序号去重
 //
-// 【异步模式】queue.enabled=true 时 HTTP 入队 Asynq，Worker 投递并经 Pub/Sub 广播。
+// 【异步模式】queue.enabled=true 时 HTTP 入队 RabbitMQ，Worker 投递并经 Pub/Sub 广播。
 // =============================================================================
 package usecase
 
@@ -38,7 +38,7 @@ type RealtimePushOutput struct {
 	TaskID    string
 }
 
-// PushEnqueuer 异步入队接口（Asynq 实现）。
+// PushEnqueuer 异步入队接口（RabbitMQ Client 实现）。
 type PushEnqueuer interface {
 	EnqueueRealtimePush(ctx context.Context, input RealtimePushInput) (taskID string, err error)
 }

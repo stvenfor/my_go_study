@@ -27,7 +27,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	client := queue.NewAsynqClient(*cfg)
+	client, err := queue.NewClient(*cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "连接 RabbitMQ 失败: %v\n", err)
+		os.Exit(1)
+	}
 	defer client.Close()
 
 	taskID, err := client.EnqueueBroadcastNotify(context.Background(), queue.BroadcastNotifyPayload{})

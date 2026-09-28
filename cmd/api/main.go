@@ -27,6 +27,7 @@ import (
 	wshandler "github.com/stvenfor/my_go_study/internal/delivery/ws"
 	"github.com/stvenfor/my_go_study/internal/domain/entity"
 	"github.com/stvenfor/my_go_study/internal/domain/provider"
+	esrepo "github.com/stvenfor/my_go_study/internal/repository/es"
 	llmrepo "github.com/stvenfor/my_go_study/internal/repository/llm"
 	"github.com/stvenfor/my_go_study/internal/repository/postgres"
 	redisrepo "github.com/stvenfor/my_go_study/internal/repository/redis"
@@ -34,9 +35,9 @@ import (
 	"github.com/stvenfor/my_go_study/internal/usecase"
 	"github.com/stvenfor/my_go_study/pkg/config"
 	"github.com/stvenfor/my_go_study/pkg/database"
+	"github.com/stvenfor/my_go_study/pkg/jpush"
 	jwtmanager "github.com/stvenfor/my_go_study/pkg/jwt"
 	"github.com/stvenfor/my_go_study/pkg/logger"
-	"github.com/stvenfor/my_go_study/pkg/jpush"
 	"github.com/stvenfor/my_go_study/pkg/queue"
 	"github.com/stvenfor/my_go_study/pkg/rongcloud"
 	pkgsb "github.com/stvenfor/my_go_study/pkg/supabase"
@@ -123,11 +124,13 @@ func run() error {
 	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
+	var transactionUC *usecase.TransactionUsecase
 	var jpushController *controller.JPushController
 	var imController *controller.ImController
 	var realtimeController *controller.RealtimeController
 	var pushUC *usecase.RealtimePushUsecase
 	var sseController *controller.SseController
+	var csAgentController *controller.CsAgentController
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
@@ -246,7 +249,7 @@ func run() error {
 			log.Info("商城种子商品已就绪（门店1 ≥35 条）")
 		}
 		transactionRepo := postgres.NewTransactionRepository(db)
-		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
+		transactionUC = usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
 		log.Info("Auth provider=local（本机 Postgres Auth + 业务表）")
 		if phones := cfg.Auth.DevTestPhones(); len(phones) > 0 {
@@ -269,11 +272,21 @@ func run() error {
 		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
 		transactionRepo := sbrepo.NewTransactionRepository(sbClient)
-		transactionUC := usecase.NewTransactionUsecase(transactionRepo)
+		transactionUC = usecase.NewTransactionUsecase(transactionRepo)
 		transactionController = controller.NewTransactionController(transactionUC)
 		log.Info("Auth provider=supabase（认证 + profile + transactions）", zap.String("url", cfg.Supabase.URL))
 	} else {
 		log.Warn("未启用业务认证：请设置 auth.provider=local，或配置 SUPABASE_URL / SUPABASE_ANON_KEY")
+	}
+
+	if transactionUC != nil && cfg.Elasticsearch.Enabled() {
+		txES := esrepo.NewTransactionStore(cfg.Elasticsearch.BaseURL())
+		if err := txES.EnsureIndex(context.Background()); err != nil {
+			log.Warn("Elasticsearch transactions 索引准备失败（写路径降级，搜索可能 503）", zap.Error(err))
+		} else {
+			log.Info("Elasticsearch transactions 索引已就绪", zap.String("url", cfg.Elasticsearch.BaseURL()))
+		}
+		transactionUC.SetSearchStore(txES, log)
 	}
 
 	if businessEnabled {
@@ -288,7 +301,11 @@ func run() error {
 
 		var pushEnqueuer usecase.PushEnqueuer
 		if cfg.Queue.Enabled {
-			queueClient = queue.NewAsynqClient(*cfg)
+			var qErr error
+			queueClient, qErr = queue.NewClient(*cfg)
+			if qErr != nil {
+				return fmt.Errorf("连接 RabbitMQ 失败: %w", qErr)
+			}
 			pushEnqueuer = queueClient
 			fanoutSub = queue.NewFanoutSubscriber(
 				redisClient,
@@ -336,9 +353,17 @@ func run() error {
 				zap.Int("max_turns", cfg.SSE.MaxTurnsOrDefault()),
 			)
 		}
+
+		if cfg.CsAgent.Enabled {
+			csUC := usecase.NewCsAgentUsecase(transactionUC, cfg.CsAgent)
+			csAgentController = controller.NewCsAgentController(csUC, cfg.CsAgent)
+			log.Info("客服 Agent 已启用",
+				zap.String("provider", cfg.CsAgent.Provider),
+				zap.String("model", cfg.CsAgent.ModelName()),
+			)
+		}
 	}
 
-	
 	if businessEnabled {
 		pushDeviceRepo := postgres.NewPushDeviceRepository(db)
 		if err := postgres.EnsurePushDeviceSchema(db); err != nil {
@@ -434,6 +459,7 @@ func run() error {
 		JPushController:              jpushController,
 		ImController:                 imController,
 		SseController:                sseController,
+		CsAgentController:            csAgentController,
 		WSHandler:                    wsGateway,
 		Config:                       *cfg,
 		Supabase:                     cfg.Supabase,
@@ -497,7 +523,7 @@ func run() error {
 
 	if queueClient != nil {
 		if err := queueClient.Close(); err != nil {
-			log.Warn("关闭 Asynq 客户端失败", zap.Error(err))
+			log.Warn("关闭 RabbitMQ 客户端失败", zap.Error(err))
 		}
 	}
 

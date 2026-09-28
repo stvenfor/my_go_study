@@ -3,12 +3,15 @@
 // 层级：Delivery/HTTP —— transactions REST API
 //
 // 两套风格：
-//   listLegacy  → GET /api/v1/transactions        → { items: [] }
-//   ListPage    → GET /api/v1/transactions/manage → ResultModel 分页
+//
+//	listLegacy  → GET /api/v1/transactions        → { items: [] }
+//	ListPage    → GET /api/v1/transactions/manage → ResultModel 分页
+//
 // =============================================================================
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -285,6 +288,34 @@ func (ctrl *TransactionController) Delete(c *gin.Context) {
 		return
 	}
 	response.SuccessWithMessage(c, "删除成功", gin.H{})
+}
+
+// Search 全文搜索当前会话用户的交易（Elasticsearch）。
+// GET /api/v1/transactions/search?q=&limit=
+func (ctrl *TransactionController) Search(c *gin.Context) {
+	_, userID, ok := ctrl.authContext(c)
+	if !ok {
+		response.BackendError(c, http.StatusUnauthorized, "未授权")
+		return
+	}
+	q := c.Query("q")
+	limit := 20
+	if n, err := strconv.Atoi(c.Query("limit")); err == nil {
+		limit = n
+	}
+	items, err := ctrl.transactionUC.Search(c.Request.Context(), userID, q, limit)
+	if err != nil {
+		if errors.Is(err, usecase.ErrTransactionSearchUnavailable) {
+			response.BackendError(c, http.StatusServiceUnavailable, "搜索暂不可用")
+			return
+		}
+		response.BackendError(c, http.StatusBadGateway, err.Error())
+		return
+	}
+	if items == nil {
+		items = []entity.Transaction{}
+	}
+	response.BackendJSON(c, http.StatusOK, gin.H{"items": items})
 }
 
 // DeleteLegacy Flutter 兼容删除（204）。

@@ -1,19 +1,26 @@
-// tasks.go 定义 Asynq 任务类型与 payload 结构。
+// tasks.go 定义任务类型与 envelope（RabbitMQ JSON）。
 package queue
 
 import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/hibiken/asynq"
+	"github.com/google/uuid"
 )
 
 const (
-	TypeRealtimePushNotify    = "realtime:push_notify"
+	TypeRealtimePushNotify       = "realtime:push_notify"
 	TypeScheduledBroadcastNotify = "scheduled:broadcast_notify"
-	TypeSendSMS               = "sms:send"
-	TypeJPushRegister         = "jpush:register"
+	TypeSendSMS                  = "sms:send"
+	TypeJPushRegister            = "jpush:register"
 )
+
+// Envelope 入队/消费统一信封。
+type Envelope struct {
+	Type    string          `json:"type"`
+	TaskID  string          `json:"task_id"`
+	Payload json.RawMessage `json:"payload"`
+}
 
 // PushNotifyPayload Realtime 推送任务载荷。
 type PushNotifyPayload struct {
@@ -44,56 +51,51 @@ type BroadcastNotifyPayload struct {
 	ScheduleSlot string `json:"scheduleSlot,omitempty"`
 }
 
-// NewBroadcastNotifyTask 创建定时广播任务。
-func NewBroadcastNotifyTask(p BroadcastNotifyPayload) (*asynq.Task, error) {
-	data, err := json.Marshal(p)
+func newEnvelope(taskType string, payload any, taskID string) (Envelope, error) {
+	data, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("marshal broadcast payload: %w", err)
+		return Envelope{}, fmt.Errorf("marshal payload: %w", err)
 	}
-	return asynq.NewTask(TypeScheduledBroadcastNotify, data), nil
+	if taskID == "" {
+		taskID = uuid.NewString()
+	}
+	return Envelope{Type: taskType, TaskID: taskID, Payload: data}, nil
+}
+
+// NewBroadcastNotifyTask 创建定时广播任务。
+func NewBroadcastNotifyTask(p BroadcastNotifyPayload) (Envelope, error) {
+	return newEnvelope(TypeScheduledBroadcastNotify, p, "")
 }
 
 // ParseBroadcastNotifyPayload 解析定时广播任务载荷。
-func ParseBroadcastNotifyPayload(t *asynq.Task) (BroadcastNotifyPayload, error) {
+func ParseBroadcastNotifyPayload(payload []byte) (BroadcastNotifyPayload, error) {
 	var p BroadcastNotifyPayload
-	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+	if err := json.Unmarshal(payload, &p); err != nil {
 		return BroadcastNotifyPayload{}, fmt.Errorf("unmarshal broadcast payload: %w", err)
 	}
 	return p, nil
 }
 
 // NewPushNotifyTask 创建 Realtime 推送任务。
-func NewPushNotifyTask(p PushNotifyPayload) (*asynq.Task, error) {
-	data, err := json.Marshal(p)
-	if err != nil {
-		return nil, fmt.Errorf("marshal push payload: %w", err)
-	}
-	return asynq.NewTask(TypeRealtimePushNotify, data), nil
+func NewPushNotifyTask(p PushNotifyPayload) (Envelope, error) {
+	return newEnvelope(TypeRealtimePushNotify, p, "")
 }
 
 // ParsePushNotifyPayload 解析 Realtime 推送任务载荷。
-func ParsePushNotifyPayload(t *asynq.Task) (PushNotifyPayload, error) {
+func ParsePushNotifyPayload(payload []byte) (PushNotifyPayload, error) {
 	var p PushNotifyPayload
-	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+	if err := json.Unmarshal(payload, &p); err != nil {
 		return PushNotifyPayload{}, fmt.Errorf("unmarshal push payload: %w", err)
 	}
 	return p, nil
 }
 
 // NewSendSMSTask 创建短信发送任务。
-func NewSendSMSTask(p SendSMSPayload) (*asynq.Task, error) {
-	data, err := json.Marshal(p)
-	if err != nil {
-		return nil, fmt.Errorf("marshal sms payload: %w", err)
-	}
-	return asynq.NewTask(TypeSendSMS, data), nil
+func NewSendSMSTask(p SendSMSPayload) (Envelope, error) {
+	return newEnvelope(TypeSendSMS, p, "")
 }
 
 // NewJPushRegisterTask 创建极光推送注册任务。
-func NewJPushRegisterTask(p JPushRegisterPayload) (*asynq.Task, error) {
-	data, err := json.Marshal(p)
-	if err != nil {
-		return nil, fmt.Errorf("marshal jpush payload: %w", err)
-	}
-	return asynq.NewTask(TypeJPushRegister, data), nil
+func NewJPushRegisterTask(p JPushRegisterPayload) (Envelope, error) {
+	return newEnvelope(TypeJPushRegister, p, "")
 }
