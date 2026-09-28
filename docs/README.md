@@ -1,7 +1,7 @@
 # my_go_study 文档总览（架构 + 完整使用）
 
 > 本页是仓库文档的**统一入口**。架构与使用说明**已存在**（见下表），这里再汇总成一份可照着跑的完整手册。  
-> 更新日期：2026-08-03
+> 更新日期：2026-09-28
 
 ---
 
@@ -15,12 +15,15 @@
 | Supabase | [supabase-integration.md](./supabase-integration.md) | ✅ |
 | 认证导读 | [auth-beginner-walkthrough.md](./auth-beginner-walkthrough.md) | ✅ |
 | Transactions | [transactions-beginner-walkthrough.md](./transactions-beginner-walkthrough.md) | ✅ |
+| **交易全文 ES** | [elasticsearch-transactions.md](./elasticsearch-transactions.md) | ✅ CUD 同步 + search API |
 | Realtime | [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md) · [realtime-websocket.md](./realtime-websocket.md) | ✅ |
 | **SSE 流式 / AI 小石头** | [sse-streaming.md](./sse-streaming.md) · Flutter [sse-streaming-design.md](../../my_ai_project/docs/sse-streaming-design.md) · SPEC `.scratch/ai-little-stone/SPEC.md` · ADR 0005 | ✅ Accepted |
+| **客服 Agent（Eino）** | [cs-agent-eino.md](./cs-agent-eino.md) | ✅ `POST /api/v1/cs-agent/chat` |
+| **可观测 lan-up** | [observability-lan.md](./observability-lan.md) | ✅ Prometheus / Grafana / Alertmanager / 飞书 |
 | **Gin HTTP vs gRPC** | [grpc/gin-http-vs-grpc.md](./grpc/gin-http-vs-grpc.md) | ✅ 飞书 tool / grpc |
 | **数据分析 gRPC 联调** | [grpc/analytics-flutter-trial.md](./grpc/analytics-flutter-trial.md) | ✅ 列表/详情试验 |
 | **Docker 联调运维（A/B/C）** | [docker/lan-ops-abc-beginner.md](./docker/lan-ops-abc-beginner.md) | ✅ Flutter 对齐 · 改码生效 · 排障；飞书 tool / Docker 相关文档纪要 |
-| 消息队列 | [message-queue.md](./message-queue.md) | ✅ |
+| 消息队列 | [message-queue.md](./message-queue.md) | ✅ RabbitMQ + Redis Pub/Sub |
 | 飞书同步 | [FEISHU_SYNC.md](./FEISHU_SYNC.md) | ✅ |
 | **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ `make lan-up`（现为本地 Auth） |
 | **两端联调启动手册** | [dual-end-lan-startup.md](./dual-end-lan-startup.md) | ✅ Go + Flutter 配置与启动清单 |
@@ -45,16 +48,20 @@
 | ORM（本地库） | GORM → 本地 PostgreSQL（遗留 `users` 等） |
 | 业务数据 | Supabase PostgREST + RLS |
 | 缓存 / Session / Realtime | Redis |
-| 异步 | RabbitMQ（`cmd/worker`） |
-| 默认端口 | `8080` |
+| 异步 | RabbitMQ（`cmd/worker`）；WS 扇出 Redis Pub/Sub |
+| 交易全文 | Elasticsearch（可选；`ELASTICSEARCH_URL`） |
+| 可观测 | Prometheus + Grafana + Alertmanager（`make lan-up`） |
+| 默认端口 | `8080`（HTTP）· `9090`（gRPC） |
 | 模块路径 | `github.com/stvenfor/my_go_study` |
 
 ```text
 Flutter ──HTTP/WS──▶ Gin BFF(:8080)
-                       ├─ Supabase Auth / PostgREST
+                       ├─ Supabase Auth / PostgREST 或 local Auth
                        ├─ Redis（session / ticket / PubSub）
-                       ├─ 本地 Postgres（GORM，遗留）
-                       └─ RabbitMQ Worker（可选）
+                       ├─ 本地 Postgres（GORM）
+                       ├─ RabbitMQ Worker（可选）
+                       ├─ Elasticsearch（交易全文，可选）
+                       └─ /metrics → Prometheus（lan-up）
 ```
 
 更细的架构、优缺点、时序图 → [architecture-learning-guide.md](./architecture-learning-guide.md)
@@ -70,8 +77,8 @@ cmd/api、cmd/worker          进程入口（手动 DI）
 internal/delivery/           HTTP / WS / 中间件 / DTO
 internal/usecase/            业务用例
 internal/domain/             实体 + repository 接口
-internal/repository/         postgres | redis | supabase
-pkg/                         config、jwt、auth、queue、logger…
+internal/repository/         postgres | redis | supabase | es | llm | csagent
+pkg/                         config、jwt、auth、queue、metrics、logger…
 ```
 
 依赖方向：**delivery → usecase → domain 接口 → repository → 外部系统**
@@ -296,9 +303,12 @@ Flutter 侧契约见：`my_ai_project/docs/BACKEND_INTEGRATION.md`、`USAGE_GUID
 3. [architecture-learning-guide.md](./architecture-learning-guide.md)（架构深读）
 4. [auth-beginner-walkthrough.md](./auth-beginner-walkthrough.md)
 5. [transactions-beginner-walkthrough.md](./transactions-beginner-walkthrough.md)
-6. [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md)
-7. [message-queue.md](./message-queue.md)
-8. [supabase-integration.md](./supabase-integration.md)
+6. [elasticsearch-transactions.md](./elasticsearch-transactions.md)
+7. [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md)
+8. [message-queue.md](./message-queue.md)
+9. [observability-lan.md](./observability-lan.md)
+10. [cs-agent-eino.md](./cs-agent-eino.md) · [sse-streaming.md](./sse-streaming.md)
+11. [supabase-integration.md](./supabase-integration.md)
 
 ---
 

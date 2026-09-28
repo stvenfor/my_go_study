@@ -1,6 +1,6 @@
 # 两端联调启动配置手册（Go BFF + Flutter）
 
-> **目标**：本机 Mac 作为局域网后端（本地 Auth + Postgres + Redis），iOS / Android 真机（或模拟器）通过 Flutter 联调。  
+> **目标**：本机 Mac 作为局域网后端（本地 Auth + Postgres + Redis + RabbitMQ + ES + 观测），iOS / Android 真机（或模拟器）通过 Flutter 联调。  
 > **仓库**：Go `my_go_study` · Flutter `my_ai_project`（独立 Git）。  
 > **相关专题**：[lan-backend-host.md](./lan-backend-host.md) · [local-auth-postgres.md](./local-auth-postgres.md) · Flutter [BACKEND_INTEGRATION.md](../../my_ai_project/docs/BACKEND_INTEGRATION.md) · Flutter [device-startup-notes.md](../../my_ai_project/docs/device-startup-notes.md)（**无线 release / USB debug**）
 
@@ -14,16 +14,18 @@ Flutter 真机 / 模拟器
   │  ws://<LAN_IP>:8080/...（ticket 返回，依赖 REALTIME_PUBLIC_WS_HOST）
   ▼
 my_go_study（APP_ENV=lan, AUTH_PROVIDER=local）
-  ├── API :8080
-  ├── Worker（Compose 内 / 可选本机）
+  ├── API :8080（含 /metrics、SSE、cs-agent）
+  ├── Worker（Compose 内；RabbitMQ 消费）
   ├── Postgres（业务 + auth_users）
-  └── Redis（session / realtime / queue）
+  ├── Redis（session / realtime / PubSub）
+  ├── RabbitMQ / Elasticsearch
+  └── Prometheus · Grafana · Alertmanager（本机端口见 observability-lan）
 ```
 
 | 项 | 约定 |
 |----|------|
 | 认证 | **本地** `auth.provider=local`（不再默认连 Supabase Cloud） |
-| 端口 | API **8080**；Postgres/Redis 仅本机 `127.0.0.1` |
+| 端口 | API **8080**；gRPC **9090**；Postgres/Redis/RMQ/ES/观测仅本机 `127.0.0.1` |
 | 两端 IP | Go `REALTIME_PUBLIC_WS_HOST` **=** Flutter `BACKEND_HOST`（同一局域网 IP） |
 | 传输 | 明文 `http` / `ws`（家庭 Wi‑Fi）；Android 已允许 cleartext |
 | 导入账号 | 若跑过 `import-supabase`，用临时密码登录（见 §6） |

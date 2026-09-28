@@ -105,7 +105,18 @@ Repository 返回 `PageResult`，UI 不需要知道 `ResultModel` 结构。
 
 ---
 
-## 6. RLS 迁移（必做）
+## 6. 交易全文搜索（Elasticsearch）
+
+配置 `ELASTICSEARCH_URL` 后（`make lan-up` 默认注入）：
+
+- CUD 交易会 **best-effort** 同步索引（ES 挂了写交易不 500）
+- `GET /api/v1/transactions/search?q=关键词`（SessionAuth；强制会话 `user_id`）
+
+专题 → [elasticsearch-transactions.md](./elasticsearch-transactions.md)。
+
+---
+
+## 7. RLS 迁移（必做）
 
 未执行 SQL 迁移时，直连 PostgREST 仍可能越权。见：
 
@@ -114,7 +125,7 @@ Repository 返回 `PageResult`，UI 不需要知道 `ResultModel` 结构。
 
 ---
 
-## 7. 本地调试
+## 8. 本地调试
 
 ```bash
 # 先登录拿 TOKEN
@@ -125,6 +136,12 @@ TOKEN=$(curl -sf -X POST http://127.0.0.1:8080/api/v1/user/login \
 
 curl -s "http://127.0.0.1:8080/api/v1/transactions?limit=5&offset=0" \
   -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+
+# 全文搜索（需 ES）
+curl -s "http://127.0.0.1:8080/api/v1/transactions/search?q=餐饮" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "X-Session-ID: $SESSION" \
+  -H "X-Device-ID: docs-1" | python3 -m json.tool
 ```
 
 或 `make test-transactions`。

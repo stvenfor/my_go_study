@@ -6,6 +6,8 @@
 
 请求作用域的生成流用 **`POST /api/v1/sse/completions`** + `text/event-stream`；长连接推送仍用 [Realtime WebSocket](./realtime-websocket.md)。
 
+**客服 Agent** 另走独立路由 **`POST /api/v1/cs-agent/chat`**（同样 SSE 帧契约，但 Eino Tool / 交易搜索），见 [cs-agent-eino.md](./cs-agent-eino.md)；勿与小石头 completions 混用。
+
 ## 端点
 
 | 方法 | 路径 | 鉴权 |

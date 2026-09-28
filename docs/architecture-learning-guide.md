@@ -2,7 +2,7 @@
 
 > 面向快速学习 Go 后端。基于本仓库真实代码梳理：**定位、分层、优缺点、三条竖切时序（认证 / Transactions / Realtime）**。  
 > Git 为真相源；本文可经 `lark-cli` 同步到飞书知识库。  
-> 更新日期：2026-07-20
+> 更新日期：2026-09-28
 
 ---
 
@@ -12,36 +12,38 @@
 
 ```text
 my_ai_project (Flutter)
-    │  HTTP JSON / WebSocket
+    │  HTTP JSON / WebSocket / SSE
     ▼
 my_go_study (Gin BFF :8080)     ← 你在这里
-    │  Auth 编排 / PostgREST / Redis / Asynq
+    │  Auth 编排 / PostgREST / Redis / RabbitMQ / ES
     ▼
-Supabase Cloud（Auth + PostgreSQL + RLS）
+Supabase Cloud 或 local Auth + 本地 Postgres
 ```
 
 | 角色 | 说明 |
 |------|------|
-| 业务数据真相 | Supabase Postgres + RLS |
-| 本仓职责 | 鉴权编排、HTTP/WS 网关、单设备 session、异步推送 |
-| 本地 Postgres | 主要承载遗留 `users`（及部分未接线死代码） |
-| Redis | session / WS ticket / presence / 事件序 / Pub/Sub |
+| 业务数据真相 | local Postgres 或 Supabase Postgres + RLS |
+| 本仓职责 | 鉴权编排、HTTP/WS/SSE 网关、单设备 session、异步推送、交易全文、可观测 |
+| 本地 Postgres | Auth / 业务表（`wys_*`）及遗留 `users` |
+| Redis | session / WS ticket / presence / 事件序 / Pub/Sub（**非**任务队列） |
+| RabbitMQ | 异步任务（Push / SMS / JPush / 定时广播） |
+| Elasticsearch | 交易 note/category/type 全文（可选） |
 
-技术栈：Go 1.22 · Gin · GORM · Redis · Supabase（gotrue + PostgREST）· Asynq。
+技术栈：Go 1.22+ · Gin · GORM · Redis · RabbitMQ · Elasticsearch · Prometheus · Supabase（gotrue + PostgREST，可切 local）· CloudWeGo Eino（客服 Tool）。
 
 ---
 
 ## 2. 目录与分层
 
 ```text
-cmd/api/                 HTTP + WS 进程（make run）
-cmd/worker/              Asynq 消费 + 可选定时任务（make run-worker）
+cmd/api/                 HTTP + WS + gRPC 进程（make run）
+cmd/worker/              RabbitMQ 消费 + 整点 ticker（make run-worker）
 internal/delivery/http/  handler · controller · middleware · router · dto
 internal/delivery/ws/    Hub / Client / Handler
 internal/usecase/        业务用例（不碰 Gin）
 internal/domain/         entity + repository 接口
-internal/repository/     postgres / redis / supabase 实现
-pkg/                     config · jwt · auth · queue · supabase · logger
+internal/repository/     postgres / redis / supabase / es / llm / csagent
+pkg/                     config · jwt · auth · queue · metrics · supabase · logger
 docs/                    专题导读与本指南
 .harness/                Agent 编排（非运行时）
 ```
@@ -66,35 +68,41 @@ delivery → usecase → domain 接口 → repository 实现 → 外部系统
 flowchart TB
   Flutter["Flutter my_ai_project"]
   API["cmd/api — Gin :8080 + WS Hub"]
-  Worker["cmd/worker — Asynq"]
+  Worker["cmd/worker — RabbitMQ"]
 
   Router["router.Setup"]
-  MW["SupabaseSessionAuth / Auth / CORS"]
+  MW["SessionAuth / Auth / CORS / PrometheusHTTP"]
   Handler["handler.UserHandler"]
-  Ctrl["controller: Profile / Transaction / Realtime"]
+  Ctrl["controller: Profile / Transaction / Realtime / SSE / CsAgent"]
   WS["ws.Handler + Hub"]
 
   UC["usecase 层"]
   PG["repository/postgres"]
   RD["repository/redis"]
   SB["repository/supabase"]
+  ES["repository/es"]
 
   LocalPG[(本地 PostgreSQL)]
   Redis[(Redis)]
+  RMQ[(RabbitMQ)]
+  Elastic[(Elasticsearch)]
   Supa[(Supabase Auth + PostgREST)]
 
-  Flutter -->|HTTP| API
+  Flutter -->|HTTP / SSE| API
   Flutter -->|WS ticket 后连接| API
   API --> Router --> MW
   MW --> Handler & Ctrl
   Handler & Ctrl --> UC
   WS --> UC
-  UC --> PG & RD & SB
+  UC --> PG & RD & SB & ES
   PG --> LocalPG
   RD --> Redis
   SB --> Supa
-  API -->|Enqueue / Subscribe| Redis
-  Worker -->|Consume + Fanout Publish| Redis
+  ES --> Elastic
+  API -->|Publish 任务| RMQ
+  Worker -->|Consume| RMQ
+  Worker -->|Fanout Publish| Redis
+  API -->|Subscribe Fanout| Redis
 ```
 
 ---
@@ -284,7 +292,7 @@ sequenceDiagram
 - **同步**（dev 常见 `push_async=false`）：`DeliverPush` → 写 Redis 事件 → 本机 `Hub.BroadcastToUser`
 - **异步**（`queue.enabled` + async）：API Enqueue → Worker `DeliverPush` → Redis Pub/Sub → API `FanoutSubscriber` → 本机 Hub
 
-关键文件：`usecase/realtime_push_usecase.go`、`pkg/queue/asynq_*.go`、`pkg/queue/pubsub_broadcaster.go`。
+关键文件：`usecase/realtime_push_usecase.go`、`pkg/queue/client.go` / `consumer.go` / `handler.go`、`pkg/queue/pubsub_broadcaster.go`。
 
 ---
 
@@ -307,8 +315,9 @@ sequenceDiagram
 2. 认证竖切 + `docs/auth-beginner-walkthrough.md`
 3. Transactions 竖切 + `docs/transactions-beginner-walkthrough.md`
 4. Realtime 竖切 + `docs/realtime-beginner-walkthrough.md` / `realtime-websocket.md`
-5. Worker + `docs/message-queue.md`
-6. 练手：按分层加一个小字段/小接口（强制走完整刀路）
+5. Worker + `docs/message-queue.md`（RabbitMQ）
+6. `docs/observability-lan.md` · `docs/elasticsearch-transactions.md` · `docs/cs-agent-eino.md`
+7. 练手：按分层加一个小字段/小接口（强制走完整刀路）
 
 ---
 
@@ -356,7 +365,10 @@ curl -s 'http://127.0.0.1:8080/api/v1/transactions?limit=10' \
 | [transactions-beginner-walkthrough.md](./transactions-beginner-walkthrough.md) | 收支导读 |
 | [realtime-beginner-walkthrough.md](./realtime-beginner-walkthrough.md) | Realtime 导读 |
 | [realtime-websocket.md](./realtime-websocket.md) | WS 协议 |
-| [message-queue.md](./message-queue.md) | Asynq + Pub/Sub |
+| [message-queue.md](./message-queue.md) | RabbitMQ + Pub/Sub |
+| [observability-lan.md](./observability-lan.md) | Prometheus / Grafana / Alertmanager |
+| [elasticsearch-transactions.md](./elasticsearch-transactions.md) | 交易全文 |
+| [cs-agent-eino.md](./cs-agent-eino.md) | 客服 Agent |
 | [FEISHU_SYNC.md](./FEISHU_SYNC.md) | 飞书同步说明 |
 | `.harness/README.md` | Agent 角色编排 |
 

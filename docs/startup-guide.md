@@ -32,7 +32,7 @@ go version
 ```text
 my_go_study/
 ├── cmd/api/main.go                    # 应用入口
-├── cmd/worker/main.go                 # Asynq Worker
+├── cmd/worker/main.go                 # RabbitMQ Worker
 ├── configs/                           # YAML 配置（按 APP_ENV 合并）
 │   ├── config.yaml
 │   ├── config.dev.yaml
@@ -119,7 +119,7 @@ cp .env.local.example .env.local   # 填写 service_role
 
 ### 方式 A：Docker Compose（推荐，零基础最快）
 
-一条命令启动 **PostgreSQL + Redis + App + Worker**：
+一条命令启动 **PostgreSQL + Redis + RabbitMQ + Elasticsearch + App + Worker + 观测栈**：
 
 ```bash
 cd my_go_study
@@ -139,8 +139,15 @@ make docker-up
 |------|--------|------|------|
 | PostgreSQL | `my_go_study_postgres` | `127.0.0.1:5432` | 仅本机 |
 | Redis | `my_go_study_redis` | `127.0.0.1:6379` | 仅本机 |
-| Go API | `my_go_study_app` | `8080` | HTTP healthcheck |
-| Worker | `my_go_study_worker` | 无 | 已 disable 镜像默认 /health 检查 |
+| RabbitMQ | `my_go_study_rabbitmq` | `127.0.0.1:5672` / `15672` | 管理 UI guest/guest |
+| Elasticsearch | `my_go_study_elasticsearch` | `127.0.0.1:9200` | 交易全文 |
+| Go API | `my_go_study_app` | `8080` | HTTP healthcheck；`/metrics` |
+| Worker | `my_go_study_worker` | 无 | RabbitMQ 消费；已 disable 镜像默认 /health |
+| Prometheus | `my_go_study_prometheus` | `127.0.0.1:9091` | 抓取 app `/metrics` |
+| Alertmanager | `my_go_study_alertmanager` | `127.0.0.1:9093` | 飞书经 feishu-adapter |
+| Grafana | `my_go_study_grafana` | `127.0.0.1:3000` | 默认 admin/admin |
+
+观测细节 → [observability-lan.md](./observability-lan.md)；ES → [elasticsearch-transactions.md](./elasticsearch-transactions.md)。
 
 查看日志：
 
@@ -481,7 +488,7 @@ make test-realtime   # 一键联调（需 Redis + make run）
 | 命令 | 说明 |
 |------|------|
 | `make run` | `go run ./cmd/api` |
-| `make run-worker` | `go run ./cmd/worker`（Asynq 消费，dev 默认需与 API 同启） |
+| `make run-worker` | `go run ./cmd/worker`（RabbitMQ 消费，dev 默认需与 API 同启） |
 | `make build` | 编译到 `bin/api` 与 `bin/worker` |
 | `make test` | 运行全部单元测试 |
 | `make tidy` | `go mod tidy` |

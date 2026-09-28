@@ -11,6 +11,9 @@
     └── docs/
         ├── startup-guide
         ├── message-queue
+        ├── observability-lan
+        ├── elasticsearch-transactions
+        ├── cs-agent-eino
         ├── realtime-websocket
         └── ...
 ```
