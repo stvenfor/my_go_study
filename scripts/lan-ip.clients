@@ -1,13 +1,18 @@
 # 局域网 IP 同步清单。路径相对 my_go_study 根目录。
 # kind: env（KEY=值）或 quote（前缀含开引号，脚本替换引号内的 IP）
 # 新增客户端：加一行即可，不必改脚本。
-env	../../my_ai_project	.env.lan	BACKEND_HOST
-quote	../../my_ai_project	commons/network/lib/http/lan_host.dart	static const fallback = '
-env	../../my_kmp_project	.env.lan	BACKEND_HOST
-quote	../../my_kmp_project	core/network/src/commonMain/kotlin/com.example.my_kmp_project/core/network/LanHost.kt	const val fallback: String = "
-env	../../my_rn_project	.env.lan	BACKEND_HOST
-quote	../../my_rn_project	packages/core/config/src/lanHost.ts	export const fallback = '
-env	../../kmp_kuikly	.env.lan	BACKEND_HOST
-quote	../../kmp_kuikly	feature-home/src/commonMain/kotlin/com/example/kuikly/feature/home/pages/LanHost.kt	const val fallback: String = "
-env	../../uni_ai_project	.env.lan	BACKEND_HOST
-quote	../../uni_ai_project	src/lan-host.ts	export const fallback = '
+# 注意：客户端必须是 my_go_study 的**同级目录**（`../<name>`）。路径写错不会报错，
+#       脚本只会打印「跳过（目录不存在）」继续跑 —— 表现为 make sync-lan-ip 后客户端 IP 仍是旧的。
+#
+# ⚠️ 不要用 kind=quote 往客户端**源码**里写 IP。机器相关的值一旦入库，git 历史会被反复覆盖
+#    （my_ai_project 的 lan_host.dart 就发生过 192.168.0.102 ↔ 172.16.0.43 来回翻烙饼），
+#    每个拉代码的人都得手改。只同步 gitignore 掉的配置文件（kind=env）。
+env	../my_ai_project	.env.lan	BACKEND_HOST
+env	../my_kmp_project	.env.lan	BACKEND_HOST
+quote	../my_kmp_project	core/network/src/commonMain/kotlin/com.example.my_kmp_project/core/network/LanHost.kt	const val fallback: String = "
+env	../my_rn_project	.env.lan	BACKEND_HOST
+quote	../my_rn_project	packages/core/config/src/lanHost.ts	export const fallback = '
+env	../kmp_kuikly	.env.lan	BACKEND_HOST
+quote	../kmp_kuikly	feature-home/src/commonMain/kotlin/com/example/kuikly/feature/home/pages/LanHost.kt	const val fallback: String = "
+env	../uni_ai_project	.env.lan	BACKEND_HOST
+quote	../uni_ai_project	src/lan-host.ts	export const fallback = '
