@@ -64,6 +64,10 @@ queue:
   pubsub:
     channel: realtime:fanout
 
+# 交易全文（空 url 关闭；lan-up 默认 http://elasticsearch:9200）
+elasticsearch:
+  url: ""
+
 # 定时任务（每小时系统通知，需 make run-worker）
 scheduler:
   enabled: false

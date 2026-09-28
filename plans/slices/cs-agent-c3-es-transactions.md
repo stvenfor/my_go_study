@@ -52,9 +52,22 @@
 
 ## Context Card — cs-agent-c3-es-transactions
 - 已完成:
+  - compose 单节点 ES + lan-up 默认 ELASTICSEARCH_URL
+  - transactions 索引 mapping + CUD best-effort 同步（失败不 500）
+  - GET /api/v1/transactions/search SessionAuth + user_id 隔离
+  - 配置/文档/Partial reindex 脚本；定向 go test + go build
 - 未做/Deferred:
+  - 全量 PG→ES reindex
+  - lan-up 人证（创建→搜索 / ES down 写路径）
 - 关键文件:
+  - internal/repository/es/*
+  - internal/domain/repository/transaction_search.go
+  - docs/elasticsearch-transactions.md
+  - scripts/reindex_transactions_es.sh
+  - docs/acceptance-records/2026-09-28-cs-agent-c3-es-transactions.md
 - harness: post ok?
 - 下一 Slice 建议: cs-agent-c4-eino-cs-agent
 - 已知坑:
   - 必须 Eq user_id；索引文档勿漏隔离字段
+  - /transactions/search 须注册在 /:id 之前
+  - 同步索引无 outbox；ES 失败仅日志+指标

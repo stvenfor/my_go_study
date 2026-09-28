@@ -28,6 +28,12 @@ var (
 		},
 		[]string{"method", "route"},
 	)
+	ESTransactionIndexFailures = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "es_transaction_index_failures_total",
+			Help: "Failed best-effort Elasticsearch index/delete for transactions.",
+		},
+	)
 )
 
 func init() {
@@ -36,6 +42,7 @@ func init() {
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		HTTPRequestsTotal,
 		HTTPRequestDuration,
+		ESTransactionIndexFailures,
 	)
 }
 

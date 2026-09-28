@@ -15,22 +15,38 @@ import (
 // Config 聚合所有运行时配置项。
 type Config struct {
 	// AppEnv 来自 APP_ENV（dev/lan/prod…），与 gin server.mode（debug/release）无关。
-	AppEnv     string          `mapstructure:"-"`
-	Server     ServerConfig    `mapstructure:"server"`
-	GRPC       GRPCConfig      `mapstructure:"grpc"`
-	Database   DatabaseConfig  `mapstructure:"database"`
-	Redis      RedisConfig     `mapstructure:"redis"`
-	JWT        JWTConfig       `mapstructure:"jwt"`
-	Auth       AuthConfig      `mapstructure:"auth"`
-	Log        LogConfig       `mapstructure:"log"`
-	Supabase   SupabaseConfig  `mapstructure:"supabase"`
-	Realtime   RealtimeConfig  `mapstructure:"realtime"`
-	Queue      QueueConfig     `mapstructure:"queue"`
-	Scheduler  SchedulerConfig `mapstructure:"scheduler"`
-	SSE        SSEConfig       `mapstructure:"sse"`
-	Community  CommunityConfig  `mapstructure:"community"`
-	ShortVideo ShortVideoConfig `mapstructure:"short_video"`
-	ThirdParty ThirdPartyConfig `mapstructure:"third_party"`
+	AppEnv        string              `mapstructure:"-"`
+	Server        ServerConfig        `mapstructure:"server"`
+	GRPC          GRPCConfig          `mapstructure:"grpc"`
+	Database      DatabaseConfig      `mapstructure:"database"`
+	Redis         RedisConfig         `mapstructure:"redis"`
+	JWT           JWTConfig           `mapstructure:"jwt"`
+	Auth          AuthConfig          `mapstructure:"auth"`
+	Log           LogConfig           `mapstructure:"log"`
+	Supabase      SupabaseConfig      `mapstructure:"supabase"`
+	Realtime      RealtimeConfig      `mapstructure:"realtime"`
+	Queue         QueueConfig         `mapstructure:"queue"`
+	Scheduler     SchedulerConfig     `mapstructure:"scheduler"`
+	SSE           SSEConfig           `mapstructure:"sse"`
+	Community     CommunityConfig     `mapstructure:"community"`
+	ShortVideo    ShortVideoConfig    `mapstructure:"short_video"`
+	ThirdParty    ThirdPartyConfig    `mapstructure:"third_party"`
+	Elasticsearch ElasticsearchConfig `mapstructure:"elasticsearch"`
+}
+
+// ElasticsearchConfig 交易全文索引（空 URL 表示关闭）。
+type ElasticsearchConfig struct {
+	URL string `mapstructure:"url"`
+}
+
+// Enabled 是否配置了 ES。
+func (e ElasticsearchConfig) Enabled() bool {
+	return strings.TrimSpace(e.URL) != ""
+}
+
+// BaseURL 去掉尾斜杠。
+func (e ElasticsearchConfig) BaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(e.URL), "/")
 }
 
 // CommunityConfig 社区动态。
@@ -323,10 +339,10 @@ type LogConfig struct {
 
 // QueueConfig 异步任务队列与多实例 WS 广播配置。
 type QueueConfig struct {
-	Enabled  bool                 `mapstructure:"enabled"`
+	Enabled   bool                `mapstructure:"enabled"`
 	PushAsync *bool               `mapstructure:"push_async"`
-	RabbitMQ QueueRabbitMQConfig  `mapstructure:"rabbitmq"`
-	PubSub   QueuePubSubConfig    `mapstructure:"pubsub"`
+	RabbitMQ  QueueRabbitMQConfig `mapstructure:"rabbitmq"`
+	PubSub    QueuePubSubConfig   `mapstructure:"pubsub"`
 }
 
 // QueueRabbitMQConfig RabbitMQ 任务队列参数。
@@ -605,6 +621,7 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("queue.rabbitmq.queue", "RABBITMQ_QUEUE")
 	_ = v.BindEnv("queue.rabbitmq.prefetch", "RABBITMQ_PREFETCH")
 	_ = v.BindEnv("queue.pubsub.channel", "QUEUE_PUBSUB_CHANNEL")
+	_ = v.BindEnv("elasticsearch.url", "ELASTICSEARCH_URL")
 	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
 	_ = v.BindEnv("scheduler.hourly_notify.enabled", "SCHEDULER_HOURLY_NOTIFY_ENABLED")
 	_ = v.BindEnv("realtime.public_ws_host", "REALTIME_PUBLIC_WS_HOST")

@@ -31,6 +31,10 @@ queue:
   enabled: true
   push_async: false
 
+# 本机 make run 时若已 docker 起 ES：ELASTICSEARCH_URL=http://127.0.0.1:9200
+# elasticsearch:
+#   url: http://127.0.0.1:9200
+
 # 开发环境默认关闭 Cron，用手动触发：make trigger-hourly-notify
 scheduler:
   enabled: true
