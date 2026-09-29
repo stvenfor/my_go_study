@@ -1,0 +1,445 @@
+package postgres
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"model/entity"
+	"model/repository"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+)
+
+// escapeILIKE 转义 % _ \，配合 ESCAPE '\'。
+func escapeILIKE(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+func ilikeContains(q string) string {
+	return "%" + escapeILIKE(q) + "%"
+}
+
+type CommunityRepository struct {
+	db *gorm.DB
+}
+
+func NewCommunityRepository(db *gorm.DB) *CommunityRepository {
+	return &CommunityRepository{db: db}
+}
+
+func (r *CommunityRepository) ListTopics(ctx context.Context, q string, offset, limit int) ([]entity.WysTopic, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.WysTopic{})
+	if q != "" {
+		tx = tx.Where("name ILIKE ? ESCAPE '\\'", ilikeContains(q))
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var list []entity.WysTopic
+	err := tx.Order("is_ask_everyone DESC, heat DESC, created_at DESC").
+		Offset(offset).Limit(limit).Find(&list).Error
+	return list, total, err
+}
+
+func (r *CommunityRepository) GetTopic(ctx context.Context, id uuid.UUID) (*entity.WysTopic, error) {
+	var t entity.WysTopic
+	if err := r.db.WithContext(ctx).First(&t, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repository.ErrCommunityNotFound
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *CommunityRepository) TopicsByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]entity.WysTopic, error) {
+	out := map[uuid.UUID]entity.WysTopic{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []entity.WysTopic
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, t := range rows {
+		out[t.ID] = t
+	}
+	return out, nil
+}
+
+func (r *CommunityRepository) CreatePost(ctx context.Context, post *entity.WysPost) error {
+	return r.db.WithContext(ctx).Create(post).Error
+}
+
+func (r *CommunityRepository) GetPost(ctx context.Context, id uuid.UUID) (*entity.WysPost, error) {
+	var p entity.WysPost
+	if err := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id).First(&p).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, repository.ErrCommunityNotFound
+		}
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *CommunityRepository) SoftDeletePost(ctx context.Context, id uuid.UUID, userID string) (bool, error) {
+	now := time.Now()
+	res := r.db.WithContext(ctx).Model(&entity.WysPost{}).
+		Where("id = ? AND user_id = ? AND deleted_at IS NULL", id, userID).
+		Update("deleted_at", now)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+func (r *CommunityRepository) SearchPosts(ctx context.Context, q string, offset, limit int) ([]entity.WysPost, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.WysPost{}).Where("deleted_at IS NULL")
+	if q != "" {
+		tx = tx.Where("content ILIKE ? ESCAPE '\\'", ilikeContains(q))
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var list []entity.WysPost
+	err := tx.Order("heat DESC, created_at DESC").Offset(offset).Limit(limit).Find(&list).Error
+	return list, total, err
+}
+
+func (r *CommunityRepository) ListPosts(ctx context.Context, viewerID, tab string, offset, limit int) ([]entity.WysPost, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.WysPost{}).Where("deleted_at IS NULL")
+	switch tab {
+	case repository.PostTabFollowing:
+		tx = tx.Where(
+			"user_id IN (SELECT followee_id FROM wys_user_follows WHERE follower_id = ?)",
+			viewerID,
+		)
+	case repository.PostTabHot, repository.PostTabLatest, "":
+		// no extra filter
+	default:
+		// unknown tab treated as latest by caller; keep unfiltered
+	}
+
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	order := "created_at DESC"
+	if tab == repository.PostTabHot {
+		order = "heat DESC, created_at DESC"
+	}
+	var list []entity.WysPost
+	err := tx.Order(order).Offset(offset).Limit(limit).Find(&list).Error
+	return list, total, err
+}
+
+func (r *CommunityRepository) AddLike(ctx context.Context, postID uuid.UUID, userID string) (bool, error) {
+	var added bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		like := entity.WysPostLike{PostID: postID, UserID: userID}
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&like)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+		upd := tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL", postID).
+			Updates(map[string]any{
+				"like_count": gorm.Expr("like_count + 1"),
+				"heat":       gorm.Expr("heat + 2"),
+			})
+		if upd.Error != nil {
+			return upd.Error
+		}
+		if upd.RowsAffected == 0 {
+			return repository.ErrCommunityNotFound
+		}
+		added = true
+		return nil
+	})
+	return added, err
+}
+
+func (r *CommunityRepository) RemoveLike(ctx context.Context, postID uuid.UUID, userID string) (bool, error) {
+	var removed bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("post_id = ? AND user_id = ?", postID, userID).Delete(&entity.WysPostLike{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+		upd := tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL AND like_count > 0", postID).
+			Updates(map[string]any{
+				"like_count": gorm.Expr("like_count - 1"),
+				"heat":       gorm.Expr("GREATEST(heat - 2, 0)"),
+			})
+		if upd.Error != nil {
+			return upd.Error
+		}
+		removed = true
+		return nil
+	})
+	return removed, err
+}
+
+func (r *CommunityRepository) LikedPostIDs(ctx context.Context, userID string, postIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
+	out := map[uuid.UUID]bool{}
+	if len(postIDs) == 0 {
+		return out, nil
+	}
+	var likes []entity.WysPostLike
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND post_id IN ?", userID, postIDs).
+		Find(&likes).Error; err != nil {
+		return nil, err
+	}
+	for _, l := range likes {
+		out[l.PostID] = true
+	}
+	return out, nil
+}
+
+func (r *CommunityRepository) CreateComment(ctx context.Context, c *entity.WysPostComment) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var n int64
+		if err := tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL", c.PostID).Count(&n).Error; err != nil {
+			return err
+		}
+		if n == 0 {
+			return repository.ErrCommunityNotFound
+		}
+		if err := tx.Create(c).Error; err != nil {
+			return err
+		}
+		return tx.Model(&entity.WysPost{}).Where("id = ? AND deleted_at IS NULL", c.PostID).
+			Updates(map[string]any{
+				"comment_count": gorm.Expr("comment_count + 1"),
+				"heat":          gorm.Expr("heat + 1"),
+			}).Error
+	})
+}
+
+func (r *CommunityRepository) ListComments(ctx context.Context, postID uuid.UUID, offset, limit int) ([]entity.WysPostComment, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.WysPostComment{}).
+		Where("post_id = ? AND deleted_at IS NULL", postID)
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var list []entity.WysPostComment
+	err := tx.Order("created_at ASC").Offset(offset).Limit(limit).Find(&list).Error
+	return list, total, err
+}
+
+func (r *CommunityRepository) PreviewComments(ctx context.Context, postID uuid.UUID, limit int) ([]entity.WysPostComment, error) {
+	var list []entity.WysPostComment
+	err := r.db.WithContext(ctx).
+		Where("post_id = ? AND deleted_at IS NULL", postID).
+		Order("created_at DESC").Limit(limit).Find(&list).Error
+	for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
+		list[i], list[j] = list[j], list[i]
+	}
+	return list, err
+}
+
+func (r *CommunityRepository) AuthorsByIDs(ctx context.Context, ids []string) (map[string]repository.AuthorProfile, error) {
+	out := map[string]repository.AuthorProfile{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var users []entity.User
+	if err := r.db.WithContext(ctx).Where("user_id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		out[u.UserID] = repository.AuthorProfile{
+			UserID:   u.UserID,
+			Nickname: u.UserName,
+			Avatar:   u.AvatarURL,
+		}
+	}
+	return out, nil
+}
+
+func (r *CommunityRepository) SearchUsers(ctx context.Context, q string, offset, limit int) ([]repository.AuthorProfile, int64, error) {
+	tx := r.db.WithContext(ctx).Model(&entity.User{}).Where("deleted_at IS NULL")
+	if q != "" {
+		tx = tx.Where("user_name ILIKE ? ESCAPE '\\'", ilikeContains(q))
+	}
+	var total int64
+	if err := tx.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var users []entity.User
+	err := tx.Order("user_name ASC").Offset(offset).Limit(limit).Find(&users).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]repository.AuthorProfile, 0, len(users))
+	for _, u := range users {
+		out = append(out, repository.AuthorProfile{
+			UserID: u.UserID, Nickname: u.UserName, Avatar: u.AvatarURL,
+		})
+	}
+	return out, total, nil
+}
+
+func (r *CommunityRepository) FollowingSet(ctx context.Context, followerID string, followeeIDs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if followerID == "" || len(followeeIDs) == 0 {
+		return out, nil
+	}
+	var rows []entity.WysUserFollow
+	err := r.db.WithContext(ctx).
+		Where("follower_id = ? AND followee_id IN ?", followerID, followeeIDs).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.FolloweeID] = true
+	}
+	return out, nil
+}
+
+// EnsureCommunitySearchIndexes pg_trgm + GIN（失败仅记日志，搜索仍可用 ILIKE）。
+func EnsureCommunitySearchIndexes(db *gorm.DB) error {
+	stmts := []string{
+		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
+		`CREATE INDEX IF NOT EXISTS idx_wys_topics_name_trgm ON wys_topics USING gin (name gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_wys_posts_content_trgm ON wys_posts USING gin (content gin_trgm_ops)`,
+		`CREATE INDEX IF NOT EXISTS idx_users_user_name_trgm ON users USING gin (user_name gin_trgm_ops)`,
+	}
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *CommunityRepository) FollowUser(ctx context.Context, followerID, followeeID string) (bool, error) {
+	var added bool
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row := entity.WysUserFollow{FollowerID: followerID, FolloweeID: followeeID}
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+		if res.Error != nil {
+			return res.Error
+		}
+		added = res.RowsAffected > 0
+		return nil
+	})
+	return added, err
+}
+
+func (r *CommunityRepository) UnfollowUser(ctx context.Context, followerID, followeeID string) (bool, error) {
+	res := r.db.WithContext(ctx).
+		Where("follower_id = ? AND followee_id = ?", followerID, followeeID).
+		Delete(&entity.WysUserFollow{})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}
+
+func (r *CommunityRepository) IsFollowing(ctx context.Context, followerID, followeeID string) (bool, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&entity.WysUserFollow{}).
+		Where("follower_id = ? AND followee_id = ?", followerID, followeeID).
+		Count(&n).Error
+	return n > 0, err
+}
+
+func (r *CommunityRepository) BackfillPostHeat(ctx context.Context) error {
+	return r.db.WithContext(ctx).Exec(
+		`UPDATE wys_posts SET heat = (like_count * 2 + comment_count) WHERE deleted_at IS NULL`,
+	).Error
+}
+
+func (r *CommunityRepository) EnsureSeed(ctx context.Context) error {
+	var topicCount int64
+	if err := r.db.WithContext(ctx).Model(&entity.WysTopic{}).Count(&topicCount).Error; err != nil {
+		return err
+	}
+	if topicCount == 0 {
+		topics := []entity.WysTopic{
+			{ID: uuid.New(), Name: "问大家", Heat: 0, IsAskEveryone: true},
+			{ID: uuid.New(), Name: "纳指大涨超2%再创新高", Heat: 1015000},
+			{ID: uuid.New(), Name: "Meta智能体引爆AI交易", Heat: 21500},
+			{ID: uuid.New(), Name: "Flutter开发", Heat: 8800},
+			{ID: uuid.New(), Name: "周末打卡", Heat: 3200},
+		}
+		if err := r.db.WithContext(ctx).Create(&topics).Error; err != nil {
+			return fmt.Errorf("seed topics: %w", err)
+		}
+	}
+
+	var postCount int64
+	if err := r.db.WithContext(ctx).Model(&entity.WysPost{}).Where("deleted_at IS NULL").Count(&postCount).Error; err != nil {
+		return err
+	}
+	if postCount > 0 {
+		return nil
+	}
+
+	var user entity.User
+	if err := r.db.WithContext(ctx).Order("user_id ASC").First(&user).Error; err != nil {
+		return nil
+	}
+
+	var askTopic entity.WysTopic
+	_ = r.db.WithContext(ctx).Where("is_ask_everyone = ?", true).First(&askTopic).Error
+	var flutterTopic entity.WysTopic
+	_ = r.db.WithContext(ctx).Where("name = ?", "Flutter开发").First(&flutterTopic).Error
+
+	imgJSON, _ := json.Marshal([]string{
+		"https://picsum.photos/seed/wys_seed_1/400/400",
+		"https://picsum.photos/seed/wys_seed_2/400/400",
+	})
+	vid := "https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4"
+	cover := "https://picsum.photos/seed/wys_seed_video/640/360"
+
+	posts := []entity.WysPost{
+		{
+			ID: uuid.New(), UserID: user.UserID, Content: "社区种子：欢迎来到盘友圈", MediaType: entity.MediaNone,
+			ImageURLs: []byte("[]"), Source: "来自 iPhone",
+		},
+		{
+			ID: uuid.New(), UserID: user.UserID, Content: "分享几张图\n#Flutter开发", MediaType: entity.MediaImage,
+			ImageURLs: imgJSON, Source: "来自 Android", TopicID: ptrUUID(flutterTopic.ID),
+		},
+		{
+			ID: uuid.New(), UserID: user.UserID, Content: "视频打卡\n#问大家", MediaType: entity.MediaVideo,
+			ImageURLs: []byte("[]"), VideoURL: &vid, VideoCoverURL: &cover,
+			Source: "来自 iPhone", IsAskEveryone: true, TopicID: ptrUUID(askTopic.ID),
+		},
+	}
+	for i := range posts {
+		if err := r.db.WithContext(ctx).Create(&posts[i]).Error; err != nil {
+			return fmt.Errorf("seed post: %w", err)
+		}
+	}
+	return nil
+}
+
+func ptrUUID(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
+}
+
+var _ repository.CommunityRepository = (*CommunityRepository)(nil)
