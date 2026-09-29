@@ -13,16 +13,14 @@ database:
 redis:
   addr: localhost:6379
 
-  # 测试环境固定手机号 OTP（仅非 prod APP_ENV（如 dev/lan）生效；逗号分隔多号）
+# 测试环境固定手机号 OTP（仅非 prod APP_ENV（如 dev/lan）生效；逗号分隔多号）
 auth:
   dev_test_phone: "13400000000,13400000001,13400000002,13400000003,13400000004"
   dev_test_otp: "123456"
   dev_test_password: "dev-test-phone-secret"
-
-# 单设备白名单（可选）：内部测试账号可多设备登录
-# auth:
-#   session_whitelist_emails:
-#     - "demo@example.com"
+  # 单设备白名单（可选）：内部测试账号可多设备登录
+  # session_whitelist_emails:
+  #   - "demo@example.com"
 
 # Supabase 常量见 configs/supabase.env（入库）；service_role 见 .env.local
 
@@ -35,7 +33,8 @@ queue:
 # elasticsearch:
 #   url: http://127.0.0.1:9200
 
-# 开发环境默认关闭 Cron，用手动触发：make trigger-hourly-notify
+# 开发环境关闭整点广播 Cron（hourly_notify）；需手动：make trigger-hourly-notify
+# scheduler.enabled 仍为 true，便于 worker 其它调度能力；真正开关在 hourly_notify.enabled
 scheduler:
   enabled: true
   hourly_notify:
