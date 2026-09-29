@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"app/internal/access"
+	"app/internal/shared"
 	"model/entity"
 )
 
@@ -41,7 +42,7 @@ func (u *Service) ListTodoCards(ctx context.Context, actorID string) ([]entity.H
 		return []entity.HomeTodoCard{}, nil
 	}
 	now := u.now()
-	today := shanghaiDate(now)
+	today := shared.ShanghaiDate(now)
 
 	var joinN, followN, apptN, orderN, usedCarN int64
 
@@ -324,7 +325,7 @@ func (u *Service) ListPendingAppointments(ctx context.Context, actorID string) (
 	if err != nil {
 		return nil, err
 	}
-	return u.repo.ListPendingAppointments(ctx, storeID, shanghaiDate(u.now()))
+	return u.repo.ListPendingAppointments(ctx, storeID, shared.ShanghaiDate(u.now()))
 }
 
 // ListPendingReviewOrders 店务审核单。
@@ -381,13 +382,4 @@ func (u *Service) requireStorePerm(ctx context.Context, actorID, perm string) (i
 		return 0, err
 	}
 	return storeID, nil
-}
-
-func shanghaiDate(t time.Time) time.Time {
-	loc, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		loc = time.FixedZone("CST", 8*3600)
-	}
-	local := t.In(loc)
-	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 }

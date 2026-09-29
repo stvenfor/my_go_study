@@ -23,38 +23,35 @@ import (
 // 全部域切完后，*Controller 字段与 registerXxxRoutes 一起删除，Setup 只剩
 // 「公共中间件 + 遍历 DomainRouters」。
 type Options struct {
-	Log                          *zap.Logger
-	Mode                         string
-	JWTManager                   *jwtmanager.Manager
-	UserHandler                  *handler.UserHandler
-	ProfileController            *controller.ProfileController
-	MallController               *controller.MallController
-	MembershipController         *controller.MembershipController
-	CommunityController          *controller.CommunityController
-	ShortVideoController         *controller.ShortVideoController
-	AddressController            *controller.AddressController
-	DealInvoiceController        *controller.DealInvoiceController
-	UsedCarOrderController       *controller.UsedCarOrderController
-	NewCarFollowController       *controller.NewCarFollowController
-	AfterSalesZoneController     *controller.AfterSalesZoneController
-	PurchaseCalculatorController *controller.PurchaseCalculatorController
-	PaymentController            *controller.PaymentController
-	TransactionController        *controller.TransactionController
-	RealtimeController           *controller.RealtimeController
-	JPushController              *controller.JPushController
-	ImController                 *controller.ImController
-	SseController                *controller.SseController
-	CsAgentController            *controller.CsAgentController
-	WSHandler                    *wshandler.Handler
-	Config                       config.Config
-	Supabase                     config.SupabaseConfig
-	DeviceSessionUC              *usecase.DeviceSessionUsecase
-	AccountGate                  gin.HandlerFunc
+	Log                   *zap.Logger
+	Mode                  string
+	JWTManager            *jwtmanager.Manager
+	UserHandler           *handler.UserHandler
+	ProfileController     *controller.ProfileController
+	MallController        *controller.MallController
+	MembershipController  *controller.MembershipController
+	CommunityController   *controller.CommunityController
+	ShortVideoController  *controller.ShortVideoController
+	AddressController     *controller.AddressController
+	PaymentController     *controller.PaymentController
+	TransactionController *controller.TransactionController
+	RealtimeController    *controller.RealtimeController
+	JPushController       *controller.JPushController
+	ImController          *controller.ImController
+	SseController         *controller.SseController
+	CsAgentController     *controller.CsAgentController
+	WSHandler             *wshandler.Handler
+	Config                config.Config
+	Supabase              config.SupabaseConfig
+	DeviceSessionUC       *usecase.DeviceSessionUsecase
+	AccountGate           gin.HandlerFunc
 
 	// SessionAuth 业务会话中间件（LocalSessionAuth / SupabaseSessionAuth）。
 	// 为 nil 时 Setup 按 Config 自行构造，兼容旧调用方。
 	SessionAuth gin.HandlerFunc
-	// DomainRouters 已切片域的路由模块（access / home / points / wallet …）。
+	// DomainRouters 已切片域的路由模块
+	// （access / home / points / wallet / used_car / new_car_follow / after_sales /
+	// deal_invoice / purchase_calculator …）。
 	DomainRouters []shared.Registrable
 }
 
@@ -109,26 +106,6 @@ func Setup(opts Options) *gin.Engine {
 
 	if opts.Config.Auth.IsLocalProvider() && opts.ShortVideoController != nil && sessionAuth != nil {
 		registerShortVideoRoutes(v1, sessionAuth, opts.ShortVideoController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.DealInvoiceController != nil && sessionAuth != nil {
-		registerDealInvoiceRoutes(v1, sessionAuth, opts.DealInvoiceController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.UsedCarOrderController != nil && sessionAuth != nil {
-		registerUsedCarOrderRoutes(v1, sessionAuth, opts.UsedCarOrderController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.NewCarFollowController != nil && sessionAuth != nil {
-		registerNewCarFollowRoutes(v1, sessionAuth, opts.NewCarFollowController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.AfterSalesZoneController != nil && sessionAuth != nil {
-		registerAfterSalesZoneRoutes(v1, sessionAuth, opts.AfterSalesZoneController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() {
-		registerPurchaseCalculatorRoutes(v1, opts.PurchaseCalculatorController)
 	}
 
 	if businessAuth && opts.PaymentController != nil && sessionAuth != nil {

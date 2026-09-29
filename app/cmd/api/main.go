@@ -26,11 +26,16 @@ import (
 	wshandler "app/internal/delivery/ws"
 	"github.com/gin-gonic/gin"
 
-	// 已切成垂直切片的域（阶段 3 批 1）。每域自带 Service + Router。
+	// 已切成垂直切片的域（阶段 3 批 1 通用域 + 批 2 汽车业务域）。每域自带 Service + Router。
 	"app/internal/access"
+	"app/internal/after_sales"
+	"app/internal/deal_invoice"
 	"app/internal/home"
+	"app/internal/new_car_follow"
 	"app/internal/points"
+	"app/internal/purchase_calculator"
 	"app/internal/shared"
+	"app/internal/used_car"
 	"app/internal/wallet"
 
 	esrepo "app/internal/repository/es"
@@ -125,14 +130,17 @@ func run() error {
 	var homeSvc *home.Service
 	var pointsSvc *points.Service
 	var walletSvc *wallet.Service
+	// 批 2 已切片的汽车业务 5 域 Service（原 usecase.UsedCarOrderUsecase /
+	// NewCarFollowUsecase / AfterSalesZoneUsecase / DealInvoiceUsecase /
+	// PurchaseQuoteUsecase 一并下沉到各域）。
+	var usedCarSvc *used_car.Service
+	var newCarFollowSvc *new_car_follow.Service
+	var afterSalesSvc *after_sales.Service
+	var dealInvoiceSvc *deal_invoice.Service
+	var purchaseCalcSvc *purchase_calculator.Service
 	var communityController *controller.CommunityController
 	var shortVideoController *controller.ShortVideoController
 	var addressController *controller.AddressController
-	var dealInvoiceController *controller.DealInvoiceController
-	var usedCarOrderController *controller.UsedCarOrderController
-	var newCarFollowController *controller.NewCarFollowController
-	var afterSalesZoneController *controller.AfterSalesZoneController
-	var purchaseCalculatorController *controller.PurchaseCalculatorController
 	var sbClient *pkgsb.Client
 	var transactionController *controller.TransactionController
 	var transactionUC *usecase.TransactionUsecase
@@ -199,49 +207,39 @@ func run() error {
 		} else {
 			log.Info("首页待办装箱演示已就绪（13400000000 / 1大3中4小）")
 		}
-		dealInvoiceRepo := postgres.NewDealInvoiceRepository(db)
-		if err := postgres.EnsureDealInvoiceSchema(db); err != nil {
+		dealInvoiceSvc = deal_invoice.NewService(deal_invoice.NewPostgresRepository(db), accessSvc)
+		if err := deal_invoice.EnsureSchema(db); err != nil {
 			log.Warn("成交发票表准备失败", zap.Error(err))
 		}
-		dealInvoiceUC := usecase.NewDealInvoiceUsecase(dealInvoiceRepo, accessSvc)
-		dealInvoiceController = controller.NewDealInvoiceController(dealInvoiceUC)
-		if err := postgres.EnsureDealInvoiceSeed(db); err != nil {
+		if err := deal_invoice.EnsureSeed(db); err != nil {
 			log.Warn("成交发票种子写入失败", zap.Error(err))
 		} else {
 			log.Info("成交发票种子已就绪（13400000000）")
 		}
-		usedCarOrderRepo := postgres.NewUsedCarOrderRepository(db)
-		if err := postgres.EnsureUsedCarOrderSchema(db); err != nil {
+		usedCarSvc = used_car.NewService(used_car.NewPostgresRepository(db), accessSvc)
+		if err := used_car.EnsureSchema(db); err != nil {
 			log.Warn("二手车业务单表准备失败", zap.Error(err))
 		}
-		usedCarOrderUC := usecase.NewUsedCarOrderUsecase(usedCarOrderRepo, accessSvc)
-		usedCarOrderController = controller.NewUsedCarOrderController(usedCarOrderUC)
-		if err := postgres.EnsureUsedCarOrderSeed(db); err != nil {
+		if err := used_car.EnsureSeed(db); err != nil {
 			log.Warn("二手车业务单种子写入失败", zap.Error(err))
 		} else {
 			log.Info("二手车业务单种子已就绪（13400000000）")
 		}
-		newCarFollowRepo := postgres.NewNewCarFollowRepository(db)
-		if err := postgres.EnsureNewCarFollowSchema(db); err != nil {
+		newCarFollowSvc = new_car_follow.NewService(new_car_follow.NewPostgresRepository(db), accessSvc)
+		if err := new_car_follow.EnsureSchema(db); err != nil {
 			log.Warn("新车跟进档案表准备失败", zap.Error(err))
 		}
-		newCarFollowUC := usecase.NewNewCarFollowUsecase(newCarFollowRepo, accessSvc)
-		newCarFollowController = controller.NewNewCarFollowController(newCarFollowUC)
-		if err := postgres.EnsureNewCarFollowSeed(db); err != nil {
+		if err := new_car_follow.EnsureSeed(db); err != nil {
 			log.Warn("新车跟进档案种子写入失败", zap.Error(err))
 		} else {
 			log.Info("新车跟进档案种子已就绪（13400000000）")
 		}
-		afterSalesZoneRepo := postgres.NewAfterSalesZoneRepository(db)
-		if err := postgres.EnsureAfterSalesZoneSchema(db); err != nil {
+		afterSalesSvc = after_sales.NewService(after_sales.NewPostgresRepository(db), accessSvc)
+		if err := after_sales.EnsureSchema(db); err != nil {
 			log.Warn("售后专区表准备失败", zap.Error(err))
 		}
-		afterSalesZoneUC := usecase.NewAfterSalesZoneUsecase(afterSalesZoneRepo, accessSvc)
-		afterSalesZoneController = controller.NewAfterSalesZoneController(afterSalesZoneUC)
-		financeRepo := postgres.NewAutoFinanceRepository(db)
-		purchaseQuoteUC := usecase.NewPurchaseQuoteUsecase(financeRepo)
-		purchaseCalculatorController = controller.NewPurchaseCalculatorController(purchaseQuoteUC)
-		if err := postgres.EnsureAutoFinanceSeed(db); err != nil {
+		purchaseCalcSvc = purchase_calculator.NewService(purchase_calculator.NewPostgresRepository(db))
+		if err := purchase_calculator.EnsureSeed(db); err != nil {
 			log.Warn("购车金融产品种子写入失败", zap.Error(err))
 		} else {
 			log.Info("购车金融产品种子已就绪")
@@ -463,36 +461,51 @@ func run() error {
 		domainRouters = append(domainRouters, wallet.NewRouter(walletSvc, sessionAuth, accountGate))
 	}
 
+	// 批 2 已切片的汽车业务 5 域路由。
+	// purchase_calculator 是公开域（无身份、无 SessionAuth），只在本地
+	// provider 下装配 —— 与切片前 registerPurchaseCalculatorRoutes 的
+	// `IsLocalProvider()` 门控一致（该 Service 只在本地分支构造）。
+	if usedCarSvc != nil {
+		domainRouters = append(domainRouters, used_car.NewRouter(usedCarSvc, sessionAuth, accountGate))
+	}
+	if newCarFollowSvc != nil {
+		domainRouters = append(domainRouters, new_car_follow.NewRouter(newCarFollowSvc, sessionAuth, accountGate))
+	}
+	if afterSalesSvc != nil {
+		domainRouters = append(domainRouters, after_sales.NewRouter(afterSalesSvc, sessionAuth, accountGate))
+	}
+	if dealInvoiceSvc != nil {
+		domainRouters = append(domainRouters, deal_invoice.NewRouter(dealInvoiceSvc, sessionAuth, accountGate))
+	}
+	if purchaseCalcSvc != nil {
+		domainRouters = append(domainRouters, purchase_calculator.NewRouter(purchaseCalcSvc))
+	}
+
 	engine := router.Setup(router.Options{
-		Log:                          log,
-		Mode:                         cfg.Server.Mode,
-		JWTManager:                   jwtMgr,
-		UserHandler:                  userHandler,
-		ProfileController:            profileController,
-		MallController:               mallController,
-		MembershipController:         membershipController,
-		CommunityController:          communityController,
-		ShortVideoController:         shortVideoController,
-		AddressController:            addressController,
-		DealInvoiceController:        dealInvoiceController,
-		UsedCarOrderController:       usedCarOrderController,
-		NewCarFollowController:       newCarFollowController,
-		AfterSalesZoneController:     afterSalesZoneController,
-		PurchaseCalculatorController: purchaseCalculatorController,
-		PaymentController:            paymentController,
-		TransactionController:        transactionController,
-		RealtimeController:           realtimeController,
-		JPushController:              jpushController,
-		ImController:                 imController,
-		SseController:                sseController,
-		CsAgentController:            csAgentController,
-		WSHandler:                    wsGateway,
-		Config:                       *cfg,
-		Supabase:                     cfg.Supabase,
-		DeviceSessionUC:              deviceSessionUC,
-		AccountGate:                  accountGate,
-		SessionAuth:                  sessionAuth,
-		DomainRouters:                domainRouters,
+		Log:                   log,
+		Mode:                  cfg.Server.Mode,
+		JWTManager:            jwtMgr,
+		UserHandler:           userHandler,
+		ProfileController:     profileController,
+		MallController:        mallController,
+		MembershipController:  membershipController,
+		CommunityController:   communityController,
+		ShortVideoController:  shortVideoController,
+		AddressController:     addressController,
+		PaymentController:     paymentController,
+		TransactionController: transactionController,
+		RealtimeController:    realtimeController,
+		JPushController:       jpushController,
+		ImController:          imController,
+		SseController:         sseController,
+		CsAgentController:     csAgentController,
+		WSHandler:             wsGateway,
+		Config:                *cfg,
+		Supabase:              cfg.Supabase,
+		DeviceSessionUC:       deviceSessionUC,
+		AccountGate:           accountGate,
+		SessionAuth:           sessionAuth,
+		DomainRouters:         domainRouters,
 	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
