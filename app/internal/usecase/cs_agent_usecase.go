@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"app/internal/repository/csagent"
+	"app/internal/shared"
 	"common/config"
 	"github.com/google/uuid"
 	"model/entity"
@@ -87,7 +88,7 @@ func (u *CsAgentUsecase) run(
 	})
 
 	toolJSON, toolErr := u.runSearchTool(ctx, userID, prompt)
-	if toolErr != nil && !errors.Is(toolErr, ErrTransactionSearchUnavailable) {
+	if toolErr != nil && !errors.Is(toolErr, shared.ErrSearchUnavailable) {
 		send(entity.SSEEventError, entity.SSEEventData{
 			Error: &entity.SSEErrorBody{Code: entity.SSEErrorInternal, Message: toolErr.Error()},
 		})

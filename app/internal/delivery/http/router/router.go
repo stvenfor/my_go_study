@@ -23,35 +23,30 @@ import (
 // 全部域切完后，*Controller 字段与 registerXxxRoutes 一起删除，Setup 只剩
 // 「公共中间件 + 遍历 DomainRouters」。
 type Options struct {
-	Log                   *zap.Logger
-	Mode                  string
-	JWTManager            *jwtmanager.Manager
-	UserHandler           *handler.UserHandler
-	ProfileController     *controller.ProfileController
-	MallController        *controller.MallController
-	MembershipController  *controller.MembershipController
-	CommunityController   *controller.CommunityController
-	ShortVideoController  *controller.ShortVideoController
-	AddressController     *controller.AddressController
-	PaymentController     *controller.PaymentController
-	TransactionController *controller.TransactionController
-	RealtimeController    *controller.RealtimeController
-	JPushController       *controller.JPushController
-	ImController          *controller.ImController
-	SseController         *controller.SseController
-	CsAgentController     *controller.CsAgentController
-	WSHandler             *wshandler.Handler
-	Config                config.Config
-	Supabase              config.SupabaseConfig
-	DeviceSessionUC       *usecase.DeviceSessionUsecase
-	AccountGate           gin.HandlerFunc
+	Log                *zap.Logger
+	Mode               string
+	JWTManager         *jwtmanager.Manager
+	UserHandler        *handler.UserHandler
+	ProfileController  *controller.ProfileController
+	AddressController  *controller.AddressController
+	RealtimeController *controller.RealtimeController
+	JPushController    *controller.JPushController
+	ImController       *controller.ImController
+	SseController      *controller.SseController
+	CsAgentController  *controller.CsAgentController
+	WSHandler          *wshandler.Handler
+	Config             config.Config
+	Supabase           config.SupabaseConfig
+	DeviceSessionUC    *usecase.DeviceSessionUsecase
+	AccountGate        gin.HandlerFunc
 
 	// SessionAuth 业务会话中间件（LocalSessionAuth / SupabaseSessionAuth）。
 	// 为 nil 时 Setup 按 Config 自行构造，兼容旧调用方。
 	SessionAuth gin.HandlerFunc
 	// DomainRouters 已切片域的路由模块
 	// （access / home / points / wallet / used_car / new_car_follow / after_sales /
-	// deal_invoice / purchase_calculator …）。
+	// deal_invoice / purchase_calculator / mall / membership / payment /
+	// community / short_video / transaction …）。
 	DomainRouters []shared.Registrable
 }
 
@@ -84,32 +79,8 @@ func Setup(opts Options) *gin.Engine {
 
 	registerUserRoutes(v1, opts.JWTManager, opts.UserHandler, sessionAuth, opts.AccountGate, opts.AddressController)
 
-	if businessAuth && opts.TransactionController != nil && sessionAuth != nil {
-		registerTransactionRoutes(v1, sessionAuth, opts.TransactionController, opts.AccountGate)
-	}
-
 	if businessAuth && opts.ProfileController != nil && sessionAuth != nil {
 		registerProfileRoutes(v1, sessionAuth, opts.ProfileController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.MallController != nil && sessionAuth != nil {
-		registerMallRoutes(v1, sessionAuth, opts.MallController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.MembershipController != nil && sessionAuth != nil {
-		registerMembershipRoutes(v1, sessionAuth, opts.MembershipController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.CommunityController != nil && sessionAuth != nil {
-		registerCommunityRoutes(v1, sessionAuth, opts.CommunityController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.ShortVideoController != nil && sessionAuth != nil {
-		registerShortVideoRoutes(v1, sessionAuth, opts.ShortVideoController, opts.AccountGate)
-	}
-
-	if businessAuth && opts.PaymentController != nil && sessionAuth != nil {
-		registerPaymentRoutes(v1, sessionAuth, opts.PaymentController, opts.AccountGate)
 	}
 
 	if businessAuth && opts.RealtimeController != nil && sessionAuth != nil {

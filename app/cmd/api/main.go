@@ -26,19 +26,25 @@ import (
 	wshandler "app/internal/delivery/ws"
 	"github.com/gin-gonic/gin"
 
-	// 已切成垂直切片的域（阶段 3 批 1 通用域 + 批 2 汽车业务域）。每域自带 Service + Router。
+	// 已切成垂直切片的域（阶段 3：批 1 通用域 + 批 2 汽车业务域 + 批 3 电商/社区域）。
+	// 每域自带 Service + Router。
 	"app/internal/access"
 	"app/internal/after_sales"
+	"app/internal/community"
 	"app/internal/deal_invoice"
 	"app/internal/home"
+	"app/internal/mall"
+	"app/internal/membership"
 	"app/internal/new_car_follow"
+	"app/internal/payment"
 	"app/internal/points"
 	"app/internal/purchase_calculator"
 	"app/internal/shared"
+	"app/internal/short_video"
+	"app/internal/transaction"
 	"app/internal/used_car"
 	"app/internal/wallet"
 
-	esrepo "app/internal/repository/es"
 	llmrepo "app/internal/repository/llm"
 	"app/internal/repository/postgres"
 	repoqueue "app/internal/repository/queue"
@@ -121,8 +127,6 @@ func run() error {
 	var huaweiLoginUC usecase.HuaweiLoginAuth
 	var profileController *controller.ProfileController
 	var profileUC *usecase.ProfileUsecase
-	var mallController *controller.MallController
-	var membershipController *controller.MembershipController
 
 	// 批 1 已切片的域 Service（原 usecase.AccessUsecase / PointsUsecase /
 	// CashWalletUsecase / HomeTodoUsecase 一并下沉到各域）。
@@ -138,12 +142,17 @@ func run() error {
 	var afterSalesSvc *after_sales.Service
 	var dealInvoiceSvc *deal_invoice.Service
 	var purchaseCalcSvc *purchase_calculator.Service
-	var communityController *controller.CommunityController
-	var shortVideoController *controller.ShortVideoController
+	// 批 3 已切片的电商 + 社区 6 域 Service（原 usecase.MallUsecase /
+	// MembershipUsecase / PaymentUsecase / CommunityUsecase / ShortVideoUsecase /
+	// TransactionUsecase 一并下沉到各域）。
+	var mallSvc *mall.Service
+	var membershipSvc *membership.Service
+	var paymentSvc *payment.Service
+	var communitySvc *community.Service
+	var shortVideoSvc *short_video.Service
+	var transactionSvc *transaction.Service
 	var addressController *controller.AddressController
 	var sbClient *pkgsb.Client
-	var transactionController *controller.TransactionController
-	var transactionUC *usecase.TransactionUsecase
 	var jpushController *controller.JPushController
 	var imController *controller.ImController
 	var realtimeController *controller.RealtimeController
@@ -153,8 +162,7 @@ func run() error {
 	var wsGateway *wshandler.Handler
 	var queueClient *queue.Client
 	var fanoutSub *queue.FanoutSubscriber
-	var communityUC *usecase.CommunityUsecase
-	var communityRepo *postgres.CommunityRepository
+	var communityRepo *community.PostgresRepository
 
 	var accountGate gin.HandlerFunc
 	businessEnabled := cfg.Auth.IsLocalProvider() || cfg.Supabase.Enabled()
@@ -172,23 +180,21 @@ func run() error {
 		accessSvc = access.NewService(access.NewPostgresRepository(db))
 		pointsSvc = points.NewService(points.NewPostgresRepository(db), points.NewPointsTaskProgress(db))
 		walletSvc = wallet.NewService(wallet.NewPostgresRepository(db))
-		mallRepo := postgres.NewMallRepository(db)
-		membershipRepo := postgres.NewMembershipRepository(db)
-		if err := postgres.EnsureMembershipSchema(db); err != nil {
+		mallSvc = mall.NewService(mall.NewPostgresRepository(db), accessSvc, pointsSvc, walletSvc)
+		membershipRepo := membership.NewPostgresRepository(db)
+		if err := membership.EnsureSchema(db); err != nil {
 			log.Warn("会员订阅表准备失败", zap.Error(err))
 		}
-		paymentUCForMembership := usecase.NewPaymentUsecase(cfg.ThirdParty)
-		huaweiVerifier := usecase.NewLiveHuaweiSubscriptionVerifier(cfg.ThirdParty.HuaweiIAP)
-		appleVerifier := usecase.NewLiveAppleReceiptVerifier(cfg.ThirdParty.AppleIAP)
-		membershipUC := usecase.NewMembershipUsecase(membershipRepo, walletSvc, paymentUCForMembership, huaweiVerifier, appleVerifier, cfg.AppEnv)
-		membershipController = controller.NewMembershipController(membershipUC)
-		mallUC := usecase.NewMallUsecase(mallRepo, accessSvc, pointsSvc, walletSvc)
-		mallController = controller.NewMallController(mallUC)
-		communityRepo = postgres.NewCommunityRepository(db)
-		shortVideoRepo := postgres.NewShortVideoRepository(db)
-		shortVideoUC := usecase.NewShortVideoUsecase(shortVideoRepo, cfg.ShortVideo.ReviewDelayOrDefault())
-		shortVideoController = controller.NewShortVideoController(shortVideoUC)
-		if err := postgres.EnsureShortVideoSeed(db); err != nil {
+		// membership 依赖 payment（会员下单复用预支付通道），payment 先切；
+		// 这里与下方 paymentSvc 各建一次实例（切片前同为两次 NewPaymentUsecase，
+		// Service 只持有 cfg + http.Client，无状态，保持原结构不动）。
+		paymentSvcForMembership := payment.NewService(cfg.ThirdParty)
+		huaweiVerifier := membership.NewLiveHuaweiSubscriptionVerifier(cfg.ThirdParty.HuaweiIAP)
+		appleVerifier := membership.NewLiveAppleReceiptVerifier(cfg.ThirdParty.AppleIAP)
+		membershipSvc = membership.NewService(membershipRepo, walletSvc, paymentSvcForMembership, huaweiVerifier, appleVerifier, cfg.AppEnv)
+		communityRepo = community.NewPostgresRepository(db)
+		shortVideoSvc = short_video.NewService(short_video.NewPostgresRepository(db), cfg.ShortVideo.ReviewDelayOrDefault())
+		if err := short_video.EnsureSeed(db); err != nil {
 			log.Warn("小视频种子写入失败", zap.Error(err))
 		} else {
 			log.Info("小视频种子已就绪（13400000000 / 16 条）")
@@ -244,14 +250,12 @@ func run() error {
 		} else {
 			log.Info("购车金融产品种子已就绪")
 		}
-		if err := postgres.EnsureMallSeed(db); err != nil {
+		if err := mall.EnsureSeed(db); err != nil {
 			log.Warn("商城种子商品写入失败", zap.Error(err))
 		} else {
 			log.Info("商城种子商品已就绪（门店1 ≥35 条）")
 		}
-		transactionRepo := postgres.NewTransactionRepository(db)
-		transactionUC = usecase.NewTransactionUsecase(transactionRepo)
-		transactionController = controller.NewTransactionController(transactionUC)
+		transactionSvc = transaction.NewService(transaction.NewPostgresRepository(db))
 		log.Info("Auth provider=local（本机 Postgres Auth + 业务表）")
 		if phones := cfg.Auth.DevTestPhones(); len(phones) > 0 {
 			log.Info("测试 OTP 账号已启用（多端 session 豁免）",
@@ -272,22 +276,20 @@ func run() error {
 		storeStatsRepo := postgres.NewStoreStatsRepository(db)
 		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
-		transactionRepo := sbrepo.NewTransactionRepository(sbClient)
-		transactionUC = usecase.NewTransactionUsecase(transactionRepo)
-		transactionController = controller.NewTransactionController(transactionUC)
+		transactionSvc = transaction.NewService(transaction.NewSupabaseRepository(sbClient))
 		log.Info("Auth provider=supabase（认证 + profile + transactions）", zap.String("url", cfg.Supabase.URL))
 	} else {
 		log.Warn("未启用业务认证：请设置 auth.provider=local，或配置 SUPABASE_URL / SUPABASE_ANON_KEY")
 	}
 
-	if transactionUC != nil && cfg.Elasticsearch.Enabled() {
-		txES := esrepo.NewTransactionStore(cfg.Elasticsearch.BaseURL())
+	if transactionSvc != nil && cfg.Elasticsearch.Enabled() {
+		txES := transaction.NewESStore(cfg.Elasticsearch.BaseURL())
 		if err := txES.EnsureIndex(context.Background()); err != nil {
 			log.Warn("Elasticsearch transactions 索引准备失败（写路径降级，搜索可能 503）", zap.Error(err))
 		} else {
 			log.Info("Elasticsearch transactions 索引已就绪", zap.String("url", cfg.Elasticsearch.BaseURL()))
 		}
-		transactionUC.SetSearchStore(txES, log)
+		transactionSvc.SetSearchStore(txES, log)
 	}
 
 	if businessEnabled {
@@ -326,12 +328,14 @@ func run() error {
 		pushUC = usecase.NewRealtimePushUsecase(eventRepo, *cfg, hub, pushEnqueuer)
 		realtimeController = controller.NewRealtimeController(ticketUC, syncUC, pushUC)
 		if communityRepo != nil {
-			communityUC = usecase.NewCommunityUsecase(communityRepo, pushUC, cfg.Community.AskEveryoneInviteUserIDs)
-			communityController = controller.NewCommunityController(communityUC)
-			if err := postgres.EnsureCommunitySearchIndexes(db); err != nil {
+			// community 属批 3、realtime（pushUC）属批 4：本域只声明消费端最小接口
+			// PushNotifier，装配处用适配器把 PushRequest 桥到 RealtimePushInput。
+			// 批 4 切完 realtime 后删除适配器，直接传 realtime 域的公开 Service。
+			communitySvc = community.NewService(communityRepo, communityPushAdapter{uc: pushUC}, cfg.Community.AskEveryoneInviteUserIDs)
+			if err := community.EnsureSearchIndexes(db); err != nil {
 				log.Warn("社区搜索索引准备失败（ILIKE 仍可用）", zap.Error(err))
 			}
-			if err := communityUC.EnsureSeed(context.Background()); err != nil {
+			if err := communitySvc.EnsureSeed(context.Background()); err != nil {
 				log.Warn("社区种子数据写入失败", zap.Error(err))
 			} else {
 				log.Info("社区话题/动态种子已就绪")
@@ -356,7 +360,7 @@ func run() error {
 		}
 
 		if cfg.CsAgent.Enabled {
-			csUC := usecase.NewCsAgentUsecase(transactionUC, cfg.CsAgent)
+			csUC := usecase.NewCsAgentUsecase(transactionSvc, cfg.CsAgent)
 			csAgentController = controller.NewCsAgentController(csUC, cfg.CsAgent)
 			log.Info("客服 Agent 已启用",
 				zap.String("provider", cfg.CsAgent.Provider),
@@ -419,10 +423,8 @@ func run() error {
 
 	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC, wechatLoginUC, huaweiLoginUC)
 
-	var paymentController *controller.PaymentController
 	if businessEnabled {
-		paymentUC := usecase.NewPaymentUsecase(cfg.ThirdParty)
-		paymentController = controller.NewPaymentController(paymentUC)
+		paymentSvc = payment.NewService(cfg.ThirdParty)
 	}
 
 	var analyticsUC *usecase.AnalyticsUsecase
@@ -481,31 +483,50 @@ func run() error {
 		domainRouters = append(domainRouters, purchase_calculator.NewRouter(purchaseCalcSvc))
 	}
 
+	// 批 3 已切片的电商 + 社区 6 域路由。
+	// mall / membership / community / short_video 切片前由 router.Setup 里的
+	// `opts.Config.Auth.IsLocalProvider()` 门控（仅本地 provider 注册），装配层
+	// 保持同一门控：只在本地分支构造了 Service，故此处按 svc != nil 判断即可。
+	// transaction / payment 为 businessAuth 门控，本地与 supabase 两种 provider
+	// 都会构造 Service。
+	if mallSvc != nil {
+		domainRouters = append(domainRouters, mall.NewRouter(mallSvc, sessionAuth, accountGate))
+	}
+	if membershipSvc != nil {
+		domainRouters = append(domainRouters, membership.NewRouter(membershipSvc, sessionAuth, accountGate))
+	}
+	if communitySvc != nil {
+		domainRouters = append(domainRouters, community.NewRouter(communitySvc, sessionAuth, accountGate))
+	}
+	if shortVideoSvc != nil {
+		domainRouters = append(domainRouters, short_video.NewRouter(shortVideoSvc, sessionAuth, accountGate))
+	}
+	if transactionSvc != nil {
+		domainRouters = append(domainRouters, transaction.NewRouter(transactionSvc, sessionAuth, accountGate))
+	}
+	if paymentSvc != nil {
+		domainRouters = append(domainRouters, payment.NewRouter(paymentSvc, sessionAuth, accountGate))
+	}
+
 	engine := router.Setup(router.Options{
-		Log:                   log,
-		Mode:                  cfg.Server.Mode,
-		JWTManager:            jwtMgr,
-		UserHandler:           userHandler,
-		ProfileController:     profileController,
-		MallController:        mallController,
-		MembershipController:  membershipController,
-		CommunityController:   communityController,
-		ShortVideoController:  shortVideoController,
-		AddressController:     addressController,
-		PaymentController:     paymentController,
-		TransactionController: transactionController,
-		RealtimeController:    realtimeController,
-		JPushController:       jpushController,
-		ImController:          imController,
-		SseController:         sseController,
-		CsAgentController:     csAgentController,
-		WSHandler:             wsGateway,
-		Config:                *cfg,
-		Supabase:              cfg.Supabase,
-		DeviceSessionUC:       deviceSessionUC,
-		AccountGate:           accountGate,
-		SessionAuth:           sessionAuth,
-		DomainRouters:         domainRouters,
+		Log:                log,
+		Mode:               cfg.Server.Mode,
+		JWTManager:         jwtMgr,
+		UserHandler:        userHandler,
+		ProfileController:  profileController,
+		AddressController:  addressController,
+		RealtimeController: realtimeController,
+		JPushController:    jpushController,
+		ImController:       imController,
+		SseController:      sseController,
+		CsAgentController:  csAgentController,
+		WSHandler:          wsGateway,
+		Config:             *cfg,
+		Supabase:           cfg.Supabase,
+		DeviceSessionUC:    deviceSessionUC,
+		AccountGate:        accountGate,
+		SessionAuth:        sessionAuth,
+		DomainRouters:      domainRouters,
 	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
@@ -631,4 +652,29 @@ func autoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}
 	return nil
+}
+
+// communityPushAdapter 把 usecase.RealtimePushUsecase 适配成 community.PushNotifier。
+//
+// community 域属批 3、realtime 域属批 4。为免过早切片 realtime 引发大爆炸，
+// community 侧只声明消费端所需的最小接口（PushRequest / PushNotifier），
+// 由本适配器做逐字段拷贝。批 4 切完 realtime 后删除本类型，直接把 realtime
+// 域的公开 Service 传进 community.NewService。
+//
+// 字段名刻意保持与 RealtimePushInput 一致（尤其 Name），避免桥接时错位。
+type communityPushAdapter struct {
+	uc *usecase.RealtimePushUsecase
+}
+
+// Notify 实现 community.PushNotifier。
+func (a communityPushAdapter) Notify(ctx context.Context, req community.PushRequest) error {
+	_, err := a.uc.PushToUser(ctx, usecase.RealtimePushInput{
+		UserID: req.UserID,
+		Topic:  req.Topic,
+		Title:  req.Title,
+		Body:   req.Body,
+		Name:   req.Name,
+		Extra:  req.Extra,
+	})
+	return err
 }
