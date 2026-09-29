@@ -2,7 +2,7 @@
 //
 // 用法（仓库根目录）：
 //
-//	./scripts/load-env.sh go run ./cmd/seed-analytics
+//	./scripts/load-env.sh go -C app run ./cmd/seed-analytics
 package main
 
 import (

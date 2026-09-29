@@ -121,7 +121,7 @@ echo "$SYNC_RESP"
 
 echo ">>> 6. websocket auth (go test)"
 export TEST_WS_URL="$WS_URL" TEST_WS_TICKET="$TICKET" TEST_WS_CONN_ID="$CONN_ID"
-go test ./internal/delivery/ws/ -run TestWSAuthFlow -count=1 -v
+go -C app test ./internal/delivery/ws/ -run TestWSAuthFlow -count=1 -v
 
 echo ""
 echo "✅ Realtime MVP 联调通过"

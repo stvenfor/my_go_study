@@ -1,5 +1,5 @@
 // =============================================================================
-// main.go — RabbitMQ Worker 入口（make run-worker → go run ./cmd/worker）
+// main.go — RabbitMQ Worker 入口（make run-worker → go -C app run ./cmd/worker）
 //
 // 职责：消费 RabbitMQ 任务（Push/SMS/JPush/定时广播），经 Redis Pub/Sub 广播到各 BFF 实例。
 // =============================================================================
@@ -17,9 +17,9 @@ import (
 	redisrepo "app/internal/repository/redis"
 	"app/internal/usecase"
 	"common/config"
+	"common/logger"
 	"core/database"
 	"core/jpush"
-	"common/logger"
 	"core/queue"
 	"go.uber.org/zap"
 )

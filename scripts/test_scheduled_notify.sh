@@ -66,7 +66,7 @@ ensure_token() {
 
 trigger_broadcast() {
   echo ">>> 2. make trigger-hourly-notify（入队 scheduled:broadcast_notify）"
-  ./scripts/load-env.sh go run ./cmd/scheduler-trigger
+  ./scripts/load-env.sh go -C app run ./cmd/scheduler-trigger
   echo ">>> 3. wait worker broadcast + per-user push"
   sleep 4
 }

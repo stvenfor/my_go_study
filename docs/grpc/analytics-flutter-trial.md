@@ -28,7 +28,7 @@ make run     # 本机进程：HTTP :8080 + gRPC :9090；自动刷新 chart-v1 �
 make lan-up  # / make docker-up —— app 同时映射 8080 + 9090
 
 # 强制重刷本地库种子（已有旧数据时）：
-./scripts/load-env.sh go run ./cmd/seed-analytics
+./scripts/load-env.sh go -C app run ./cmd/seed-analytics
 
 # 仅手工 SQL 最小集（可选）：
 psql "$DATABASE_URL" -f scripts/seed_analytics_records_chart_v1.sql

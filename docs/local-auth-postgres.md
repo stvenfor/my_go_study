@@ -128,8 +128,8 @@ make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
 等价：
 
 ```bash
-./scripts/load-env.sh go run ./cmd/import-supabase --default-password='ChangeMe123!'
-./scripts/load-env.sh go run ./cmd/import-supabase --dry-run --skip-users
+./scripts/load-env.sh go -C app run ./cmd/import-supabase --default-password='ChangeMe123!'
+./scripts/load-env.sh go -C app run ./cmd/import-supabase --dry-run --skip-users
 ```
 
 | 标志 | 含义 |

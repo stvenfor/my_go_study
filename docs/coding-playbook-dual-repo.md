@@ -15,7 +15,7 @@
 
 | 仓 | 职责 | 验证底线 |
 |----|------|----------|
-| `my_go_study` | BFF / 表 / usecase / 权限口径 | `go test` 定向 + `go build ./cmd/api` |
+| `my_go_study` | BFF / 表 / usecase / 权限口径 | `go test` 定向 + `go -C app build ./cmd/api` |
 | `my_ai_project` | UI / 路由 / 模块边界 / 联调壳 | `dart analyze` 触及包 + 真机人证 |
 
 人闸门永远三道：**批 Brief → 人证/Accept → commit/push**。
@@ -138,7 +138,7 @@ Brief **必填字段**（缺一勿开干）：
 ```text
 执行 plans/slices/<id>.md
 先核对 ONLY/白名单/验证命令；只改白名单。
-Go：定向 go test + go build ./cmd/api
+Go：定向 go test + go -C app build ./cmd/api
 Flutter：dart analyze 触及包；UI 对标 Brief「对标要点」表
 结束写 docs/acceptance-records/YYYY-MM-DD-<id>.md（Partial 可，人证未做勿勾 Full）
 commit/push 等我指令。
@@ -272,9 +272,9 @@ Epic 差距表 ≥1 真实缺口后再开实现 Slice。反例：直接「整模
 ### Go
 
 ```bash
-go test ./internal/usecase/ -count=1 -run '<FeatureRegex>'
-go test ./internal/repository/postgres/ -count=1 -run '<RepoRegex>'   # 若有
-go build ./cmd/api/
+go -C app test ./internal/usecase/ -count=1 -run '<FeatureRegex>'
+go -C app test ./internal/repository/postgres/ -count=1 -run '<RepoRegex>'   # 若有
+go -C app build ./cmd/api/
 # 联调若走 Docker：改码后 make lan-up；curl 区分 401 vs 404
 ```
 

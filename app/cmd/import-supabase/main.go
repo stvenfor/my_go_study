@@ -3,7 +3,7 @@
 //
 // 用法（在仓库根目录）：
 //
-//	./scripts/load-env.sh go run ./cmd/import-supabase --default-password='ChangeMe123!'
+//	./scripts/load-env.sh go -C app run ./cmd/import-supabase --default-password='ChangeMe123!'
 //	make import-supabase DEFAULT_PASSWORD='ChangeMe123!'
 //
 // 说明：
@@ -21,7 +21,6 @@ import (
 	"strings"
 	"time"
 
-	"model/entity"
 	"app/internal/repository/postgres"
 	"common/config"
 	"core/database"
@@ -31,6 +30,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"model/entity"
 )
 
 func main() {

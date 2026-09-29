@@ -487,8 +487,8 @@ make test-realtime   # 一键联调（需 Redis + make run）
 
 | 命令 | 说明 |
 |------|------|
-| `make run` | `go run ./cmd/api` |
-| `make run-worker` | `go run ./cmd/worker`（RabbitMQ 消费，dev 默认需与 API 同启） |
+| `make run` | `go -C app run ./cmd/api` |
+| `make run-worker` | `go -C app run ./cmd/worker`（RabbitMQ 消费，dev 默认需与 API 同启） |
 | `make build` | 编译到 `bin/api` 与 `bin/worker` |
 | `make test` | 运行全部单元测试 |
 | `make tidy` | `go mod tidy` |

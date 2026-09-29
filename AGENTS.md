@@ -35,7 +35,7 @@ Go BFF 后端 Agent 指南，并包含与 Flutter **`my_ai_project`** 协作的�
 执行（Brief 已批）：
 
 ```text
-执行 plans/slices/<id>.md；只改白名单；Go：定向 go test + go build ./cmd/api；
+执行 plans/slices/<id>.md；只改白名单；Go：定向 go test + go -C app build ./cmd/api（或 go build all）；
 Flutter：dart analyze 触及包 + 对标 Brief。写 acceptance-records（Partial 可）。
 commit/push 等我指令。
 ```
@@ -179,6 +179,11 @@ make test-phone-otp-login
 5. 两仓库**独立 git**，分别 push
 6. **HTTP `:8080` 与 gRPC `:9090` 勿混端口**；gRPC 鉴权走 metadata（`authorization` / `x-session-id` / `x-device-id`），对齐 HTTP SessionAuth
 7. `make lan-up` 后后端在 Docker 内运行（镜像构建时打入代码），**勿再本机 `make run`**；改 Go 需重新 `make lan-up`
+8. **多模块**：workspace 根无 `go.mod`，跨模块用 `go -C <模块>` 或 `go build all`；`go build ./...` 已失效
+9. **✱ 勿盲跑逐模块 `go mod tidy`**：某模块「缺依赖」时它会去拉**最新版**（实测把 viper 1.19→1.21、zap 1.27→1.28、gorm 1.25.12→1.31.2）。
+   要加依赖就在该模块 `go.mod` 里显式写 pinned 版本再 tidy；升级依赖必须单独一次改动 + 全量 `make test`
+10. **模块边界不可反向**：`model` / `common` 不得 import `app` 或 `core`。原 `pkg/queue` 曾反向依赖 `internal/usecase`，
+    已拆为 `core/queue`（纯基建）+ `app/internal/delivery/worker`（业务分发器）+ `app/internal/repository/queue`（适配器）
 
 ---
 
@@ -187,43 +192,64 @@ make test-phone-otp-login
 ### 项目定位
 
 - **框架**：Gin + gRPC + GORM + PostgreSQL + Redis + RabbitMQ + Elasticsearch + Clean Architecture
-- **模块路径**：`github.com/stvenfor/my_go_study`
+- **模块结构**：**go.work 多模块工作区** —— `model` / `common` / `core` / `app`，外加本地 `thunder` 三方库
 - **默认端口**：HTTP `8080`；gRPC `9090`（`GRPC_ENABLED` / `GRPC_PORT`）；观测本机 `9091`/`9093`/`3000`（见 observability-lan）
 - **配对客户端**：Flutter `my_ai_project`
 
-### 分层结构
+### 分层结构（go.work 多模块）
+
+**依赖方向单向**：`app → {common, core, model}`、`core → {common, model}`；`common` 与 `model` 是叶子，互不依赖。
+**workspace 根不再是 module**，所以 `go build ./...` 失效 —— 用 `go build all`（全工作区）或 `go -C app <cmd>`（指定模块）。
 
 ```text
-cmd/api/main.go                 # 依赖注入、启动 HTTP+WS+gRPC
-cmd/worker/main.go              # RabbitMQ Worker（异步 Push / SMS / JPush 占位）
-api/
-  proto/analytics/v1/           # Protobuf 契约（单一真相源）
-  gen/go/analytics/v1/          # make proto 生成的 Go stubs
-internal/
-  delivery/http/
-    handler/                    # 自建用户 HTTP（UserHandler）
-    controller/                 # 业务 HTTP（Profile / Transaction / Realtime / SSE / CsAgent）
-    middleware/                 # JWT / SessionAuth / CORS / Logger / PrometheusHTTP
-    router/                     # 按模块拆分路由
-    dto/request|response/       # 请求/响应 DTO
-  delivery/grpc/                # gRPC Server + AnalyticsService + 鉴权 interceptor
-  delivery/ws/                  # WebSocket Hub / Handler / Client
-  usecase/                      # 业务用例（含 Analytics / Completion / CsAgent）
-  domain/entity|repository/     # 领域实体与仓储接口
-  repository/
-    postgres/                   # 本地 PostgreSQL（含 analytics_records）
-    redis/                      # Realtime ticket / 事件 / presence
-    es/                         # 交易全文 Elasticsearch
-    csagent/                    # 客服 Eino Tool 适配
-    supabase/                   # Supabase PostgREST
-    llm/                        # SSE StreamProvider（mock / openai_compatible）
-pkg/
+go.work                         # use ./app ./common ./core ./model + replace thunder => ./thunder
+
+app/                            # module app —— 唯一的可执行模块
+  cmd/api/main.go               # 依赖注入、启动 HTTP+WS+gRPC
+  cmd/worker/main.go            # RabbitMQ Worker（异步 Push / SMS / JPush 占位）
+  cmd/{import-supabase,seed-analytics,seed-home-todo,scheduler-trigger}/
+  api/
+    proto/analytics/v1/         # Protobuf 契约（单一真相源）
+    gen/go/analytics/v1/        # make proto 生成的 Go stubs
+  internal/
+    delivery/http/
+      handler/                  # 自建用户 HTTP（UserHandler）
+      controller/               # 业务 HTTP（Profile / Transaction / Realtime / SSE / CsAgent）
+      middleware/               # JWT / SessionAuth / CORS / Logger / PrometheusHTTP
+      router/                   # 按模块拆分路由
+      dto/request|response/     # 请求/响应 DTO
+    delivery/grpc/              # gRPC Server + AnalyticsService + 鉴权 interceptor
+    delivery/ws/                # WebSocket Hub / Handler / Client
+    delivery/worker/            # RabbitMQ 任务分发器（由 pkg/queue/handler.go 迁入）
+    usecase/                    # 业务用例（含 Analytics / Completion / CsAgent）
+    repository/
+      postgres/                 # 本地 PostgreSQL（含 analytics_records）
+      redis/                    # Realtime ticket / 事件 / presence
+      es/                       # 交易全文 Elasticsearch
+      csagent/                  # 客服 Eino Tool 适配
+      supabase/                 # Supabase PostgREST
+      llm/                      # SSE StreamProvider（mock / openai_compatible）
+      queue/                    # 队列端口适配器（usecase 入参 → 队列载荷）
+
+common/                         # module common —— 通用底座（零项目内依赖）
   config/                       # Viper 配置（含 grpc.* / queue.rabbitmq / elasticsearch / cs_agent）
+  logger/                       # zap 初始化
+  jwt/                          # 自建 JWT（遗留路由）
+  auth/                         # Token 校验（/auth/v1/user）
   metrics/                      # Prometheus Registry + /metrics Handler
+
+core/                           # module core —— 外部系统驱动（→ common, model）
+  database/                     # Postgres / Redis 连接
   queue/                        # RabbitMQ 客户端/消费者、Redis Pub/Sub 广播
   supabase/                     # Supabase 客户端封装
-  auth/                         # Token 校验（/auth/v1/user）
-  jwt/                          # 自建 JWT（遗留路由）
+  jpush/ rongcloud/             # 三方推送 / IM 客户端
+
+model/                          # module model —— 领域层（零外部依赖）
+  entity/                       # 领域实体
+  repository/                   # 仓储接口
+  provider/                     # StreamProvider 等端口
+
+thunder/                        # 本地三方库（mashenGOAI 的 Gin 框架 SDK），由 replace 引入、不进 workspace
 ```
 
 ### Supabase 集成要点
@@ -278,9 +304,9 @@ cp .env.local.example .env.local   # service_role
 
 ### 应用启动与依赖注入
 
-**API**：`make run` → `./scripts/load-env.sh go run ./cmd/api`
+**API**：`make run` → `./scripts/load-env.sh go -C app run ./cmd/api`
 
-**Worker**（`queue.enabled=true` 时）：`make run-worker` → `go run ./cmd/worker`
+**Worker**（`queue.enabled=true` 时）：`make run-worker` → `go -C app run ./cmd/worker`
 
 ```text
 1. APP_ENV → config.Load
@@ -311,7 +337,7 @@ cp .env.local.example .env.local   # service_role
 | gRPC `AnalyticsService` | 跳过或未启 | `:9090`（需 session 鉴权） |
 
 **新增 HTTP 组件**：`main.go` 构造 → `router.Options` → `router/` 挂路由。  
-**新增 gRPC 服务**：改 `api/proto/**` → `make proto` → `internal/delivery/grpc` 实现 → `main.go` 注册；Flutter stubs 在 `my_ai_project/commons/network`（proto 仍以本仓库为源）。
+**新增 gRPC 服务**：改 `app/api/proto/**` → `make proto` → `app/internal/delivery/grpc` 实现 → `app/cmd/api/main.go` 注册；Flutter stubs 在 `my_ai_project/commons/network`（proto 仍以本仓库为源）。
 
 ### 常用命令
 

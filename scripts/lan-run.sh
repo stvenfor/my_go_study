@@ -33,11 +33,11 @@ fi
 case "$TARGET" in
   api)
     echo "启动 API：APP_ENV=$APP_ENV AUTH_PROVIDER=$AUTH_PROVIDER WS_HOST=$REALTIME_PUBLIC_WS_HOST"
-    exec go run ./cmd/api
+    exec go -C app run ./cmd/api
     ;;
   worker)
     echo "启动 Worker：APP_ENV=$APP_ENV"
-    exec go run ./cmd/worker
+    exec go -C app run ./cmd/worker
     ;;
   *)
     echo "用法: $0 api|worker"

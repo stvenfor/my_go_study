@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package analytics.v1;
 
-option go_package = "github.com/stvenfor/my_go_study/api/gen/go/analytics/v1;analyticsv1";
+option go_package = "app/api/gen/go/analytics/v1;analyticsv1";
 
 // AnalyticsService 数据分析列表 + 详情（Flutter 试验入口）。
 service AnalyticsService {

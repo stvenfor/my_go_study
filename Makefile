@@ -1,40 +1,63 @@
 APP_NAME := my_go_study
 # 请在 my_go_study/ 目录下执行 make（不要在工作区根目录 my_code_study/）
+#
+# 【多模块】Go 代码在 app/ 下，由根目录 go.work 编排 model/core/common/app 四个模块，
+# 故所有 go 命令用 `go -C $(APP_DIR)` 显式指定模块目录。workspace 根不再是 module，
+# 老写法 `go build ./cmd/api` 与 `go build ./...` 已失效。
+APP_DIR := app
+MODULES := model common core app
 MAIN_PATH := ./cmd/api
 WORKER_PATH := ./cmd/worker
-BIN_DIR := ./bin
-.PHONY: run run-worker build build-worker test tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
+BIN_DIR := bin
+.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
 	@command -v protoc-gen-go >/dev/null 2>&1 || { echo "需要: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest"; exit 1; }
 	@command -v protoc-gen-go-grpc >/dev/null 2>&1 || { echo "需要: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest"; exit 1; }
-	mkdir -p api/gen/go
-	protoc --proto_path=api/proto \
-		--go_out=api/gen/go --go_opt=module=github.com/stvenfor/my_go_study/api/gen/go \
-		--go-grpc_out=api/gen/go --go-grpc_opt=module=github.com/stvenfor/my_go_study/api/gen/go \
-		api/proto/analytics/v1/analytics.proto
+	mkdir -p $(APP_DIR)/api/gen/go
+	protoc --proto_path=$(APP_DIR)/api/proto \
+		--go_out=$(APP_DIR)/api/gen/go --go_opt=module=app/api/gen/go \
+		--go-grpc_out=$(APP_DIR)/api/gen/go --go-grpc_opt=module=app/api/gen/go \
+		$(APP_DIR)/api/proto/analytics/v1/analytics.proto
 
 run:
-	./scripts/load-env.sh go run $(MAIN_PATH)
+	./scripts/load-env.sh go -C $(APP_DIR) run $(MAIN_PATH)
 
 run-worker:
-	./scripts/load-env.sh go run $(WORKER_PATH)
+	./scripts/load-env.sh go -C $(APP_DIR) run $(WORKER_PATH)
 
 build:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/api $(MAIN_PATH)
-	go build -o $(BIN_DIR)/worker $(WORKER_PATH)
+	go -C $(APP_DIR) build -o ../$(BIN_DIR)/api $(MAIN_PATH)
+	go -C $(APP_DIR) build -o ../$(BIN_DIR)/worker $(WORKER_PATH)
 
 build-worker:
 	@mkdir -p $(BIN_DIR)
-	go build -o $(BIN_DIR)/worker $(WORKER_PATH)
+	go -C $(APP_DIR) build -o ../$(BIN_DIR)/worker $(WORKER_PATH)
+
+# 整个工作区（4 个模块）编译；替代已失效的 `go build ./...`
+build-all:
+	go build all
+
+# 整个工作区编译并跑全部测试
+test-all:
+	go build all
+	@for m in $(MODULES); do \
+		echo ">>> go test ./... in $$m"; \
+		( cd $$m && go test ./... -count=1 ) || exit 1; \
+	done
 
 test:
-	go test ./... -count=1
+	@for m in $(MODULES); do \
+		echo ">>> go test ./... in $$m"; \
+		( cd $$m && go test ./... -count=1 ) || exit 1; \
+	done
 
+# 注意：逐模块 go mod tidy 在**缺依赖**时会去拉最新版。
+# 若发现依赖被意外升级，先把该模块 go.mod 的版本改回 pinned 值再 tidy。
 tidy:
-	go mod tidy
+	@for m in $(MODULES); do echo ">>> go mod tidy in $$m"; ( cd $$m && go mod tidy ); done
 
 air:
 	air -c .air.toml
@@ -104,14 +127,14 @@ lan-run-worker:
 DEFAULT_PASSWORD ?=
 import-supabase:
 	@test -n "$(DEFAULT_PASSWORD)" || { echo "用法: make import-supabase DEFAULT_PASSWORD='你的临时密码'"; exit 2; }
-	./scripts/load-env.sh go run ./cmd/import-supabase --default-password='$(DEFAULT_PASSWORD)'
+	./scripts/load-env.sh go -C $(APP_DIR) run ./cmd/import-supabase --default-password='$(DEFAULT_PASSWORD)'
 
 import-supabase-dry:
-	./scripts/load-env.sh go run ./cmd/import-supabase --dry-run --skip-users
+	./scripts/load-env.sh go -C $(APP_DIR) run ./cmd/import-supabase --dry-run --skip-users
 
 # 强制刷新 analytics_records 图表友好种子（seed_chart_v1，约 48 条）
 seed-analytics:
-	./scripts/load-env.sh go run ./cmd/seed-analytics
+	./scripts/load-env.sh go -C $(APP_DIR) run ./cmd/seed-analytics
 
 clean:
 	rm -rf $(BIN_DIR) tmp logs/*.log
@@ -146,7 +169,7 @@ test-queue-push:
 
 # 手动触发每小时广播（开发环境 scheduler.hourly_notify.enabled=false 时用）
 trigger-hourly-notify:
-	./scripts/load-env.sh go run ./cmd/scheduler-trigger
+	./scripts/load-env.sh go -C $(APP_DIR) run ./cmd/scheduler-trigger
 
 # 定时广播联调（需 make run + make run-worker + 已登录 session）
 test-scheduled-notify:
