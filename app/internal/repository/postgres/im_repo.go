@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"model/entity"
-	"model/repository"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"model/entity"
+	"model/repository"
 )
 
 //go:embed sql/im_schema.sql

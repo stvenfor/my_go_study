@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
+	"gorm.io/gorm"
 	"model/entity"
 	domainrepo "model/repository"
-	"gorm.io/gorm"
 )
 
 type storeStatsRepository struct {

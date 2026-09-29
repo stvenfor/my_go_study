@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
+	"github.com/gin-gonic/gin"
 )
 
 // registerMallRoutes 商城。仅 local 注册。

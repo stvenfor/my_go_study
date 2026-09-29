@@ -2,8 +2,8 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
+	"github.com/gin-gonic/gin"
 )
 
 func registerRealtimeRoutes(v1 *gin.RouterGroup, sbAuth gin.HandlerFunc, ctrl *controller.RealtimeController, accountGate gin.HandlerFunc) {

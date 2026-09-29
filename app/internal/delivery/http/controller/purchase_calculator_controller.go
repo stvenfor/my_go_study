@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // PurchaseCalculatorController 购车计算器公开 HTTP。

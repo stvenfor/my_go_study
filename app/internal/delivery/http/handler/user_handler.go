@@ -13,11 +13,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/request"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/delivery/http/middleware"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // UserHandler 用户 API 处理器。

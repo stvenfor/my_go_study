@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
 	"model/entity"
 	domainrepo "model/repository"
-	"gorm.io/gorm"
 )
 
 type analyticsRepository struct {

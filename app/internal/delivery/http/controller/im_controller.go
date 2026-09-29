@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // ImController 融云 IM SessionAuth 接口。

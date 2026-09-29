@@ -13,10 +13,10 @@ func TestHourlyNotifyUsecaseBuildPushInput(t *testing.T) {
 		Scheduler: config.SchedulerConfig{
 			Timezone: "Asia/Shanghai",
 			HourlyNotify: config.HourlyNotifyConfig{
-				TitleTemplate:   "整点提醒",
-				BodyTemplate:    "现在是 {{hour}}:00，{{message}}",
-				DefaultMessage:  "测试消息",
-				ExpiresMinutes:  120,
+				TitleTemplate:  "整点提醒",
+				BodyTemplate:   "现在是 {{hour}}:00，{{message}}",
+				DefaultMessage: "测试消息",
+				ExpiresMinutes: 120,
 				Action: config.HourlyNotifyActionConfig{
 					Type:  "deeplink",
 					Route: "/home",

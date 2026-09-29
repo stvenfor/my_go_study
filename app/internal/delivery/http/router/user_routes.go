@@ -2,10 +2,10 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
 	"app/internal/delivery/http/handler"
 	jwtmanager "common/jwt"
+	"github.com/gin-gonic/gin"
 )
 
 // registerUserRoutes 注册 /api/v1/user 路由（自建 JWT 用户体系 + Supabase 认证）。

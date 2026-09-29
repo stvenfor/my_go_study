@@ -3,8 +3,8 @@ package ws
 import (
 	"testing"
 
-	"model/entity"
 	"go.uber.org/zap"
+	"model/entity"
 )
 
 func TestHubBroadcastToUser(t *testing.T) {

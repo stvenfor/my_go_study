@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"model/entity"
 	"gorm.io/gorm"
+	"model/entity"
 )
 
 const shortVideoSeedPhone = "13400000000"

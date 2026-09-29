@@ -3,7 +3,9 @@
 // 层级：Repository —— 只负责 Redis 读写，不含业务判断
 //
 // 【为什么 Consume 用 GetDel 而不是 Get + Del？】
-//   GetDel 是原子操作，避免两个 WS 同时用同一 ticket auth 的竞态。
+//
+//	GetDel 是原子操作，避免两个 WS 同时用同一 ticket auth 的竞态。
+//
 // =============================================================================
 package redis
 

@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/access"
+	"app/internal/points"
+	"app/internal/wallet"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/repository"
@@ -41,15 +44,15 @@ var (
 
 // MallUsecase 商城用例。
 type MallUsecase struct {
-	repo   repository.MallRepository
-	access *AccessUsecase
-	points *PointsUsecase
-	wallet *CashWalletUsecase
+	repo      repository.MallRepository
+	accessSvc *access.Service
+	pointsSvc *points.Service
+	walletSvc *wallet.Service
 }
 
 // NewMallUsecase 创建。points / wallet 可为 nil。
-func NewMallUsecase(repo repository.MallRepository, access *AccessUsecase, points *PointsUsecase, wallet *CashWalletUsecase) *MallUsecase {
-	return &MallUsecase{repo: repo, access: access, points: points, wallet: wallet}
+func NewMallUsecase(repo repository.MallRepository, accessSvc *access.Service, pointsSvc *points.Service, walletSvc *wallet.Service) *MallUsecase {
+	return &MallUsecase{repo: repo, accessSvc: accessSvc, pointsSvc: pointsSvc, walletSvc: walletSvc}
 }
 
 // CreateProduct 店员创建商品。
@@ -187,7 +190,7 @@ func (u *MallUsecase) AddVirtualCodes(ctx context.Context, actorID string, skuID
 // GetShelfProduct 买家读一门店的在售商品及上架规格。下架、错店、已删都当不存在。
 func (u *MallUsecase) GetShelfProduct(ctx context.Context, storeID int, productID int64) (*entity.MallProductDetail, error) {
 	if storeID <= 0 {
-		return nil, repository.ErrAccessInvalidStoreID
+		return nil, access.ErrInvalidStoreID
 	}
 	if productID <= 0 {
 		return nil, ErrMallNotFound
@@ -226,7 +229,7 @@ func (u *MallUsecase) GetShelfProduct(ctx context.Context, storeID int, productI
 // ListShelfItems 买家分页浏览在售扁平行。page 从 1 起，默认每页 10。
 func (u *MallUsecase) ListShelfItems(ctx context.Context, storeID, page, size int) ([]entity.MallShelfItem, int64, error) {
 	if storeID <= 0 {
-		return nil, 0, repository.ErrAccessInvalidStoreID
+		return nil, 0, access.ErrInvalidStoreID
 	}
 	if page < 1 {
 		page = 1
@@ -297,7 +300,7 @@ func (u *MallUsecase) CreateOrder(ctx context.Context, buyerUserID string, in Cr
 		return nil, ErrMallEmptyCart
 	}
 	if in.StoreID <= 0 {
-		return nil, repository.ErrAccessInvalidStoreID
+		return nil, access.ErrInvalidStoreID
 	}
 
 	var items []entity.WysMallOrderItem
@@ -530,24 +533,24 @@ func (u *MallUsecase) PayOrder(ctx context.Context, buyerUserID string, orderID 
 	debitedFen := int64(0)
 	ref := fmt.Sprintf("%d", orderID)
 	if needsPoints {
-		if u.points == nil {
-			return nil, ErrPointsInsufficient
+		if u.pointsSvc == nil {
+			return nil, points.ErrPointsInsufficient
 		}
-		if _, err := u.points.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, ref); err != nil {
+		if _, err := u.pointsSvc.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, ref); err != nil {
 			return nil, err
 		}
 		debitedPts = order.TotalPoints
 	}
 	if needsCNY && channel == entity.MallPayBalance {
-		if u.wallet == nil {
-			return nil, ErrCashInsufficient
+		if u.walletSvc == nil {
+			return nil, wallet.ErrCashInsufficient
 		}
 		fen, err := entity.ParseYuanToFen(order.Amount)
 		if err != nil || fen <= 0 {
 			u.restorePayDebits(ctx, buyerUserID, debitedPts, 0, ref)
 			return nil, ErrMallInvalidPrice
 		}
-		if _, err := u.wallet.Debit(ctx, buyerUserID, fen, entity.CashReasonMallPay, ref); err != nil {
+		if _, err := u.walletSvc.Debit(ctx, buyerUserID, fen, entity.CashReasonMallPay, ref); err != nil {
 			u.restorePayDebits(ctx, buyerUserID, debitedPts, 0, ref)
 			return nil, err
 		}
@@ -562,11 +565,11 @@ func (u *MallUsecase) PayOrder(ctx context.Context, buyerUserID string, orderID 
 }
 
 func (u *MallUsecase) restorePayDebits(ctx context.Context, userID string, pts, fen int64, ref string) {
-	if pts > 0 && u.points != nil {
-		_, _ = u.points.Credit(ctx, userID, pts, entity.PointsReasonMallRefund, ref)
+	if pts > 0 && u.pointsSvc != nil {
+		_, _ = u.pointsSvc.Credit(ctx, userID, pts, entity.PointsReasonMallRefund, ref)
 	}
-	if fen > 0 && u.wallet != nil {
-		_, _ = u.wallet.Credit(ctx, userID, fen, entity.CashReasonMallRefund, ref)
+	if fen > 0 && u.walletSvc != nil {
+		_, _ = u.walletSvc.Credit(ctx, userID, fen, entity.CashReasonMallRefund, ref)
 	}
 }
 
@@ -590,13 +593,13 @@ func (u *MallUsecase) CancelOrder(ctx context.Context, buyerUserID string, order
 		return nil, err
 	}
 	ref := fmt.Sprintf("%d", orderID)
-	if !entity.IsZeroMoney(cancelled.Amount) && u.wallet != nil {
+	if !entity.IsZeroMoney(cancelled.Amount) && u.walletSvc != nil {
 		if fen, err := entity.ParseYuanToFen(cancelled.Amount); err == nil && fen > 0 {
-			_, _ = u.wallet.Credit(ctx, buyerUserID, fen, entity.CashReasonMallRefund, ref)
+			_, _ = u.walletSvc.Credit(ctx, buyerUserID, fen, entity.CashReasonMallRefund, ref)
 		}
 	}
-	if cancelled.TotalPoints > 0 && u.points != nil {
-		_, _ = u.points.Credit(ctx, buyerUserID, cancelled.TotalPoints, entity.PointsReasonMallRefund, ref)
+	if cancelled.TotalPoints > 0 && u.pointsSvc != nil {
+		_, _ = u.pointsSvc.Credit(ctx, buyerUserID, cancelled.TotalPoints, entity.PointsReasonMallRefund, ref)
 	}
 	return cancelled, nil
 }
@@ -622,8 +625,8 @@ func (u *MallUsecase) expireUnpaidIfNeeded(ctx context.Context, order *entity.Wy
 
 func (u *MallUsecase) requireCatalogWrite(ctx context.Context, actorID string, storeID int) error {
 	sid := storeID
-	if err := u.access.RequirePermission(ctx, actorID, entity.PermMallCatalogWrite, &sid); err != nil {
-		if errors.Is(err, ErrAccessForbidden) {
+	if err := u.accessSvc.RequirePermission(ctx, actorID, entity.PermMallCatalogWrite, &sid); err != nil {
+		if errors.Is(err, access.ErrForbidden) {
 			return ErrMallForbidden
 		}
 		return err

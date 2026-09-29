@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	domainrepo "model/repository"
 	"app/internal/usecase"
 	"common/config"
+	domainrepo "model/repository"
 )
 
 type mockSessionRepo struct {

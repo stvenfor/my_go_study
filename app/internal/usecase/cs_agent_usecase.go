@@ -10,10 +10,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
-	"model/entity"
 	"app/internal/repository/csagent"
 	"common/config"
+	"github.com/google/uuid"
+	"model/entity"
 )
 
 var (

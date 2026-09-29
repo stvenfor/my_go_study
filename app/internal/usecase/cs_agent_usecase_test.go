@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"model/entity"
 	"common/config"
+	"model/entity"
 )
 
 type stubTxSearcher struct {

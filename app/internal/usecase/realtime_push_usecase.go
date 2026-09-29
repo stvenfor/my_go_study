@@ -3,8 +3,8 @@
 // 作用：Go → Flutter 推送（如 sys.notify 通知）
 //
 // 【为什么先写 Redis 再广播？】
-//   1. 用户离线时 delivered=0，但 sync 仍能补拉
-//   2. seq 持久化后，客户端可按序号去重
+//  1. 用户离线时 delivered=0，但 sync 仍能补拉
+//  2. seq 持久化后，客户端可按序号去重
 //
 // 【异步模式】queue.enabled=true 时 HTTP 入队 RabbitMQ，Worker 投递并经 Pub/Sub 广播。
 // =============================================================================
@@ -15,10 +15,10 @@ import (
 	"fmt"
 	"time"
 
+	"common/config"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/repository"
-	"common/config"
 )
 
 type RealtimePushInput struct {

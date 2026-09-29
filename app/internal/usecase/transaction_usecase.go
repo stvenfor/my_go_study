@@ -14,10 +14,10 @@ import (
 	"context"
 	"errors"
 
-	"model/entity"
-	"model/repository"
 	"common/metrics"
 	"go.uber.org/zap"
+	"model/entity"
+	"model/repository"
 )
 
 // ErrTransactionSearchUnavailable ES 未配置或不可用。

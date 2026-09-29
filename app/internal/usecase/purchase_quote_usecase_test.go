@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	"app/internal/usecase"
 	"model/entity"
 	"model/repository"
-	"app/internal/usecase"
 )
 
 type memFinanceRepo struct {

@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"common/config"
+	"github.com/google/uuid"
 )
 
 var (

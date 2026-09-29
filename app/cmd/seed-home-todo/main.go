@@ -1,12 +1,13 @@
 // seed-home-todo — 为测试号 13400000000 写入首页待办装箱演示（1大+3中+4小）。
 //
-//	./scripts/load-env.sh go run ./cmd/seed-home-todo
+//	./scripts/load-env.sh go -C app run ./cmd/seed-home-todo
 package main
 
 import (
 	"fmt"
 	"os"
 
+	"app/internal/home"
 	"app/internal/repository/postgres"
 	"common/config"
 	"core/database"
@@ -34,7 +35,7 @@ func main() {
 	if err := postgres.ConsolidateLocalUsers(db); err != nil {
 		fatalf("consolidate: %v", err)
 	}
-	if err := postgres.EnsureHomeTodoPackingDemo(db); err != nil {
+	if err := home.EnsurePackingDemo(db); err != nil {
 		fatalf("packing demo: %v", err)
 	}
 	fmt.Println("ok: packing demo seeded for 13400000000 (1L+3M+4S)")

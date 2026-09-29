@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
+	"common/config"
 	"github.com/google/uuid"
 	domainrepo "model/repository"
-	"common/config"
 )
 
 var (
-	ErrSessionInvalid   = errors.New("session invalid")
-	ErrSessionReplaced  = errors.New("session replaced by other device")
-	ErrInvalidPlatform  = errors.New("invalid platform")
-	ErrInvalidDeviceID  = errors.New("invalid device id")
+	ErrSessionInvalid  = errors.New("session invalid")
+	ErrSessionReplaced = errors.New("session replaced by other device")
+	ErrInvalidPlatform = errors.New("invalid platform")
+	ErrInvalidDeviceID = errors.New("invalid device id")
 )
 
 const (

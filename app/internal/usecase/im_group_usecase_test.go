@@ -48,9 +48,9 @@ type memGroupRepo struct {
 
 func newMemGroupRepo() *memGroupRepo {
 	return &memGroupRepo{
-		free: map[string]*entity.WysImFreeGroup{},
+		free:   map[string]*entity.WysImFreeGroup{},
 		member: map[string]map[string]bool{},
-		store: map[string]*entity.WysImStoreGroup{},
+		store:  map[string]*entity.WysImStoreGroup{},
 	}
 }
 

@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"common/config"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/provider"
 	"model/repository"
-	"common/config"
 )
 
 // Completion 预流错误（Controller 映射为 JSON {"error"}）。

@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/request"
 	"app/internal/delivery/http/dto/response"
-	"model/entity"
 	"app/internal/usecase"
 	"common/config"
+	"github.com/gin-gonic/gin"
+	"model/entity"
 )
 
 // CsAgentController 客服 Agent 控制器。

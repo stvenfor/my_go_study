@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	realtimeSeqKeyPrefix   = "realtime:seq:"
+	realtimeSeqKeyPrefix    = "realtime:seq:"
 	realtimeEventsKeyPrefix = "realtime:events:"
 )
 

@@ -4,8 +4,8 @@ package middleware
 import (
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"common/metrics"
+	"github.com/gin-gonic/gin"
 )
 
 // PrometheusHTTP 统计请求次数与延迟；跳过 /metrics 与 /health 避免自扰。

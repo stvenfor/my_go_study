@@ -3,10 +3,13 @@
 // 层级：Delivery/WS —— WebSocket 的「交通警察」
 //
 // 【初学者阅读路径】
-//   ServeWS → readPump → handleEnvelope → handleAuth / handleEvent / ...
+//
+//	ServeWS → readPump → handleEnvelope → handleAuth / handleEvent / ...
 //
 // 【为什么 WS 升级时不校验 JWT？】
-//   鉴权放在首帧 auth + ticket，ticket 由已登录的 HTTP 接口签发，同样安全。
+//
+//	鉴权放在首帧 auth + ticket，ticket 由已登录的 HTTP 接口签发，同样安全。
+//
 // =============================================================================
 package ws
 
@@ -16,12 +19,12 @@ import (
 	"net/http"
 	"time"
 
+	"app/internal/usecase"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"model/entity"
-	"app/internal/usecase"
 	"go.uber.org/zap"
+	"model/entity"
 )
 
 // upgrader 把 HTTP 请求升级为 WebSocket。

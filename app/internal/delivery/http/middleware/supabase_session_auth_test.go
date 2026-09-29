@@ -6,11 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/delivery/http/middleware"
 	"app/internal/usecase"
 	"common/config"
+	"github.com/gin-gonic/gin"
 )
 
 func TestSupabaseSessionAuthMissingAuthorization(t *testing.T) {

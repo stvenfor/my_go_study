@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"model/provider"
 	"app/internal/repository/llm"
+	"model/provider"
 )
 
 func TestMockStreamKeywordAndCancel(t *testing.T) {

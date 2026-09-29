@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"app/internal/points"
+	"app/internal/usecase"
+	"app/internal/wallet"
 	"model/entity"
 	"model/repository"
-	"app/internal/usecase"
 )
 
 type payOrderRepo struct {
@@ -51,10 +53,10 @@ func (r *payOrderRepo) CancelUnpaidOrder(_ context.Context, orderID int64, buyer
 }
 
 func TestMallBalancePayAndCancelRefund(t *testing.T) {
-	cash := usecase.NewCashWalletUsecase(newMemCashRepo())
+	cash := wallet.NewService(newMemCashRepo())
 	ctx := context.Background()
 	uid := "buyer1"
-	_, err := cash.Recharge(ctx, uid, usecase.RechargeInput{Amount: "20.00", Channel: entity.WalletRechargeAlipay})
+	_, err := cash.Recharge(ctx, uid, wallet.RechargeInput{Amount: "20.00", Channel: entity.WalletRechargeAlipay})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestMallBalancePayAndCancelRefund(t *testing.T) {
 }
 
 func TestMallBalancePayInsufficient(t *testing.T) {
-	cash := usecase.NewCashWalletUsecase(newMemCashRepo())
+	cash := wallet.NewService(newMemCashRepo())
 	ctx := context.Background()
 	uid := "buyer2"
 	repo := &payOrderRepo{order: &entity.WysMallOrder{
@@ -93,16 +95,16 @@ func TestMallBalancePayInsufficient(t *testing.T) {
 	}}
 	uc := usecase.NewMallUsecase(repo, nil, nil, cash)
 	_, err := uc.PayOrder(ctx, uid, 12, entity.MallPayBalance)
-	if err != usecase.ErrCashInsufficient {
+	if err != wallet.ErrCashInsufficient {
 		t.Fatalf("got %v", err)
 	}
 }
 
 func TestMallBalancePayRestoresOnLocalFail(t *testing.T) {
-	cash := usecase.NewCashWalletUsecase(newMemCashRepo())
+	cash := wallet.NewService(newMemCashRepo())
 	ctx := context.Background()
 	uid := "buyer3"
-	_, _ = cash.Recharge(ctx, uid, usecase.RechargeInput{Amount: "10.00", Channel: entity.WalletRechargeWeChat})
+	_, _ = cash.Recharge(ctx, uid, wallet.RechargeInput{Amount: "10.00", Channel: entity.WalletRechargeWeChat})
 	repo := &payOrderRepo{
 		order: &entity.WysMallOrder{
 			OrderID: 13, BuyerUserID: uid, Status: entity.MallOrderUnpaid,
@@ -122,10 +124,10 @@ func TestMallBalancePayRestoresOnLocalFail(t *testing.T) {
 }
 
 func TestMallRejectsBalanceOnPointsOnly(t *testing.T) {
-	cash := usecase.NewCashWalletUsecase(newMemCashRepo())
+	cash := wallet.NewService(newMemCashRepo())
 	ctx := context.Background()
 	uid := "buyer4"
-	_, _ = cash.Recharge(ctx, uid, usecase.RechargeInput{Amount: "10.00", Channel: entity.WalletRechargeAlipay})
+	_, _ = cash.Recharge(ctx, uid, wallet.RechargeInput{Amount: "10.00", Channel: entity.WalletRechargeAlipay})
 	repo := &payOrderRepo{order: &entity.WysMallOrder{
 		OrderID: 14, BuyerUserID: uid, Status: entity.MallOrderUnpaid,
 		Amount: "0.00", TotalPoints: 100, CreatedAt: time.Now(),
@@ -136,7 +138,7 @@ func TestMallRejectsBalanceOnPointsOnly(t *testing.T) {
 	// Spec: points-only must not use balance to pay points price — PayOrder rewrites channel to points.
 	_, err := uc.PayOrder(ctx, uid, 14, entity.MallPayBalance)
 	// points is nil → ErrPointsInsufficient
-	if err != usecase.ErrPointsInsufficient {
+	if err != points.ErrPointsInsufficient {
 		t.Fatalf("got %v", err)
 	}
 	bal, _ := cash.GetBalanceFen(ctx, uid)

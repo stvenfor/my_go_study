@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/access"
 	"model/entity"
 	"model/repository"
 )
@@ -25,13 +26,13 @@ const followStoreAdminPerm = entity.PermRoleAssignStore
 
 // NewCarFollowUsecase 跟进档案读写。
 type NewCarFollowUsecase struct {
-	repo   repository.NewCarFollowRepository
-	access *AccessUsecase
-	now    func() time.Time
+	repo      repository.NewCarFollowRepository
+	accessSvc *access.Service
+	now       func() time.Time
 }
 
-func NewNewCarFollowUsecase(repo repository.NewCarFollowRepository, access *AccessUsecase) *NewCarFollowUsecase {
-	return &NewCarFollowUsecase{repo: repo, access: access, now: time.Now}
+func NewNewCarFollowUsecase(repo repository.NewCarFollowRepository, accessSvc *access.Service) *NewCarFollowUsecase {
+	return &NewCarFollowUsecase{repo: repo, accessSvc: accessSvc, now: time.Now}
 }
 
 type CreateNewCarFollowInput struct {
@@ -81,7 +82,7 @@ func (u *NewCarFollowUsecase) Summary(ctx context.Context, actorID string) (*ent
 	if err != nil {
 		return nil, err
 	}
-	storeName, positionLabel := accessStoreLabels(ctx, u.access, actorID, storeID)
+	storeName, positionLabel := u.accessSvc.StoreLabels(ctx, actorID, storeID)
 	return &entity.NewCarFollowSummary{
 		DisplayName:   name,
 		AvatarURL:     avatar,
@@ -368,7 +369,7 @@ func (u *NewCarFollowUsecase) ListCustomers(
 }
 
 func (u *NewCarFollowUsecase) requireCurrentStore(ctx context.Context, actorID string) (int, error) {
-	return requireAccessCurrentStore(u.access, ctx, actorID, ErrNewCarFollowNoStore)
+	return u.accessSvc.RequireCurrentStore(ctx, actorID, ErrNewCarFollowNoStore)
 }
 
 // ownerScope 店管 → 空串（全店）；否则 actorID。
@@ -384,11 +385,11 @@ func (u *NewCarFollowUsecase) ownerScope(ctx context.Context, actorID string, st
 }
 
 func (u *NewCarFollowUsecase) isStoreAdmin(ctx context.Context, actorID string, storeID int) (bool, error) {
-	if u.access == nil {
+	if u.accessSvc == nil {
 		return false, nil
 	}
 	sid := storeID
-	return u.access.can(ctx, actorID, followStoreAdminPerm, &sid)
+	return u.accessSvc.Can(ctx, actorID, followStoreAdminPerm, &sid)
 }
 
 func (u *NewCarFollowUsecase) loadVisibleFile(ctx context.Context, actorID string, fileID int64) (*entity.WysNewCarFollowFile, error) {

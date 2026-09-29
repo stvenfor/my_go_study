@@ -200,11 +200,11 @@ func (u *ImFriendUsecase) ListIncoming(ctx context.Context, toUserID string) ([]
 			continue
 		}
 		item := ImFriendRequestItem{
-			ID:         req.ID,
-			FromUserID: req.FromUserID,
+			ID:          req.ID,
+			FromUserID:  req.FromUserID,
 			DisplayName: req.FromUserID,
-			Status:     req.Status,
-			CreatedAt:  req.CreatedAt.UTC().Format(time.RFC3339),
+			Status:      req.Status,
+			CreatedAt:   req.CreatedAt.UTC().Format(time.RFC3339),
 		}
 		if u.users != nil {
 			if user, err := u.users.FindByUserID(ctx, req.FromUserID); err == nil && user != nil {

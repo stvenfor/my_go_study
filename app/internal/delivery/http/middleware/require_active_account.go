@@ -4,8 +4,8 @@ package middleware
 import (
 	"context"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
+	"github.com/gin-gonic/gin"
 )
 
 // AccountChecker 判断会话账号是否还能调用业务接口。

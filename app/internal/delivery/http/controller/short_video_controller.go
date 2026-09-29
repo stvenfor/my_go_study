@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // ShortVideoController 小视频 HTTP。

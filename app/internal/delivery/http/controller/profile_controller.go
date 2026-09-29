@@ -5,10 +5,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
-	"model/entity"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
+	"model/entity"
 )
 
 // ProfileController Profile 管理控制器。

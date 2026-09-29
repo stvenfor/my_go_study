@@ -31,9 +31,9 @@ var (
 
 // CommunityUsecase 社区动态。
 type CommunityUsecase struct {
-	repo              repository.CommunityRepository
-	push              *RealtimePushUsecase // 可为 nil
-	inviteUserIDs     []string
+	repo          repository.CommunityRepository
+	push          *RealtimePushUsecase // 可为 nil
+	inviteUserIDs []string
 }
 
 func NewCommunityUsecase(repo repository.CommunityRepository, push *RealtimePushUsecase, inviteUserIDs []string) *CommunityUsecase {
@@ -49,14 +49,14 @@ func (u *CommunityUsecase) EnsureSeed(ctx context.Context) error {
 
 // CreatePostInput 发帖写模型。
 type CreatePostInput struct {
-	Content         string
-	MediaType       string // none|image|video
-	ImageURLs       []string
-	VideoURL        *string
-	VideoCoverURL   *string
-	TopicID         *string
-	IsAskEveryone   bool
-	Source          string
+	Content       string
+	MediaType     string // none|image|video
+	ImageURLs     []string
+	VideoURL      *string
+	VideoCoverURL *string
+	TopicID       *string
+	IsAskEveryone bool
+	Source        string
 }
 
 // TopicDTO / PostDTO / CommentDTO — 读模型 snake_case。
@@ -114,8 +114,8 @@ type CommunityUserDTO struct {
 
 // SearchListDTO 搜索分区列表（含分页元数据）。
 type SearchListDTO[T any] struct {
-	List       []T   `json:"list"`
-	Pagination any   `json:"pagination"`
+	List       []T `json:"list"`
+	Pagination any `json:"pagination"`
 	page       int
 	size       int
 	total      int64
@@ -140,9 +140,9 @@ func newSearchList[T any](list []T, page, size int, total int64) SearchListDTO[T
 
 // CommunitySearchAllDTO type=all 响应。
 type CommunitySearchAllDTO struct {
-	Q      string                      `json:"q"`
-	Posts  SearchListDTO[PostDTO]      `json:"posts"`
-	Topics SearchListDTO[TopicDTO]     `json:"topics"`
+	Q      string                          `json:"q"`
+	Posts  SearchListDTO[PostDTO]          `json:"posts"`
+	Topics SearchListDTO[TopicDTO]         `json:"topics"`
 	Users  SearchListDTO[CommunityUserDTO] `json:"users"`
 }
 

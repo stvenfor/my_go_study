@@ -27,9 +27,9 @@ const (
 
 // Authenticator 校验 access token + device session。
 type Authenticator struct {
-	local          bool
-	jwtMgr         *jwtmanager.Manager
-	supabase       config.SupabaseConfig
+	local           bool
+	jwtMgr          *jwtmanager.Manager
+	supabase        config.SupabaseConfig
 	deviceSessionUC *usecase.DeviceSessionUsecase
 }
 

@@ -3,8 +3,10 @@
 // 层级：Repository —— 通过 Supabase PostgREST 读写 transactions 表
 //
 // 【初学者】WithUserToken(accessToken) 的含义：
-//   用登录用户的 JWT 调 PostgREST，RLS 策略按 auth.uid() 过滤。
-//   绝不能用 service_role 替代，否则会绕过 RLS。
+//
+//	用登录用户的 JWT 调 PostgREST，RLS 策略按 auth.uid() 过滤。
+//	绝不能用 service_role 替代，否则会绕过 RLS。
+//
 // =============================================================================
 package supabase
 
@@ -15,9 +17,9 @@ import (
 	"strconv"
 	"time"
 
+	pkgsb "core/supabase"
 	postgrest "github.com/supabase-community/postgrest-go"
 	"model/entity"
-	pkgsb "core/supabase"
 )
 
 // TransactionRepository transactions 仓储实现。

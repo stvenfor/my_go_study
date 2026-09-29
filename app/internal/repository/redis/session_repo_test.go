@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	goredis "github.com/redis/go-redis/v9"
 	redisrepo "app/internal/repository/redis"
+	goredis "github.com/redis/go-redis/v9"
 	"model/repository"
 )
 

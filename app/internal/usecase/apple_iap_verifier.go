@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"model/entity"
 	"common/config"
+	"model/entity"
 )
 
 // LiveAppleReceiptVerifier 调用 Apple verifyReceipt（生产 + sandbox 回退）。
@@ -105,8 +105,8 @@ type appleReceiptItem struct {
 
 func (v *LiveAppleReceiptVerifier) postVerify(ctx context.Context, url, receipt string) (*appleVerifyBody, error) {
 	payload := map[string]any{
-		"receipt-data": receipt,
-		"password":     strings.TrimSpace(v.cfg.SharedSecret),
+		"receipt-data":             receipt,
+		"password":                 strings.TrimSpace(v.cfg.SharedSecret),
 		"exclude-old-transactions": true,
 	}
 	raw, _ := json.Marshal(payload)

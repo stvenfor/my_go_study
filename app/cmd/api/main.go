@@ -1,5 +1,5 @@
 // =============================================================================
-// main.go — 应用唯一入口（make run → go run ./cmd/api）
+// main.go — 应用唯一入口（make run → go -C app run ./cmd/api）
 //
 // 职责：加载配置 → 连接 PG/Redis → 按 Supabase 开关组装依赖 → 启动 HTTP+WS → 优雅退出
 // 详细启动顺序见 AGENTS.md §「应用启动与依赖注入」
@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	grpcdelivery "app/internal/delivery/grpc"
 	grpcauth "app/internal/delivery/grpc/interceptor"
 	"app/internal/delivery/http/controller"
@@ -25,8 +24,15 @@ import (
 	"app/internal/delivery/http/middleware"
 	"app/internal/delivery/http/router"
 	wshandler "app/internal/delivery/ws"
-	"model/entity"
-	"model/provider"
+	"github.com/gin-gonic/gin"
+
+	// 已切成垂直切片的域（阶段 3 批 1）。每域自带 Service + Router。
+	"app/internal/access"
+	"app/internal/home"
+	"app/internal/points"
+	"app/internal/shared"
+	"app/internal/wallet"
+
 	esrepo "app/internal/repository/es"
 	llmrepo "app/internal/repository/llm"
 	"app/internal/repository/postgres"
@@ -35,15 +41,17 @@ import (
 	sbrepo "app/internal/repository/supabase"
 	"app/internal/usecase"
 	"common/config"
-	"core/database"
-	"core/jpush"
 	jwtmanager "common/jwt"
 	"common/logger"
+	"core/database"
+	"core/jpush"
 	"core/queue"
 	"core/rongcloud"
 	pkgsb "core/supabase"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"model/entity"
+	"model/provider"
 )
 
 func main() {
@@ -107,17 +115,19 @@ func run() error {
 	var wechatLoginUC usecase.WeChatLoginAuth
 	var huaweiLoginUC usecase.HuaweiLoginAuth
 	var profileController *controller.ProfileController
-	var accessController *controller.AccessController
 	var profileUC *usecase.ProfileUsecase
-	var accessUC *usecase.AccessUsecase
 	var mallController *controller.MallController
-	var pointsController *controller.PointsController
-	var cashWalletController *controller.CashWalletController
 	var membershipController *controller.MembershipController
+
+	// 批 1 已切片的域 Service（原 usecase.AccessUsecase / PointsUsecase /
+	// CashWalletUsecase / HomeTodoUsecase 一并下沉到各域）。
+	var accessSvc *access.Service
+	var homeSvc *home.Service
+	var pointsSvc *points.Service
+	var walletSvc *wallet.Service
 	var communityController *controller.CommunityController
 	var shortVideoController *controller.ShortVideoController
 	var addressController *controller.AddressController
-	var homeTodoController *controller.HomeTodoController
 	var dealInvoiceController *controller.DealInvoiceController
 	var usedCarOrderController *controller.UsedCarOrderController
 	var newCarFollowController *controller.NewCarFollowController
@@ -151,16 +161,10 @@ func run() error {
 		storeStatsRepo := postgres.NewStoreStatsRepository(db)
 		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
-		accessRepo := postgres.NewAccessRepository(db)
-		accessUC = usecase.NewAccessUsecase(accessRepo)
-		accessController = controller.NewAccessController(accessUC)
+		accessSvc = access.NewService(access.NewPostgresRepository(db))
+		pointsSvc = points.NewService(points.NewPostgresRepository(db), points.NewPointsTaskProgress(db))
+		walletSvc = wallet.NewService(wallet.NewPostgresRepository(db))
 		mallRepo := postgres.NewMallRepository(db)
-		pointsRepo := postgres.NewPointsRepository(db)
-		pointsUC := usecase.NewPointsUsecase(pointsRepo, postgres.NewPointsTaskProgress(db))
-		pointsController = controller.NewPointsController(pointsUC)
-		cashRepo := postgres.NewCashWalletRepository(db)
-		cashUC := usecase.NewCashWalletUsecase(cashRepo)
-		cashWalletController = controller.NewCashWalletController(cashUC)
 		membershipRepo := postgres.NewMembershipRepository(db)
 		if err := postgres.EnsureMembershipSchema(db); err != nil {
 			log.Warn("会员订阅表准备失败", zap.Error(err))
@@ -168,9 +172,9 @@ func run() error {
 		paymentUCForMembership := usecase.NewPaymentUsecase(cfg.ThirdParty)
 		huaweiVerifier := usecase.NewLiveHuaweiSubscriptionVerifier(cfg.ThirdParty.HuaweiIAP)
 		appleVerifier := usecase.NewLiveAppleReceiptVerifier(cfg.ThirdParty.AppleIAP)
-		membershipUC := usecase.NewMembershipUsecase(membershipRepo, cashUC, paymentUCForMembership, huaweiVerifier, appleVerifier, cfg.AppEnv)
+		membershipUC := usecase.NewMembershipUsecase(membershipRepo, walletSvc, paymentUCForMembership, huaweiVerifier, appleVerifier, cfg.AppEnv)
 		membershipController = controller.NewMembershipController(membershipUC)
-		mallUC := usecase.NewMallUsecase(mallRepo, accessUC, pointsUC, cashUC)
+		mallUC := usecase.NewMallUsecase(mallRepo, accessSvc, pointsSvc, walletSvc)
 		mallController = controller.NewMallController(mallUC)
 		communityRepo = postgres.NewCommunityRepository(db)
 		shortVideoRepo := postgres.NewShortVideoRepository(db)
@@ -184,15 +188,13 @@ func run() error {
 		addressRepo := postgres.NewAddressRepository(db)
 		addressUC := usecase.NewAddressUsecase(addressRepo)
 		addressController = controller.NewAddressController(addressUC)
-		homeTodoRepo := postgres.NewHomeTodoRepository(db)
-		homeTodoUC := usecase.NewHomeTodoUsecase(homeTodoRepo, accessUC)
-		homeTodoController = controller.NewHomeTodoController(homeTodoUC)
-		if err := homeTodoUC.EnsureSeed(context.Background(), 1, ""); err != nil {
+		homeSvc = home.NewService(home.NewPostgresRepository(db), accessSvc)
+		if err := homeSvc.EnsureSeed(context.Background(), 1, ""); err != nil {
 			log.Warn("首页待办种子写入失败", zap.Error(err))
 		} else {
 			log.Info("首页待办种子已就绪（门店1）")
 		}
-		if err := postgres.EnsureHomeTodoPackingDemo(db); err != nil {
+		if err := home.EnsurePackingDemo(db); err != nil {
 			log.Warn("首页待办装箱演示种子失败", zap.Error(err))
 		} else {
 			log.Info("首页待办装箱演示已就绪（13400000000 / 1大3中4小）")
@@ -201,7 +203,7 @@ func run() error {
 		if err := postgres.EnsureDealInvoiceSchema(db); err != nil {
 			log.Warn("成交发票表准备失败", zap.Error(err))
 		}
-		dealInvoiceUC := usecase.NewDealInvoiceUsecase(dealInvoiceRepo, accessUC)
+		dealInvoiceUC := usecase.NewDealInvoiceUsecase(dealInvoiceRepo, accessSvc)
 		dealInvoiceController = controller.NewDealInvoiceController(dealInvoiceUC)
 		if err := postgres.EnsureDealInvoiceSeed(db); err != nil {
 			log.Warn("成交发票种子写入失败", zap.Error(err))
@@ -212,7 +214,7 @@ func run() error {
 		if err := postgres.EnsureUsedCarOrderSchema(db); err != nil {
 			log.Warn("二手车业务单表准备失败", zap.Error(err))
 		}
-		usedCarOrderUC := usecase.NewUsedCarOrderUsecase(usedCarOrderRepo, accessUC)
+		usedCarOrderUC := usecase.NewUsedCarOrderUsecase(usedCarOrderRepo, accessSvc)
 		usedCarOrderController = controller.NewUsedCarOrderController(usedCarOrderUC)
 		if err := postgres.EnsureUsedCarOrderSeed(db); err != nil {
 			log.Warn("二手车业务单种子写入失败", zap.Error(err))
@@ -223,7 +225,7 @@ func run() error {
 		if err := postgres.EnsureNewCarFollowSchema(db); err != nil {
 			log.Warn("新车跟进档案表准备失败", zap.Error(err))
 		}
-		newCarFollowUC := usecase.NewNewCarFollowUsecase(newCarFollowRepo, accessUC)
+		newCarFollowUC := usecase.NewNewCarFollowUsecase(newCarFollowRepo, accessSvc)
 		newCarFollowController = controller.NewNewCarFollowController(newCarFollowUC)
 		if err := postgres.EnsureNewCarFollowSeed(db); err != nil {
 			log.Warn("新车跟进档案种子写入失败", zap.Error(err))
@@ -234,7 +236,7 @@ func run() error {
 		if err := postgres.EnsureAfterSalesZoneSchema(db); err != nil {
 			log.Warn("售后专区表准备失败", zap.Error(err))
 		}
-		afterSalesZoneUC := usecase.NewAfterSalesZoneUsecase(afterSalesZoneRepo, accessUC)
+		afterSalesZoneUC := usecase.NewAfterSalesZoneUsecase(afterSalesZoneRepo, accessSvc)
 		afterSalesZoneController = controller.NewAfterSalesZoneController(afterSalesZoneUC)
 		financeRepo := postgres.NewAutoFinanceRepository(db)
 		purchaseQuoteUC := usecase.NewPurchaseQuoteUsecase(financeRepo)
@@ -407,8 +409,8 @@ func run() error {
 		if profileUC != nil {
 			profileUC.SetStoreGroupSync(imGroupUC)
 		}
-		if accessUC != nil {
-			accessUC.SetStoreGroupSync(imGroupUC)
+		if accessSvc != nil {
+			accessSvc.SetStoreGroupSync(imGroupUC)
 		}
 		if cfg.ThirdParty.RongCloudConfigured() {
 			log.Info("融云 IM 服务端已配置")
@@ -434,21 +436,44 @@ func run() error {
 		log.Info("analytics 数据表已就绪（含种子数据）")
 	}
 
+	// 业务会话中间件在装配层构造一次，既给 router.Setup 里的遗留路由用，
+	// 也给各域 Router 用（域内 sessionAuth 为 nil 时会跳过注册）。
+	var sessionAuth gin.HandlerFunc
+	if businessEnabled && deviceSessionUC != nil {
+		if cfg.Auth.IsLocalProvider() {
+			sessionAuth = middleware.LocalSessionAuth(jwtMgr, deviceSessionUC)
+		} else {
+			sessionAuth = middleware.SupabaseSessionAuth(cfg.Supabase, deviceSessionUC)
+		}
+	}
+
+	// 批 1 已切片的域路由（各自 Register + 自带 auth 链）。
+	// sessionAuth 为 nil 时域内跳过，无需在此判 businessAuth。
+	var domainRouters []shared.Registrable
+	if accessSvc != nil {
+		domainRouters = append(domainRouters, access.NewRouter(accessSvc, sessionAuth, accountGate))
+	}
+	if homeSvc != nil {
+		domainRouters = append(domainRouters, home.NewRouter(homeSvc, sessionAuth, accountGate))
+	}
+	if pointsSvc != nil {
+		domainRouters = append(domainRouters, points.NewRouter(pointsSvc, sessionAuth, accountGate))
+	}
+	if walletSvc != nil {
+		domainRouters = append(domainRouters, wallet.NewRouter(walletSvc, sessionAuth, accountGate))
+	}
+
 	engine := router.Setup(router.Options{
 		Log:                          log,
 		Mode:                         cfg.Server.Mode,
 		JWTManager:                   jwtMgr,
 		UserHandler:                  userHandler,
 		ProfileController:            profileController,
-		AccessController:             accessController,
 		MallController:               mallController,
-		PointsController:             pointsController,
-		CashWalletController:         cashWalletController,
 		MembershipController:         membershipController,
 		CommunityController:          communityController,
 		ShortVideoController:         shortVideoController,
 		AddressController:            addressController,
-		HomeTodoController:           homeTodoController,
 		DealInvoiceController:        dealInvoiceController,
 		UsedCarOrderController:       usedCarOrderController,
 		NewCarFollowController:       newCarFollowController,
@@ -466,6 +491,8 @@ func run() error {
 		Supabase:                     cfg.Supabase,
 		DeviceSessionUC:              deviceSessionUC,
 		AccountGate:                  accountGate,
+		SessionAuth:                  sessionAuth,
+		DomainRouters:                domainRouters,
 	})
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),

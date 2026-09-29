@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"model/entity"
-	"model/repository"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"model/entity"
+	"model/repository"
 )
 
 // MallRepository 商城 Postgres 实现。

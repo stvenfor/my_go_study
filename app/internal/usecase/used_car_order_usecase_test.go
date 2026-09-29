@@ -174,7 +174,7 @@ func TestUsedCarOrderSummaryListAndCreate(t *testing.T) {
 		store:   &entity.WysStore{StoreID: 1, Name: "[4S]北京沃德龙鼎吉利"},
 		member:  &entity.WysStoreMember{UserID: "u1", StoreID: 1, Position: entity.StoreRoleManager},
 	}
-	uc := NewUsedCarOrderUsecase(repo, access.asUsecase())
+	uc := NewUsedCarOrderUsecase(repo, access.asService())
 	uc.now = func() time.Time { return now }
 
 	sum, err := uc.Summary(context.Background(), "u1")
@@ -230,7 +230,7 @@ func TestUsedCarOrderSummaryListAndCreate(t *testing.T) {
 func TestUsedCarOrderNoStore(t *testing.T) {
 	repo := newMemUsedCarRepo()
 	access := &stubAccessForDeal{storeID: 0}
-	uc := NewUsedCarOrderUsecase(repo, access.asUsecase())
+	uc := NewUsedCarOrderUsecase(repo, access.asService())
 	if _, err := uc.Summary(context.Background(), "u1"); err != ErrUsedCarOrderNoStore {
 		t.Fatalf("got %v", err)
 	}

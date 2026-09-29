@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // NewCarFollowController 新车跟进档案 HTTP。

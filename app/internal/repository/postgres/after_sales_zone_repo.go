@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	"model/entity"
-	"model/repository"
+	"app/internal/shared"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"model/entity"
+	"model/repository"
 )
 
 //go:embed sql/after_sales_zone_schema.sql
@@ -130,7 +131,7 @@ func (r *AfterSalesZoneRepository) CreateRecord(ctx context.Context, row *entity
 			}
 		}
 		if err := tx.Create(row).Error; err != nil {
-			if isUniqueViolation(err) {
+			if shared.IsUniqueViolation(err) {
 				return repository.ErrAfterSalesAppointmentTaken
 			}
 			return err

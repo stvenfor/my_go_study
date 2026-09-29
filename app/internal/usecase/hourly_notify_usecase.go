@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"model/entity"
 	"common/config"
+	"model/entity"
 )
 
 // HourlyNotifyUsecase 组装定时每小时系统通知。

@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
-	"model/repository"
 	"app/internal/usecase"
+	"app/internal/wallet"
+	"github.com/gin-gonic/gin"
+	"model/repository"
 )
 
 // MembershipController 会员订阅 HTTP。
@@ -164,7 +165,7 @@ func writeMembershipError(c *gin.Context, err error) {
 		errors.Is(err, usecase.ErrMembershipAppleInvalid),
 		errors.Is(err, usecase.ErrInvalidParams):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
-	case errors.Is(err, usecase.ErrCashInsufficient):
+	case errors.Is(err, wallet.ErrCashInsufficient):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "余额不足")
 	case errors.Is(err, repository.ErrMembershipOrderNotFound):
 		response.Error(c, http.StatusNotFound, response.CodeNotFound, "订单不存在")

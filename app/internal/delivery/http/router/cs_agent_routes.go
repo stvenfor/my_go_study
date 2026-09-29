@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
+	"github.com/gin-gonic/gin"
 )
 
 func registerCsAgentRoutes(v1 *gin.RouterGroup, sessionAuth gin.HandlerFunc, ctrl *controller.CsAgentController, accountGate gin.HandlerFunc) {

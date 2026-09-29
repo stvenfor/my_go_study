@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/access"
 	"model/entity"
 	"model/repository"
 )
@@ -25,13 +26,13 @@ var (
 
 // AfterSalesZoneUsecase 售后专区。
 type AfterSalesZoneUsecase struct {
-	repo   repository.AfterSalesZoneRepository
-	access *AccessUsecase
-	now    func() time.Time
+	repo      repository.AfterSalesZoneRepository
+	accessSvc *access.Service
+	now       func() time.Time
 }
 
-func NewAfterSalesZoneUsecase(repo repository.AfterSalesZoneRepository, access *AccessUsecase) *AfterSalesZoneUsecase {
-	return &AfterSalesZoneUsecase{repo: repo, access: access, now: time.Now}
+func NewAfterSalesZoneUsecase(repo repository.AfterSalesZoneRepository, accessSvc *access.Service) *AfterSalesZoneUsecase {
+	return &AfterSalesZoneUsecase{repo: repo, accessSvc: accessSvc, now: time.Now}
 }
 
 // CreateAfterSalesRecordInput 新建记录入参。
@@ -230,10 +231,10 @@ func (u *AfterSalesZoneUsecase) requireMemberStore(ctx context.Context, actorID 
 }
 
 func (u *AfterSalesZoneUsecase) memberOfCurrentStore(ctx context.Context, actorID string) (storeID int, isMember bool, err error) {
-	if u.access == nil {
+	if u.accessSvc == nil {
 		return 0, false, ErrAfterSalesNoStore
 	}
-	cur, err := u.access.repo.CurrentStoreID(ctx, actorID)
+	cur, err := u.accessSvc.CurrentStoreID(ctx, actorID)
 	if err != nil {
 		return 0, false, err
 	}
@@ -241,31 +242,21 @@ func (u *AfterSalesZoneUsecase) memberOfCurrentStore(ctx context.Context, actorI
 		return 0, false, nil
 	}
 	storeID = *cur
-	member, err := u.access.repo.GetMember(ctx, actorID, storeID)
+	isMember, err = u.accessSvc.IsMember(ctx, actorID, storeID)
 	if err != nil {
-		if errors.Is(err, repository.ErrAccessMemberNotFound) {
-			return storeID, false, nil
-		}
 		return 0, false, err
 	}
-	return storeID, member != nil, nil
+	return storeID, isMember, nil
 }
 
 func (u *AfterSalesZoneUsecase) canReadRecord(ctx context.Context, actorID string, row *entity.WysAfterSalesRecord) (bool, error) {
 	if row.CustomerUserID != nil && *row.CustomerUserID == actorID {
 		return true, nil
 	}
-	if u.access == nil {
+	if u.accessSvc == nil {
 		return false, nil
 	}
-	member, err := u.access.repo.GetMember(ctx, actorID, row.StoreID)
-	if err != nil {
-		if errors.Is(err, repository.ErrAccessMemberNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-	return member != nil, nil
+	return u.accessSvc.IsMember(ctx, actorID, row.StoreID)
 }
 
 func toAfterSalesRecordDTO(row *entity.WysAfterSalesRecord) AfterSalesRecordDTO {

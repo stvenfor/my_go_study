@@ -3,12 +3,15 @@
 // 层级：Delivery/WS —— 内存中的「连接管理中心」
 //
 // 【初学者】Hub 解决什么问题？
-//   WebSocket 连接散落在各个 goroutine，Hub 统一登记：
-//   - 谁在线（哪个 userID 有哪些连接）
-//   - 推消息时找得到目标连接
+//
+//	WebSocket 连接散落在各个 goroutine，Hub 统一登记：
+//	- 谁在线（哪个 userID 有哪些连接）
+//	- 推消息时找得到目标连接
 //
 // 【为什么用 map[*Client]struct{} 而不是 []Client？】
-//   用指针当 key，Register/Unregister O(1)；struct{} 不占额外内存。
+//
+//	用指针当 key，Register/Unregister O(1)；struct{} 不占额外内存。
+//
 // =============================================================================
 package ws
 

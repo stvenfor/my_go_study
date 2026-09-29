@@ -5,16 +5,17 @@ import (
 	"testing"
 	"time"
 
+	"app/internal/access"
 	"model/entity"
 	"model/repository"
 )
 
 type memDealInvoiceRepo struct {
-	nextID     int64
-	invoices   map[int64]*entity.WysDealInvoice
-	customers  map[int64]*entity.WysStoreCustomer
-	userName   string
-	avatarURL  string
+	nextID    int64
+	invoices  map[int64]*entity.WysDealInvoice
+	customers map[int64]*entity.WysStoreCustomer
+	userName  string
+	avatarURL string
 }
 
 func newMemDealRepo() *memDealInvoiceRepo {
@@ -139,14 +140,14 @@ func (m *memDealInvoiceRepo) GetUserBrief(_ context.Context, _ string) (string, 
 }
 
 type stubAccessForDeal struct {
-	storeID         int
-	member          *entity.WysStoreMember
-	store           *entity.WysStore
+	storeID          int
+	member           *entity.WysStoreMember
+	store            *entity.WysStore
 	storePermsByUser map[string][]string
 }
 
-func (s *stubAccessForDeal) asUsecase() *AccessUsecase {
-	return &AccessUsecase{repo: s}
+func (s *stubAccessForDeal) asService() *access.Service {
+	return access.NewService(s)
 }
 
 func (s *stubAccessForDeal) CreateStore(context.Context, entity.WysStore) error { return nil }
@@ -154,7 +155,7 @@ func (s *stubAccessForDeal) GetStore(_ context.Context, storeID int) (*entity.Wy
 	if s.store != nil && s.store.StoreID == storeID {
 		return s.store, nil
 	}
-	return nil, repository.ErrAccessStoreNotFound
+	return nil, access.ErrStoreNotFound
 }
 func (s *stubAccessForDeal) UpsertMember(context.Context, entity.WysStoreMember) error { return nil }
 func (s *stubAccessForDeal) RemoveMember(context.Context, string, int) error           { return nil }
@@ -167,7 +168,7 @@ func (s *stubAccessForDeal) GetMember(_ context.Context, userID string, storeID 
 			return &entity.WysStoreMember{UserID: userID, StoreID: storeID}, nil
 		}
 	}
-	return nil, repository.ErrAccessMemberNotFound
+	return nil, access.ErrMemberNotFound
 }
 func (s *stubAccessForDeal) GetRole(context.Context, string) (*entity.Role, error) { return nil, nil }
 func (s *stubAccessForDeal) UserExists(context.Context, string) (bool, error)      { return true, nil }
@@ -224,7 +225,7 @@ func TestDealInvoiceSummaryAndListFilter(t *testing.T) {
 		store:   &entity.WysStore{StoreID: 1, Name: "[4S]北京沃德龙鼎吉利"},
 		member:  &entity.WysStoreMember{UserID: "u1", StoreID: 1, Position: entity.StoreRoleManager},
 	}
-	uc := NewDealInvoiceUsecase(repo, access.asUsecase())
+	uc := NewDealInvoiceUsecase(repo, access.asService())
 	uc.now = func() time.Time { return now }
 
 	sum, err := uc.Summary(context.Background(), "u1")
@@ -253,7 +254,7 @@ func TestDealInvoiceCreateAndResubmit(t *testing.T) {
 		CustomerID: 10, StoreID: 1, DisplayName: "王先生", Phone: "13612345678",
 	}
 	access := &stubAccessForDeal{storeID: 1, store: &entity.WysStore{StoreID: 1, Name: "店"}}
-	uc := NewDealInvoiceUsecase(repo, access.asUsecase())
+	uc := NewDealInvoiceUsecase(repo, access.asService())
 	fixed := time.Date(2026, 9, 22, 15, 0, 0, 0, time.UTC)
 	uc.now = func() time.Time { return fixed }
 
@@ -287,7 +288,7 @@ func TestDealInvoiceCreateAndResubmit(t *testing.T) {
 func TestDealInvoiceNoStore(t *testing.T) {
 	repo := newMemDealRepo()
 	access := &stubAccessForDeal{storeID: 0}
-	uc := NewDealInvoiceUsecase(repo, access.asUsecase())
+	uc := NewDealInvoiceUsecase(repo, access.asService())
 	if _, err := uc.Summary(context.Background(), "u1"); err != ErrDealInvoiceNoStore {
 		t.Fatalf("got %v", err)
 	}

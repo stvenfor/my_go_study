@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"model/entity"
-	"model/provider"
 	llmrepo "app/internal/repository/llm"
 	"app/internal/usecase"
 	"common/config"
+	"model/entity"
+	"model/provider"
 )
 
 func testSSEConfig() config.SSEConfig {

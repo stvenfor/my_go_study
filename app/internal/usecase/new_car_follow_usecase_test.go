@@ -266,7 +266,7 @@ func TestFollowLevelIntentBandMapping(t *testing.T) {
 func TestNewCarFollowCreateRejectsBadLevel(t *testing.T) {
 	repo := newMemFollowRepo()
 	access := &stubAccessForDeal{storeID: 1, store: &entity.WysStore{StoreID: 1, Name: "店"}}
-	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	uc := NewNewCarFollowUsecase(repo, access.asService())
 	_, err := uc.Create(context.Background(), "u1", CreateNewCarFollowInput{
 		DisplayName: "张三", Phone: "13800000000", FollowLevel: "C",
 	})
@@ -278,7 +278,7 @@ func TestNewCarFollowCreateRejectsBadLevel(t *testing.T) {
 func TestNewCarFollowCreateAndIntentFilter(t *testing.T) {
 	repo := newMemFollowRepo()
 	access := &stubAccessForDeal{storeID: 1, store: &entity.WysStore{StoreID: 1, Name: "店"}}
-	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	uc := NewNewCarFollowUsecase(repo, access.asService())
 	fixed := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 	uc.now = func() time.Time { return fixed }
 	past := fixed.Add(-time.Hour)
@@ -325,7 +325,7 @@ func TestNewCarFollowGetForbiddenOtherOwner(t *testing.T) {
 		FollowLevel: "A", Stage: entity.FollowStageFollowing,
 	}
 	access := &stubAccessForDeal{storeID: 1}
-	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	uc := NewNewCarFollowUsecase(repo, access.asService())
 	if _, err := uc.Get(context.Background(), "u1", 9); err != ErrNewCarFollowNotFound {
 		t.Fatalf("got %v", err)
 	}
@@ -339,7 +339,7 @@ func TestNewCarFollowPatchSyncNextFollow(t *testing.T) {
 		FollowLevel: "E", Stage: entity.FollowStageFollowing, CustomerPhone: "138",
 	}
 	access := &stubAccessForDeal{storeID: 1}
-	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	uc := NewNewCarFollowUsecase(repo, access.asService())
 	fixed := time.Date(2026, 9, 22, 18, 0, 0, 0, time.UTC)
 	uc.now = func() time.Time { return fixed }
 	next := fixed.Add(-time.Minute)
@@ -360,7 +360,7 @@ func TestNewCarFollowPatchSyncNextFollow(t *testing.T) {
 
 func TestNewCarFollowNoStore(t *testing.T) {
 	repo := newMemFollowRepo()
-	uc := NewNewCarFollowUsecase(repo, (&stubAccessForDeal{storeID: 0}).asUsecase())
+	uc := NewNewCarFollowUsecase(repo, (&stubAccessForDeal{storeID: 0}).asService())
 	if _, err := uc.Summary(context.Background(), "u1"); err != ErrNewCarFollowNoStore {
 		t.Fatalf("got %v", err)
 	}
@@ -374,7 +374,7 @@ func TestNewCarFollowCreateLogAndOrder(t *testing.T) {
 		FollowLevel: "E", Stage: entity.FollowStageNew, CustomerPhone: "138",
 	}
 	access := &stubAccessForDeal{storeID: 1}
-	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	uc := NewNewCarFollowUsecase(repo, access.asService())
 	fixed := time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)
 	uc.now = func() time.Time { return fixed }
 	next := fixed.Add(24 * time.Hour)
@@ -433,7 +433,7 @@ func TestNewCarFollowStoreAdminSeesOthers(t *testing.T) {
 			"admin": {entity.PermRoleAssignStore},
 		},
 	}
-	uc := NewNewCarFollowUsecase(repo, access.asUsecase())
+	uc := NewNewCarFollowUsecase(repo, access.asService())
 
 	if _, err := uc.Get(context.Background(), "stranger", 9); err != ErrNewCarFollowNotFound {
 		t.Fatalf("stranger got %v", err)
@@ -471,4 +471,3 @@ func TestNewCarFollowStoreAdminSeesOthers(t *testing.T) {
 		t.Fatalf("admin total=%d list=%+v", totalAdmin, listAdmin)
 	}
 }
-

@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
+	"github.com/gin-gonic/gin"
 )
 
 // registerPurchaseCalculatorRoutes 购车计算器（公开，无需 SessionAuth）。

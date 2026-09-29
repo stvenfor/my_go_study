@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
 	"model/entity"
 	domainrepo "model/repository"
-	"gorm.io/gorm"
 )
 
 type transactionRepository struct {

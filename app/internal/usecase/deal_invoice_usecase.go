@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/access"
 	"model/entity"
 	"model/repository"
 )
@@ -21,13 +22,13 @@ var (
 
 // DealInvoiceUsecase 成交发票读写。
 type DealInvoiceUsecase struct {
-	repo   repository.DealInvoiceRepository
-	access *AccessUsecase
-	now    func() time.Time
+	repo      repository.DealInvoiceRepository
+	accessSvc *access.Service
+	now       func() time.Time
 }
 
-func NewDealInvoiceUsecase(repo repository.DealInvoiceRepository, access *AccessUsecase) *DealInvoiceUsecase {
-	return &DealInvoiceUsecase{repo: repo, access: access, now: time.Now}
+func NewDealInvoiceUsecase(repo repository.DealInvoiceRepository, accessSvc *access.Service) *DealInvoiceUsecase {
+	return &DealInvoiceUsecase{repo: repo, accessSvc: accessSvc, now: time.Now}
 }
 
 type CreateDealInvoiceInput struct {
@@ -52,7 +53,7 @@ func (u *DealInvoiceUsecase) Summary(ctx context.Context, actorID string) (*enti
 	if err != nil {
 		return nil, err
 	}
-	storeName, positionLabel := accessStoreLabels(ctx, u.access, actorID, storeID)
+	storeName, positionLabel := u.accessSvc.StoreLabels(ctx, actorID, storeID)
 	return &entity.DealInvoiceSummary{
 		DisplayName:   name,
 		AvatarURL:     avatar,
@@ -180,7 +181,7 @@ func (u *DealInvoiceUsecase) ListCustomers(
 }
 
 func (u *DealInvoiceUsecase) requireCurrentStore(ctx context.Context, actorID string) (int, error) {
-	return requireAccessCurrentStore(u.access, ctx, actorID, ErrDealInvoiceNoStore)
+	return u.accessSvc.RequireCurrentStore(ctx, actorID, ErrDealInvoiceNoStore)
 }
 
 // ParseDealInvoiceID 路径 id。

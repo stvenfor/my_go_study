@@ -3,11 +3,13 @@
 // 作用：把 pkg/queue 的 RabbitMQ Client 适配成 usecase.PushEnqueuer 端口。
 //
 // 【为什么需要这个适配器？】
-//   usecase 层用依赖倒置定义了 PushEnqueuer 端口（入参是 usecase.RealtimePushInput），
-//   pkg/queue 是实现方。若让 Client 直接实现该接口，基建层就得 import 业务层，
-//   形成 usecase → pkg/queue → usecase 的循环，模块化时无法拆分。
 //
-//   所以转换放在业务侧：本包（repository 层）→ pkg/queue 单向依赖。
+//	usecase 层用依赖倒置定义了 PushEnqueuer 端口（入参是 usecase.RealtimePushInput），
+//	pkg/queue 是实现方。若让 Client 直接实现该接口，基建层就得 import 业务层，
+//	形成 usecase → pkg/queue → usecase 的循环，模块化时无法拆分。
+//
+//	所以转换放在业务侧：本包（repository 层）→ pkg/queue 单向依赖。
+//
 // =============================================================================
 package queue
 

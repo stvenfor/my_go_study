@@ -3,9 +3,11 @@
 // 作用：RabbitMQ Worker 侧的任务分发器（Push / SMS / JPush / 定时广播）。
 //
 // 【为什么放在 delivery 层而不是 pkg/queue？】
-//   它持有 RealtimePushUsecase / HourlyNotifyUsecase / JPushUsecase / SessionRepository，
-//   是业务逻辑而非基建。原先放在 pkg/queue 导致 pkg → internal/usecase 反向依赖，
-//   模块化时成环。基建部分（连接、信封、消费循环）仍在 pkg/queue。
+//
+//	它持有 RealtimePushUsecase / HourlyNotifyUsecase / JPushUsecase / SessionRepository，
+//	是业务逻辑而非基建。原先放在 pkg/queue 导致 pkg → internal/usecase 反向依赖，
+//	模块化时成环。基建部分（连接、信封、消费循环）仍在 pkg/queue。
+//
 // =============================================================================
 package worker
 
@@ -15,12 +17,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"model/repository"
 	"app/internal/usecase"
 	"common/config"
 	pkgqueue "core/queue"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"model/repository"
 )
 
 const schedulerDedupKeyFmt = "scheduler:dedup:%s"

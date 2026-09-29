@@ -4,11 +4,11 @@ package middleware
 import (
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
 	pkgauth "common/auth"
 	jwtmanager "common/jwt"
+	"github.com/gin-gonic/gin"
 )
 
 // LocalSessionAuth 校验本地 access JWT 与 Redis device session；上下文键与 Supabase 路径一致。

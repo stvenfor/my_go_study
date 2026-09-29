@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"common/metrics"
+	"github.com/gin-gonic/gin"
 	dto "github.com/prometheus/client_model/go"
 )
 

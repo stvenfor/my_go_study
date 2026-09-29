@@ -9,10 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/wallet"
+	"common/config"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/repository"
-	"common/config"
 )
 
 var (
@@ -44,13 +45,13 @@ type MembershipEntitlementDTO struct {
 
 // MembershipBuyoutResult 买断结果。
 type MembershipBuyoutResult struct {
-	OrderID       int64                  `json:"order_id"`
-	Channel       string                 `json:"channel"`
-	AmountFen     int64                  `json:"amount_fen"`
-	Status        string                 `json:"status"` // paid | pending
+	OrderID       int64                     `json:"order_id"`
+	Channel       string                    `json:"channel"`
+	AmountFen     int64                     `json:"amount_fen"`
+	Status        string                    `json:"status"` // paid | pending
 	Entitlement   *MembershipEntitlementDTO `json:"entitlement,omitempty"`
-	PrepayChannel string                 `json:"prepay_channel,omitempty"`
-	PrepayParams  map[string]any         `json:"prepay_params,omitempty"`
+	PrepayChannel string                    `json:"prepay_channel,omitempty"`
+	PrepayParams  map[string]any            `json:"prepay_params,omitempty"`
 }
 
 // HuaweiVerifyInput 客户端上报。
@@ -72,12 +73,12 @@ type AppleVerifyInput struct {
 
 // MembershipUsecase 会员订阅。
 type MembershipUsecase struct {
-	repo    repository.MembershipRepository
-	wallet  *CashWalletUsecase
-	pay     *PaymentUsecase
-	huawei  HuaweiSubscriptionVerifier
-	apple   AppleReceiptVerifier
-	devMode bool
+	repo      repository.MembershipRepository
+	walletSvc *wallet.Service
+	pay       *PaymentUsecase
+	huawei    HuaweiSubscriptionVerifier
+	apple     AppleReceiptVerifier
+	devMode   bool
 }
 
 // HuaweiSubscriptionVerifier 验订阅；本地可注入 mock。
@@ -107,19 +108,19 @@ type AppleVerifyResult struct {
 
 func NewMembershipUsecase(
 	repo repository.MembershipRepository,
-	wallet *CashWalletUsecase,
+	walletSvc *wallet.Service,
 	pay *PaymentUsecase,
 	huawei HuaweiSubscriptionVerifier,
 	apple AppleReceiptVerifier,
 	appEnv string,
 ) *MembershipUsecase {
 	return &MembershipUsecase{
-		repo:    repo,
-		wallet:  wallet,
-		pay:     pay,
-		huawei:  huawei,
-		apple:   apple,
-		devMode: config.IsLabAppEnv(appEnv),
+		repo:      repo,
+		walletSvc: walletSvc,
+		pay:       pay,
+		huawei:    huawei,
+		apple:     apple,
+		devMode:   config.IsLabAppEnv(appEnv),
 	}
 }
 
@@ -205,21 +206,21 @@ func (u *MembershipUsecase) completeBalanceBuyout(
 	order *entity.WysMembershipOrder,
 	plan entity.MembershipPlan,
 ) (*MembershipBuyoutResult, error) {
-	if u.wallet == nil {
-		return nil, ErrCashInsufficient
+	if u.walletSvc == nil {
+		return nil, wallet.ErrCashInsufficient
 	}
 	ref := fmt.Sprintf("m%d", order.OrderID)
-	if _, err := u.wallet.Debit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref); err != nil {
+	if _, err := u.walletSvc.Debit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref); err != nil {
 		return nil, err
 	}
 	now := time.Now()
 	if err := u.repo.MarkOrderPaid(ctx, order.OrderID, now); err != nil {
-		_, _ = u.wallet.Credit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref+":rollback")
+		_, _ = u.walletSvc.Credit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref+":rollback")
 		return nil, err
 	}
 	ent, err := u.repo.ExtendEntitlement(ctx, userID, plan.Tier, entity.MembershipChannelBalance, plan.Months, now, "", "", "")
 	if err != nil {
-		_, _ = u.wallet.Credit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref+":rollback")
+		_, _ = u.walletSvc.Credit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref+":rollback")
 		return nil, err
 	}
 	return &MembershipBuyoutResult{

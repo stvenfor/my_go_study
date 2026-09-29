@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
-	"model/entity"
 	redisrepo "app/internal/repository/redis"
 	"app/internal/usecase"
 	"common/config"
+	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
+	"model/entity"
 )
 
 func TestWSAuthFlowLive(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
+	"core/jpush"
 	"model/entity"
 	"model/repository"
-	"core/jpush"
 )
 
 // JPushUsecase 设备登记 + 极光下发。

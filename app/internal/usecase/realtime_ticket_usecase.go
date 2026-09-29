@@ -3,8 +3,10 @@
 // 层级：Usecase（业务用例）—— 「换票」领域逻辑，不直接碰 HTTP/Redis 细节
 //
 // 【初学者】Clean Architecture 分层：
-//   Controller 解析 HTTP → Usecase 执行业务 → Repository 读写 Redis
-//   这样换票规则变更时，只改 Usecase，不动 Handler。
+//
+//	Controller 解析 HTTP → Usecase 执行业务 → Repository 读写 Redis
+//	这样换票规则变更时，只改 Usecase，不动 Handler。
+//
 // =============================================================================
 package usecase
 
@@ -13,9 +15,9 @@ import (
 	"fmt"
 	"time"
 
+	"common/config"
 	"github.com/google/uuid"
 	"model/repository"
-	"common/config"
 )
 
 type RealtimeTicketInput struct {

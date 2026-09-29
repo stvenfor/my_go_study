@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"model/repository"
 	"core/rongcloud"
+	"model/repository"
 )
 
 // RongCloudTokenClient 签发 IM Token（可替换为假实现）。

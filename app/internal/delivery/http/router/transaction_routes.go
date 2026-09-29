@@ -2,8 +2,8 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
+	"github.com/gin-gonic/gin"
 )
 
 // registerTransactionRoutes 注册 Transaction 相关路由。

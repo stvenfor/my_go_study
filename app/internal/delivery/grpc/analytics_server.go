@@ -4,11 +4,11 @@ import (
 	"context"
 
 	analyticsv1 "app/api/gen/go/analytics/v1"
-	"model/entity"
 	grpcauth "app/internal/delivery/grpc/interceptor"
 	"app/internal/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"model/entity"
 )
 
 // AnalyticsServer 实现 AnalyticsService。

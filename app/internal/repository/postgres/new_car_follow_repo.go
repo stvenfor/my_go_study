@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
 	"model/entity"
 	"model/repository"
-	"gorm.io/gorm"
 )
 
 //go:embed sql/new_car_follow_schema.sql

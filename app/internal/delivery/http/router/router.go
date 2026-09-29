@@ -1,34 +1,38 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
 	"app/internal/delivery/http/handler"
 	"app/internal/delivery/http/middleware"
 	wshandler "app/internal/delivery/ws"
+	"app/internal/shared"
 	"app/internal/usecase"
 	"common/config"
 	jwtmanager "common/jwt"
 	"common/metrics"
+	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 // Options 路由依赖。
+//
+// 迁移期同时存在两套装配方式：
+//   - 上面的 *Controller 字段：尚未切片的域，仍由 registerXxxRoutes 集中挂载；
+//   - DomainRouters：已切成垂直切片的域，各自实现 Register(engine)。
+//
+// 全部域切完后，*Controller 字段与 registerXxxRoutes 一起删除，Setup 只剩
+// 「公共中间件 + 遍历 DomainRouters」。
 type Options struct {
 	Log                          *zap.Logger
 	Mode                         string
 	JWTManager                   *jwtmanager.Manager
 	UserHandler                  *handler.UserHandler
 	ProfileController            *controller.ProfileController
-	AccessController             *controller.AccessController
 	MallController               *controller.MallController
-	PointsController             *controller.PointsController
-	CashWalletController         *controller.CashWalletController
 	MembershipController         *controller.MembershipController
 	CommunityController          *controller.CommunityController
 	ShortVideoController         *controller.ShortVideoController
 	AddressController            *controller.AddressController
-	HomeTodoController           *controller.HomeTodoController
 	DealInvoiceController        *controller.DealInvoiceController
 	UsedCarOrderController       *controller.UsedCarOrderController
 	NewCarFollowController       *controller.NewCarFollowController
@@ -46,6 +50,12 @@ type Options struct {
 	Supabase                     config.SupabaseConfig
 	DeviceSessionUC              *usecase.DeviceSessionUsecase
 	AccountGate                  gin.HandlerFunc
+
+	// SessionAuth 业务会话中间件（LocalSessionAuth / SupabaseSessionAuth）。
+	// 为 nil 时 Setup 按 Config 自行构造，兼容旧调用方。
+	SessionAuth gin.HandlerFunc
+	// DomainRouters 已切片域的路由模块（access / home / points / wallet …）。
+	DomainRouters []shared.Registrable
 }
 
 // Setup 构建 Gin 路由引擎。
@@ -66,8 +76,8 @@ func Setup(opts Options) *gin.Engine {
 	v1 := r.Group("/api/v1")
 
 	businessAuth := opts.Config.Auth.IsLocalProvider() || opts.Supabase.Enabled()
-	var sessionAuth gin.HandlerFunc
-	if businessAuth && opts.DeviceSessionUC != nil {
+	sessionAuth := opts.SessionAuth
+	if sessionAuth == nil && businessAuth && opts.DeviceSessionUC != nil {
 		if opts.Config.Auth.IsLocalProvider() {
 			sessionAuth = middleware.LocalSessionAuth(opts.JWTManager, opts.DeviceSessionUC)
 		} else {
@@ -85,20 +95,8 @@ func Setup(opts Options) *gin.Engine {
 		registerProfileRoutes(v1, sessionAuth, opts.ProfileController, opts.AccountGate)
 	}
 
-	if businessAuth && opts.AccessController != nil && sessionAuth != nil {
-		registerAccessRoutes(v1, sessionAuth, opts.AccessController, opts.AccountGate)
-	}
-
 	if opts.Config.Auth.IsLocalProvider() && opts.MallController != nil && sessionAuth != nil {
 		registerMallRoutes(v1, sessionAuth, opts.MallController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.PointsController != nil && sessionAuth != nil {
-		registerPointsRoutes(v1, sessionAuth, opts.PointsController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.CashWalletController != nil && sessionAuth != nil {
-		registerCashWalletRoutes(v1, sessionAuth, opts.CashWalletController, opts.AccountGate)
 	}
 
 	if opts.Config.Auth.IsLocalProvider() && opts.MembershipController != nil && sessionAuth != nil {
@@ -111,10 +109,6 @@ func Setup(opts Options) *gin.Engine {
 
 	if opts.Config.Auth.IsLocalProvider() && opts.ShortVideoController != nil && sessionAuth != nil {
 		registerShortVideoRoutes(v1, sessionAuth, opts.ShortVideoController, opts.AccountGate)
-	}
-
-	if opts.Config.Auth.IsLocalProvider() && opts.HomeTodoController != nil && sessionAuth != nil {
-		registerHomeTodoRoutes(v1, sessionAuth, opts.HomeTodoController, opts.AccountGate)
 	}
 
 	if opts.Config.Auth.IsLocalProvider() && opts.DealInvoiceController != nil && sessionAuth != nil {
@@ -167,6 +161,15 @@ func Setup(opts Options) *gin.Engine {
 			wsPath = "/realtime/v1/connect"
 		}
 		r.GET(wsPath, opts.WSHandler.ServeWS)
+	}
+
+	// 已切成垂直切片的域自行挂载路由（每域一个 Router + Register）。
+	// 各域在构造时就带好了自己的 sessionAuth / accountGate，sessionAuth 为 nil
+	// 时域内会跳过注册。
+	for _, domain := range opts.DomainRouters {
+		if domain != nil {
+			domain.Register(r)
+		}
 	}
 
 	return r

@@ -3,8 +3,10 @@
 // 作用：用 Redis Set 维护「当前在线用户集合」
 //
 // Redis 结构：
-//   presence:online        → Set{userId1, userId2, ...}
-//   presence:user:{userId} → 设备名，TTL 5 分钟（超时未心跳视为离线可扩展）
+//
+//	presence:online        → Set{userId1, userId2, ...}
+//	presence:user:{userId} → 设备名，TTL 5 分钟（超时未心跳视为离线可扩展）
+//
 // =============================================================================
 package redis
 

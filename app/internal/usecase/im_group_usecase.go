@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/shared"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/repository"
@@ -21,8 +22,8 @@ type RongCloudGroupClient interface {
 
 // ImGroupUsecase 门店群 + 自由群。
 type ImGroupUsecase struct {
-	repo   repository.ImGroupRepository
-	rong   RongCloudGroupClient
+	repo repository.ImGroupRepository
+	rong RongCloudGroupClient
 }
 
 func NewImGroupUsecase(repo repository.ImGroupRepository, rong RongCloudGroupClient) *ImGroupUsecase {
@@ -34,12 +35,6 @@ type ImFreeGroupOut struct {
 	GroupID     string `json:"group_id"`
 	Name        string `json:"name"`
 	OwnerUserID string `json:"owner_user_id"`
-}
-
-// ImStoreGroupOut 门店群同步结果。
-type ImStoreGroupOut struct {
-	StoreID string `json:"store_id"`
-	GroupID string `json:"group_id"`
 }
 
 // CreateFreeGroup 创建自由群；创建者为群主并入群。
@@ -148,7 +143,7 @@ func (u *ImGroupUsecase) DismissFreeGroup(ctx context.Context, actorID, groupID 
 }
 
 // EnsureStoreMembership 保证一店一群并把用户拉入（登录补拉 / 入店）。
-func (u *ImGroupUsecase) EnsureStoreMembership(ctx context.Context, storeID, userID string) (*ImStoreGroupOut, error) {
+func (u *ImGroupUsecase) EnsureStoreMembership(ctx context.Context, storeID, userID string) (*shared.ImStoreGroupOut, error) {
 	if u == nil || u.repo == nil || u.rong == nil {
 		return nil, fmt.Errorf("im group usecase not ready")
 	}
@@ -177,7 +172,7 @@ func (u *ImGroupUsecase) EnsureStoreMembership(ctx context.Context, storeID, use
 	if err := u.rong.JoinGroup(ctx, groupID, []string{userID}); err != nil {
 		return nil, err
 	}
-	return &ImStoreGroupOut{StoreID: storeID, GroupID: groupID}, nil
+	return &shared.ImStoreGroupOut{StoreID: storeID, GroupID: groupID}, nil
 }
 
 // RemoveStoreMembership 离店踢出。

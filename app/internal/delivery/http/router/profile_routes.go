@@ -2,8 +2,8 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/controller"
+	"github.com/gin-gonic/gin"
 )
 
 // registerProfileRoutes 注册 Profile 相关路由。

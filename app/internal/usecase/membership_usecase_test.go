@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"app/internal/usecase"
+	"app/internal/wallet"
 	"model/entity"
 	"model/repository"
-	"app/internal/usecase"
 )
 
 type memMembershipRepo struct {
@@ -139,7 +140,7 @@ func (m *memCashForMembership) Debit(_ context.Context, userID string, deltaFen 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.bal[userID] < deltaFen {
-		return 0, repository.ErrCashInsufficient
+		return 0, wallet.ErrCashInsufficient
 	}
 	m.bal[userID] -= deltaFen
 	return m.bal[userID], nil
@@ -160,8 +161,8 @@ func (m *memCashForMembership) DeleteCard(context.Context, string, int64) error 
 func TestMembershipBalanceBuyoutAndExtend(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 100000}}
-	wallet := usecase.NewCashWalletUsecase(cash)
-	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "dev")
+	walletSvc := wallet.NewService(cash)
+	uc := usecase.NewMembershipUsecase(repo, walletSvc, nil, nil, nil, "dev")
 
 	out, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance")
 	if err != nil {
@@ -192,10 +193,10 @@ func TestMembershipBalanceBuyoutAndExtend(t *testing.T) {
 func TestMembershipBalanceInsufficient(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 100}}
-	wallet := usecase.NewCashWalletUsecase(cash)
-	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "dev")
+	walletSvc := wallet.NewService(cash)
+	uc := usecase.NewMembershipUsecase(repo, walletSvc, nil, nil, nil, "dev")
 	_, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance")
-	if !errors.Is(err, usecase.ErrCashInsufficient) {
+	if !errors.Is(err, wallet.ErrCashInsufficient) {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -203,8 +204,8 @@ func TestMembershipBalanceInsufficient(t *testing.T) {
 func TestMembershipDualTierIndependent(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 1000000}}
-	wallet := usecase.NewCashWalletUsecase(cash)
-	uc := usecase.NewMembershipUsecase(repo, wallet, nil, nil, nil, "dev")
+	walletSvc := wallet.NewService(cash)
+	uc := usecase.NewMembershipUsecase(repo, walletSvc, nil, nil, nil, "dev")
 	if _, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance"); err != nil {
 		t.Fatal(err)
 	}

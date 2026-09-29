@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"model/entity"
 	"common/config"
 	jwtmanager "common/jwt"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"model/entity"
 )
 
 const refreshTokenTTL = 30 * 24 * time.Hour

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"app/internal/usecase"
 	"model/entity"
 	"model/repository"
-	"app/internal/usecase"
 )
 
 type shelfRepo struct {

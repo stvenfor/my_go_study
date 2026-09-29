@@ -36,9 +36,9 @@ var (
 
 // ShortVideoUsecase 小视频。
 type ShortVideoUsecase struct {
-	repo         repository.ShortVideoRepository
-	reviewDelay  time.Duration
-	now          func() time.Time
+	repo        repository.ShortVideoRepository
+	reviewDelay time.Duration
+	now         func() time.Time
 }
 
 func NewShortVideoUsecase(repo repository.ShortVideoRepository, reviewDelaySeconds int) *ShortVideoUsecase {
@@ -70,23 +70,23 @@ type ShortVideoTopicDTO struct {
 
 // ShortVideoDTO 读模型。
 type ShortVideoDTO struct {
-	ID           string               `json:"id"`
-	UserID       string               `json:"user_id"`
-	Nickname     string               `json:"nickname"`
-	Avatar       string               `json:"avatar"`
-	Title        string               `json:"title"`
-	CoverURL     string               `json:"cover_url"`
-	VideoURL     string               `json:"video_url"`
-	ViewCount    int64                `json:"view_count"`
-	LikeCount    int                  `json:"like_count"`
-	Duration     string               `json:"duration"`
-	AspectRatio  float64              `json:"aspect_ratio"`
-	Status       string               `json:"status"`
-	IsLiked      bool                 `json:"is_liked"`
-	IsMine       bool                 `json:"is_mine"`
-	Topic        *ShortVideoTopicDTO  `json:"topic"`
-	PublishTime  string               `json:"publish_time"`
-	ApprovedAt   *string              `json:"approved_at"`
+	ID          string              `json:"id"`
+	UserID      string              `json:"user_id"`
+	Nickname    string              `json:"nickname"`
+	Avatar      string              `json:"avatar"`
+	Title       string              `json:"title"`
+	CoverURL    string              `json:"cover_url"`
+	VideoURL    string              `json:"video_url"`
+	ViewCount   int64               `json:"view_count"`
+	LikeCount   int                 `json:"like_count"`
+	Duration    string              `json:"duration"`
+	AspectRatio float64             `json:"aspect_ratio"`
+	Status      string              `json:"status"`
+	IsLiked     bool                `json:"is_liked"`
+	IsMine      bool                `json:"is_mine"`
+	Topic       *ShortVideoTopicDTO `json:"topic"`
+	PublishTime string              `json:"publish_time"`
+	ApprovedAt  *string             `json:"approved_at"`
 }
 
 // ShortVideoProfileDTO 个人主页。

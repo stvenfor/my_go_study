@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"model/entity"
 	"app/internal/usecase"
 	"common/config"
+	"model/entity"
 )
 
 type mockBroadcaster struct {

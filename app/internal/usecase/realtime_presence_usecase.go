@@ -3,8 +3,10 @@
 // 作用：Flutter → Go → 其他 Flutter（presence.report → presence.update）
 //
 // 【为什么不给 presence 也写 seq？】
-//   在线状态是瞬时信息，断线重连后 sync 历史 presence 意义不大；
-//   省略 seq 简化实现，Flutter acceptSeq(null) 会直接通过。
+//
+//	在线状态是瞬时信息，断线重连后 sync 历史 presence 意义不大；
+//	省略 seq 简化实现，Flutter acceptSeq(null) 会直接通过。
+//
 // =============================================================================
 package usecase
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"model/entity"
 	"app/internal/usecase"
+	"model/entity"
 )
 
 type mockPresenceRepo struct {

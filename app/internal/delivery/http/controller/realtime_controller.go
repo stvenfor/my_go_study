@@ -4,10 +4,10 @@ package controller
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/request"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // RealtimeController Realtime HTTP 控制器。

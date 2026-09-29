@@ -3,8 +3,8 @@ package postgres
 import (
 	"fmt"
 
-	"model/entity"
 	"gorm.io/gorm"
+	"model/entity"
 )
 
 type mallSeedSpec struct {

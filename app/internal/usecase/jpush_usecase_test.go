@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"model/entity"
 	"core/jpush"
+	"model/entity"
 )
 
 type memPushDeviceRepo struct {

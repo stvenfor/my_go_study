@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/delivery/http/middleware"
 	"app/internal/usecase"
+	"github.com/gin-gonic/gin"
 )
 
 // JPushController 极光设备登记与调试下发。

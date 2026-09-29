@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"model/entity"
 	"core/rongcloud"
+	"model/entity"
 )
 
 type stubRongToken struct {

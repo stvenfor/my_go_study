@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/access"
 	"model/entity"
 	"model/repository"
 )
@@ -20,13 +21,13 @@ var (
 )
 
 type UsedCarOrderUsecase struct {
-	repo   repository.UsedCarOrderRepository
-	access *AccessUsecase
-	now    func() time.Time
+	repo      repository.UsedCarOrderRepository
+	accessSvc *access.Service
+	now       func() time.Time
 }
 
-func NewUsedCarOrderUsecase(repo repository.UsedCarOrderRepository, access *AccessUsecase) *UsedCarOrderUsecase {
-	return &UsedCarOrderUsecase{repo: repo, access: access, now: time.Now}
+func NewUsedCarOrderUsecase(repo repository.UsedCarOrderRepository, accessSvc *access.Service) *UsedCarOrderUsecase {
+	return &UsedCarOrderUsecase{repo: repo, accessSvc: accessSvc, now: time.Now}
 }
 
 type CreateUsedCarOrderInput struct {
@@ -54,7 +55,7 @@ func (u *UsedCarOrderUsecase) Summary(ctx context.Context, actorID string) (*ent
 	if err != nil {
 		return nil, err
 	}
-	storeName, positionLabel := accessStoreLabels(ctx, u.access, actorID, storeID)
+	storeName, positionLabel := u.accessSvc.StoreLabels(ctx, actorID, storeID)
 	return &entity.UsedCarOrderSummary{
 		DisplayName:   name,
 		AvatarURL:     avatar,
@@ -178,7 +179,7 @@ func (u *UsedCarOrderUsecase) ListCustomers(
 }
 
 func (u *UsedCarOrderUsecase) requireCurrentStore(ctx context.Context, actorID string) (int, error) {
-	return requireAccessCurrentStore(u.access, ctx, actorID, ErrUsedCarOrderNoStore)
+	return u.accessSvc.RequireCurrentStore(ctx, actorID, ErrUsedCarOrderNoStore)
 }
 
 func ParseUsedCarOrderID(raw string) (int64, error) {

@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/middleware"
-	"model/entity"
 	"app/internal/usecase"
 	pkgauth "common/auth"
+	"github.com/gin-gonic/gin"
+	"model/entity"
 )
 
 type mockProfileRepo struct {

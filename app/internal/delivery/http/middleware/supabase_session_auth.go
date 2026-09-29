@@ -4,11 +4,11 @@ package middleware
 import (
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
 	pkgauth "common/auth"
 	"common/config"
+	"github.com/gin-gonic/gin"
 )
 
 const (

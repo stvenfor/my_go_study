@@ -4,9 +4,9 @@ package middleware
 import (
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
 	jwtmanager "common/jwt"
+	"github.com/gin-gonic/gin"
 )
 
 const (

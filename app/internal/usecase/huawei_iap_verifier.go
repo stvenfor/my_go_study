@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"common/config"
 	"github.com/golang-jwt/jwt/v5"
 	"model/entity"
-	"common/config"
 )
 
 // LiveHuaweiSubscriptionVerifier 调用华为 IAP 订阅查询（JWT 鉴权）。

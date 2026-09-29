@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"model/entity"
-	"model/repository"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"model/entity"
+	"model/repository"
 )
 
 //go:embed sql/membership_schema.sql

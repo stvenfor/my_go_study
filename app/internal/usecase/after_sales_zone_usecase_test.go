@@ -137,7 +137,7 @@ func TestAfterSalesCreateWithAppointmentMarksDone(t *testing.T) {
 		storeID: 1,
 		member:  &entity.WysStoreMember{UserID: "staff1", StoreID: 1, Position: entity.StoreRoleAdvisor},
 	}
-	uc := NewAfterSalesZoneUsecase(repo, access.asUsecase())
+	uc := NewAfterSalesZoneUsecase(repo, access.asService())
 	uc.now = func() time.Time { return today.Add(10 * time.Hour) }
 
 	if n := repo.countPending(1, today); n != 1 {
@@ -169,7 +169,7 @@ func TestAfterSalesCreateWithAppointmentMarksDone(t *testing.T) {
 func TestAfterSalesCustomerCannotCreate(t *testing.T) {
 	repo := newMemAfterSalesRepo()
 	access := &stubAccessForDeal{storeID: 1} // no member
-	uc := NewAfterSalesZoneUsecase(repo, access.asUsecase())
+	uc := NewAfterSalesZoneUsecase(repo, access.asService())
 	_, err := uc.Create(context.Background(), "customer1", CreateAfterSalesRecordInput{
 		CustomerName:  "客",
 		CustomerPhone: "139",
@@ -193,14 +193,14 @@ func TestAfterSalesMemberListIsolatedByStore(t *testing.T) {
 	repo.records[2] = &entity.WysAfterSalesRecord{
 		RecordID: 2, StoreID: 2, CustomerName: "B", CustomerPhone: "2",
 		CustomerUserID: &uid,
-		ServiceKind: entity.ServiceKindRepair, Title: "s2", CreatedBy: "s",
+		ServiceKind:    entity.ServiceKindRepair, Title: "s2", CreatedBy: "s",
 		ServiceDate: time.Now(), CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	access := &stubAccessForDeal{
 		storeID: 1,
 		member:  &entity.WysStoreMember{UserID: "staff1", StoreID: 1},
 	}
-	uc := NewAfterSalesZoneUsecase(repo, access.asUsecase())
+	uc := NewAfterSalesZoneUsecase(repo, access.asService())
 	list, total, canCreate, err := uc.List(context.Background(), "staff1", 1, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +225,7 @@ func TestAfterSalesCustomerListOwnOnly(t *testing.T) {
 		ServiceDate: time.Now(), CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}
 	access := &stubAccessForDeal{storeID: 0} // no current store → customer path
-	uc := NewAfterSalesZoneUsecase(repo, access.asUsecase())
+	uc := NewAfterSalesZoneUsecase(repo, access.asService())
 	list, total, canCreate, err := uc.List(context.Background(), me, 1, 10)
 	if err != nil {
 		t.Fatal(err)

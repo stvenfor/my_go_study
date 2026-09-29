@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
 	"model/entity"
 	"model/repository"
-	"gorm.io/gorm"
 )
 
 // DealInvoiceRepository 成交发票 Postgres 实现。

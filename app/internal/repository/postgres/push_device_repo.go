@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"model/entity"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"model/entity"
 )
 
 //go:embed sql/push_device_schema.sql

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/supabase-community/gotrue-go/types"
 	"common/config"
 	pkgsb "core/supabase"
+	"github.com/supabase-community/gotrue-go/types"
 )
 
 var (

@@ -8,9 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"app/internal/access"
 	"app/internal/delivery/http/dto/response"
+	"app/internal/points"
 	"app/internal/usecase"
+	"app/internal/wallet"
+	"github.com/gin-gonic/gin"
 )
 
 // MallController 商城。
@@ -337,7 +340,7 @@ func (ctrl *MallController) CancelOrder(c *gin.Context) {
 
 func writeMallError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, usecase.ErrMallForbidden), errors.Is(err, usecase.ErrAccessForbidden):
+	case errors.Is(err, usecase.ErrMallForbidden), errors.Is(err, access.ErrForbidden):
 		response.Error(c, http.StatusForbidden, response.CodeForbidden, err.Error())
 	case errors.Is(err, usecase.ErrMallNotFound):
 		response.Error(c, http.StatusNotFound, response.CodeNotFound, err.Error())
@@ -359,8 +362,8 @@ func writeMallError(c *gin.Context, err error) {
 		errors.Is(err, usecase.ErrMallOrderNotCancelable),
 		errors.Is(err, usecase.ErrMallPaymentModeMixed),
 		errors.Is(err, usecase.ErrMallNeedCNYChannel),
-		errors.Is(err, usecase.ErrPointsInsufficient),
-		errors.Is(err, usecase.ErrCashInsufficient):
+		errors.Is(err, points.ErrPointsInsufficient),
+		errors.Is(err, wallet.ErrCashInsufficient):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, err.Error())
 	default:
 		response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())

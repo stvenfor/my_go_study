@@ -3,12 +3,15 @@
 // 层级：Delivery/WS —— 代表「一条 WebSocket 连接」
 //
 // 【初学者】为什么 readPump 和 writePump 分开两个 goroutine？
-//   WebSocket 全双工：读和写可以同时进行。
-//   若在同一线程里读+写，写阻塞会导致无法及时处理 ping/pong。
+//
+//	WebSocket 全双工：读和写可以同时进行。
+//	若在同一线程里读+写，写阻塞会导致无法及时处理 ping/pong。
 //
 // 【为什么 Send 用 channel 而不是直接 conn.Write？】
-//   多个 goroutine（Hub 广播、handler 回 pong）可能同时写；
-//   统一进 send 通道，由 writePump 单线程写出，避免并发写冲突。
+//
+//	多个 goroutine（Hub 广播、handler 回 pong）可能同时写；
+//	统一进 send 通道，由 writePump 单线程写出，避免并发写冲突。
+//
 // =============================================================================
 package ws
 
@@ -18,16 +21,16 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"model/entity"
 	"go.uber.org/zap"
+	"model/entity"
 )
 
 // 心跳与超时常量（gorilla/websocket 官方推荐模式）
 const (
-	writeWait  = 10 * time.Second  // 单次写操作最长等待
-	pongWait   = 60 * time.Second  // 多久没收到协议层 Pong 就认为断线
+	writeWait  = 10 * time.Second    // 单次写操作最长等待
+	pongWait   = 60 * time.Second    // 多久没收到协议层 Pong 就认为断线
 	pingPeriod = (pongWait * 9) / 10 // 略小于 pongWait，提前发 Ping
-	maxMsgSize = 64 * 1024         // 单条 JSON 最大 64KB，防恶意大包
+	maxMsgSize = 64 * 1024           // 单条 JSON 最大 64KB，防恶意大包
 )
 
 // Client 表示一个已建立的 WebSocket 连接及其会话状态。

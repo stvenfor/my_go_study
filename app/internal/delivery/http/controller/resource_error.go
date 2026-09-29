@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"app/internal/delivery/http/dto/response"
+	"github.com/gin-gonic/gin"
 )
 
 // writeResourceCRUDError 社区/短视频等同构错误映射（文案必须一致）。

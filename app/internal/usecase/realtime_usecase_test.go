@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-	"model/entity"
 	redisrepo "app/internal/repository/redis"
 	"app/internal/usecase"
 	"common/config"
+	"github.com/redis/go-redis/v9"
+	"model/entity"
 )
 
 func TestRealtimeTicketIssueAndConsume(t *testing.T) {

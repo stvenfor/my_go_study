@@ -3,9 +3,9 @@ package usecase
 import (
 	"context"
 
+	"common/config"
 	"model/entity"
 	"model/repository"
-	"common/config"
 )
 
 // RealtimeSyncInput 增量同步请求。
