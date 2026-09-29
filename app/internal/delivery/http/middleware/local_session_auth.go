@@ -16,14 +16,14 @@ func LocalSessionAuth(jwtMgr *jwtmanager.Manager, sessionUC *usecase.DeviceSessi
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))
 		if token == "" {
-			response.BackendError(c, 401, "未提供 Authorization 头")
+			response.BackendErrorWithCode(c, 401, response.CodeTokenInvalid, "未提供 Authorization 头")
 			c.Abort()
 			return
 		}
 
 		claims, err := jwtMgr.ParseUUID(token)
 		if err != nil {
-			response.BackendError(c, 401, "token 无效")
+			response.BackendErrorWithCode(c, 401, response.CodeTokenInvalid, "token 无效")
 			c.Abort()
 			return
 		}

@@ -95,13 +95,17 @@ deps-up:
 docker-down:
 	./scripts/docker-compose.sh down
 
-# 按当前网卡同步 Go REALTIME_PUBLIC_WS_HOST 与 Flutter BACKEND_HOST / LanHost.fallback
+# 按当前网卡同步 Go REALTIME_PUBLIC_WS_HOST 与客户端 BACKEND_HOST / LanHost.fallback
+# 默认仅 my_ai_project；例: make sync-lan-ip LAN_CLIENTS=my_kmp_project
+# 全部: make sync-lan-ip LAN_CLIENTS=all
+LAN_CLIENTS ?=
 sync-lan-ip:
-	./scripts/sync-lan-ip.sh
+	LAN_CLIENTS="$(LAN_CLIENTS)" ./scripts/sync-lan-ip.sh
 
 # 本机局域网后端（真机联调）：需 .env.lan，见 docs/dual-end-lan-startup.md
 # Compose（需 Docker Desktop）；改 Go 代码后需重新 make lan-up（会 --build）
-# lan-up / lan-run 会先 sync-lan-ip，IP 切换后环境跟着变
+# lan-up / lan-run 会先 sync-lan-ip（默认仅 Flutter）；IP 切换后环境跟着变
+# 其它客户端: make lan-up LAN_CLIENTS=my_kmp_project[,my_rn_project] 或 LAN_CLIENTS=all
 lan-up:
 	@command -v docker >/dev/null 2>&1 || { \
 		echo "错误: 未安装 Docker Desktop。"; \
@@ -109,17 +113,17 @@ lan-up:
 		echo "（本机 PostgreSQL + Redis 已可用时直接 make lan-run）"; \
 		exit 1; \
 	}
-	./scripts/lan-compose.sh up -d --build
+	LAN_CLIENTS="$(LAN_CLIENTS)" ./scripts/lan-compose.sh up -d --build
 
 lan-down:
 	./scripts/lan-compose.sh down
 
-# 无 Docker：本机进程 + Homebrew PG/Redis
+# 无 Docker：本机进程 + Homebrew PG/Redis（同样尊重 LAN_CLIENTS）
 lan-run:
-	./scripts/lan-run.sh api
+	LAN_CLIENTS="$(LAN_CLIENTS)" ./scripts/lan-run.sh api
 
 lan-run-worker:
-	./scripts/lan-run.sh worker
+	LAN_CLIENTS="$(LAN_CLIENTS)" ./scripts/lan-run.sh worker
 
 # 从 Supabase Cloud 导入到本地 Postgres（需 .env.local 的 service_role）
 # 例: make import-supabase DEFAULT_PASSWORD='ChangeMe123!'

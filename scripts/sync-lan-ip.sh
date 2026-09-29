@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# 按当前默认路由网卡的 IPv4，同步 Go 与清单里的全部客户端。
+# 按当前默认路由网卡的 IPv4，同步 Go .env.lan 与选定客户端。
 # 客户端清单：scripts/lan-ip.clients（Flutter / KMP / RN / Kuikly / uni-app）。
+# 默认只写 my_ai_project；其它客户端须 LAN_CLIENTS 显式打开：
+#   make lan-up                              # 仅 Flutter
+#   make lan-up LAN_CLIENTS=my_kmp_project   # Flutter + KMP（可逗号多选）
+#   make lan-up LAN_CLIENTS=all              # 清单全部
 # make lan-up / make lan-run、Flutter ./scripts/run_app.sh --lan、IDE「LAN 真机」启动前会自动调用。
 # 若 Docker app 已在跑且 IP 过期，本脚本会重建该容器（不重新编译镜像）。
 # lan-compose 自己会 up，调用时设 SYNC_LAN_IP_SKIP_DOCKER=1 避免重复重建。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DEFAULT_LAN_CLIENT=my_ai_project
 
 detect_lan_ip() {
   local iface="" ip="" cand
@@ -59,15 +64,32 @@ OLD_GO="$(grep -E '^REALTIME_PUBLIC_WS_HOST=' "$GO_ENV" | head -1 | cut -d= -f2-
 upsert_kv "$GO_ENV" REALTIME_PUBLIC_WS_HOST "$IP"
 echo "Go REALTIME_PUBLIC_WS_HOST: ${OLD_GO:-<空>} → $IP"
 
-python3 - "$ROOT" "$IP" "$ROOT/scripts/lan-ip.clients" <<'PY'
+# LAN_CLIENTS: 空=仅 my_ai_project；all=清单全部；逗号列表=默认 Flutter + 所列客户端
+LAN_CLIENTS_RAW="${LAN_CLIENTS:-}"
+python3 - "$ROOT" "$IP" "$ROOT/scripts/lan-ip.clients" "$DEFAULT_LAN_CLIENT" "$LAN_CLIENTS_RAW" <<'PY'
 import pathlib, re, sys
-root, ip, manifest = sys.argv[1], sys.argv[2], sys.argv[3]
+root, ip, manifest, default_client, clients_raw = sys.argv[1:6]
 root_path = pathlib.Path(root)
-for raw in pathlib.Path(manifest).read_text().splitlines():
-    line = raw.strip()
+raw = clients_raw.strip()
+if raw.lower() == "all":
+    allow = None
+    print("客户端范围: all（清单全部）")
+elif not raw:
+    allow = {default_client}
+    print(f"客户端范围: {default_client}（默认；其它用 LAN_CLIENTS=…）")
+else:
+    extras = {p.strip() for p in raw.split(",") if p.strip()}
+    allow = {default_client} | extras
+    print(f"客户端范围: {', '.join(sorted(allow))}")
+
+for raw_line in pathlib.Path(manifest).read_text().splitlines():
+    line = raw_line.strip()
     if not line or line.startswith("#"):
         continue
     kind, rel_root, rel_file, marker = line.split("\t")
+    client_id = pathlib.Path(rel_root).name
+    if allow is not None and client_id not in allow:
+        continue
     client = (root_path / rel_root).resolve()
     if not client.is_dir():
         print(f"跳过（目录不存在）: {rel_root}")

@@ -12,13 +12,17 @@ import (
 const (
 	CodeSuccess       = 0
 	CodeInvalidParams = 10001
-	CodeUnauthorized  = 10002
+	CodeUnauthorized  = 10002 // 登录凭证错误（如密码错误）；勿与 token 失效混用
 	CodeForbidden     = 10003
 	CodeNotFound      = 10004
 	// 单设备 session：与登录 10002（密码错误）区分，客户端按 code 分支勿依赖文案。
 	CodeSessionReplaced = 10021
 	CodeSessionInvalid  = 10022
-	CodeInternalError   = 50000
+	// access JWT 无效 / 未带 Authorization；客户端 tryRefresh → 失败再清会话。
+	CodeTokenInvalid = 10023
+	// 短信/邮箱验证码错误或过期。
+	CodeInvalidOTP    = 10024
+	CodeInternalError = 50000
 )
 
 // Response 统一 API 响应格式。

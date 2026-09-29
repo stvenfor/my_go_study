@@ -21,21 +21,21 @@ func Auth(jwtManager *jwtmanager.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			response.Error(c, 401, response.CodeUnauthorized, "未提供 Authorization 头")
+			response.Error(c, 401, response.CodeTokenInvalid, "未提供 Authorization 头")
 			c.Abort()
 			return
 		}
 
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			response.Error(c, 401, response.CodeUnauthorized, "Authorization 格式错误")
+			response.Error(c, 401, response.CodeTokenInvalid, "Authorization 格式错误")
 			c.Abort()
 			return
 		}
 
 		claims, err := jwtManager.Parse(parts[1])
 		if err != nil {
-			response.Error(c, 401, response.CodeUnauthorized, "token 无效或已过期")
+			response.Error(c, 401, response.CodeTokenInvalid, "token 无效或已过期")
 			c.Abort()
 			return
 		}

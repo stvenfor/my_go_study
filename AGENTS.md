@@ -90,8 +90,9 @@ Supabase Cloud 或 local Auth + 本地 Postgres
 # 方案 A（推荐联调）：Docker 统一管理 HTTP:8080 + gRPC:9090
 # + PG + Redis + RabbitMQ + ES + Worker + Prometheus/Grafana/Alertmanager
 # cp .env.lan.example .env.lan 后：
-# 不用手改 IP：启动时按 scripts/lan-ip.clients 自动写 Go 与全部客户端（Flutter / KMP / RN / Kuikly / uni-app）
+# 不用手改 IP：默认只写 Go + my_ai_project；其它客户端加 LAN_CLIENTS=
 make lan-up                 # docs/lan-backend-host.md；改 Go 后需再执行（会 --build）
+# make lan-up LAN_CLIENTS=my_kmp_project   # +KMP；LAN_CLIENTS=all 写清单全部
 make lan-down
 # 勿与本机 make run 同时开，会抢 :8080
 

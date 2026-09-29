@@ -21,14 +21,14 @@ func SupabaseSessionAuth(cfg config.SupabaseConfig, sessionUC *usecase.DeviceSes
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))
 		if token == "" {
-			response.BackendError(c, 401, "未提供 Authorization 头")
+			response.BackendErrorWithCode(c, 401, response.CodeTokenInvalid, "未提供 Authorization 头")
 			c.Abort()
 			return
 		}
 
 		user, err := pkgauth.ValidateAccessToken(c.Request.Context(), cfg, token)
 		if err != nil {
-			response.BackendError(c, 401, err.Error())
+			response.BackendErrorWithCode(c, 401, response.CodeTokenInvalid, err.Error())
 			c.Abort()
 			return
 		}

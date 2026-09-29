@@ -341,7 +341,7 @@ func (h *UserHandler) handleUsecaseError(c *gin.Context, err error) {
 	case errors.Is(err, usecase.ErrInvalidDeviceID):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "device_id 不能为空")
 	case errors.Is(err, usecase.ErrInvalidOTP):
-		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "验证码错误或已失效")
+		response.Error(c, http.StatusUnauthorized, response.CodeInvalidOTP, "验证码错误或已失效")
 	case errors.Is(err, usecase.ErrPhoneLoginNotAvailable):
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "短信登录暂未开放，请使用邮箱登录")
 	case errors.Is(err, usecase.ErrWechatNotConfigured):
