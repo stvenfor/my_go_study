@@ -66,6 +66,9 @@ services:
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     container_name: my_go_study_app
+    # 冷启动时 RabbitMQ 的 AMQP 监听可能比 healthcheck 慢一拍，app 连不上会直接退出；
+    # 加重启策略让其自愈，避免 make lan-up 首启偶发 Exited(1)。
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,6 +125,7 @@ services:
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
     container_name: my_go_study_worker
+    restart: unless-stopped
     depends_on:
       redis:
         condition: service_healthy

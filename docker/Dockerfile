@@ -8,6 +8,12 @@ ARG TARGETOS=linux
 
 WORKDIR /app
 
+# 宿主机代理(Clash)会拒绝国内镜像源(goproxy.cn / dl-cdn.alpinelinux.org)，但它们直连可达。
+# 构建阶段对这两类域名绕过代理，否则下方 apk / go mod download 走代理会被拒。
+ARG NO_PROXY
+ENV NO_PROXY=goproxy.cn,dl-cdn.alpinelinux.org,localhost,127.0.0.1${NO_PROXY:+,${NO_PROXY}}
+ENV no_proxy=goproxy.cn,dl-cdn.alpinelinux.org,localhost,127.0.0.1${no_proxy:+,${no_proxy}}
+
 RUN apk add --no-cache git ca-certificates tzdata
 
 # 构建机访问 proxy.golang.org 超时时可覆盖：GOPROXY=https://goproxy.cn,direct
@@ -39,6 +45,11 @@ RUN arch="${TARGETARCH}" \
 FROM alpine:3.20
 
 WORKDIR /app
+
+# 同上：Alpine apk CDN 直连可达、经代理被拒，构建阶段绕过代理。
+ARG NO_PROXY
+ENV NO_PROXY=goproxy.cn,dl-cdn.alpinelinux.org,localhost,127.0.0.1${NO_PROXY:+,${NO_PROXY}}
+ENV no_proxy=goproxy.cn,dl-cdn.alpinelinux.org,localhost,127.0.0.1${no_proxy:+,${no_proxy}}
 
 RUN apk add --no-cache ca-certificates tzdata curl \
     && adduser -D -g '' appuser
