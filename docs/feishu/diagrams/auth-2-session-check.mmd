@@ -1,0 +1,20 @@
+sequenceDiagram
+    autonumber
+    participant FL as Flutter
+    participant MW as SessionAuth
+    participant DS as SessionUsecase
+    participant RD as Redis
+
+    FL->>MW: 业务 API · Bearer + session 头
+    activate MW
+    MW->>MW: ParseUUID 校验 access JWT
+    MW->>DS: Validate(uid, session_id, device_id)
+    activate DS
+    DS->>RD: GET auth:session:{uid}
+    RD-->>DS: 存储的 session
+    DS-->>MW: 校验结论
+    deactivate DS
+    MW-->>FL: 注入 user 上下文 → 200
+    deactivate MW
+
+    Note over FL,RD: device 不符 → ErrSessionReplaced · session 不符 → ErrSessionInvalid · 同 session 换 device_id → 允许回写

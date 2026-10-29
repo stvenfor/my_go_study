@@ -1,0 +1,106 @@
+{
+  "wiki_space_id": "7660024466872765661",
+  "wiki_space_name": "学习",
+  "project_folder_name": "go学习",
+  "project_folder_node_token": "Q2adwTm3ZioENHkDgxEcfiZSnXc",
+  "directories": {
+    "docs": "CTkRwlpa2iFXPZkykbdc2n8SnYd"
+  },
+  "files": {
+    "AGENTS.md": {
+      "node_token": "OyQpwttBniVYhpkO34icRBV9ncd",
+      "document_id": "RWerdxgW9o39INxwfRccsR09nhg",
+      "content_hash": "sha256:0dce6c7f06ef8581e37dc4fe56df0ec1913679ead566a3acf1518ac7067c1991"
+    },
+    "docs/architecture-learning-guide.md": {
+      "node_token": "JWf0wuTSeiuSuMka5CrcifA2n0d",
+      "document_id": "VTOVdtiI5oImObx69HqcDpMgnmc",
+      "content_hash": "sha256:2a5a3b851c62bee6d69b8c7fa2850c196f54cbc4d949b9448dbf148b70e0f387"
+    },
+    "docs/auth-beginner-walkthrough.md": {
+      "node_token": "HrZ7wXvi0ilmcyk3IIbcKyaonmd",
+      "document_id": "Ma7gdC2dtoODCgxd6gbcYZu2n5g",
+      "content_hash": "sha256:346eb40c63ab470fad8df9d781553b84774ae75eae23819c69402dc25282c06c"
+    },
+    "docs/coding-playbook-dual-repo.md": {
+      "node_token": "DcmHwClPyikFaZkgoL2cc201nhc",
+      "document_id": "JLs3dD0RBoD4jvxCXSictQ90n6b",
+      "content_hash": "sha256:e4d922ddbdf153a2f11abda40cdd12c8ae3644ae7ecd5d91303cc3b62b4153b8"
+    },
+    "docs/cs-agent-eino.md": {
+      "node_token": "I58PwIlXLikRBskLgyCcetXGnCb",
+      "document_id": "DCASdxS5IoblwrxBG1Xc5zrqneg",
+      "content_hash": "sha256:5c942f20a3e3ce1dc3b442d246c29669eba21a5d45d1ba128ddda5cd64051ac1"
+    },
+    "docs/dual-end-lan-startup.md": {
+      "node_token": "TNNZwDksniiTEbkQCAVcQSrNnGe",
+      "document_id": "Q3judeoYroDSshxBIhTc5pw9nSh",
+      "content_hash": "sha256:868e62dd9f7b2236d70b84190e5239b1262bd08f9e55b65abd32fd7e6deeb836"
+    },
+    "docs/elasticsearch-transactions.md": {
+      "node_token": "TaHVw6M3LiMU2BkIPaXclxudn9d",
+      "document_id": "JHHDdSiOyoHcXpxXIUjcEEyJnpe",
+      "content_hash": "sha256:0541c4b058a1dabc67948ef5fc3c3b83f7ced8198d3ffb41619081dc5e75a15c"
+    },
+    "docs/lan-backend-host.md": {
+      "node_token": "WQxAw3106iOi1ekpU4tcLTLLnnc",
+      "document_id": "Re2AdbfUTof1wOxm5r7cdFA1ntf",
+      "content_hash": "sha256:79c8609eac6e2e3cb5c7ca2f9c364caa1d4d8f232080c0f4580d48331ebb3a5b"
+    },
+    "docs/llm-ai-fundamentals.md": {
+      "node_token": "VvmFwykJPiQPAfk0jmXcS1u7n7f",
+      "document_id": "BXSzdVO3poJq2hxCMYucYCwunYL",
+      "content_hash": "sha256:ada33da00424830c142b4cd9d53810c6fb4d8929f95eeea488da264ff213e4f2"
+    },
+    "docs/local-auth-postgres.md": {
+      "node_token": "MRtvwaphgiGzkikOTe7cO9GAns7",
+      "document_id": "FP16d00WBo3D8VxzGAVcPKWunif",
+      "content_hash": "sha256:241d9ed9b4289df5788a8285cbba42787391e0d5e5a7780420a2fcc82cbc0bd6"
+    },
+    "docs/message-queue.md": {
+      "node_token": "Zg59wl5iliblL6kWT22ckgn7ndD",
+      "document_id": "E621dSnmGoB3zexiyDMcQ5q6nRb",
+      "content_hash": "sha256:c59efdffd2afaf3fab12c60bc14f05afb274119146797f41a9216eecea73e044"
+    },
+    "docs/module-parity-go-flutter.md": {
+      "node_token": "A1yNwvkzkiQ0MlkpgJsc27wbns1",
+      "document_id": "EkG9dnPHHoM8pqxbsuFcmZ6Jnxb",
+      "content_hash": "sha256:53e41ce30e60aeef559c90e8ed696cec8eb095bf5bf4bcf76dfa446af8349d90"
+    },
+    "docs/observability-lan.md": {
+      "node_token": "JYMGwYPuViksJ9kUe1mcmX7XnKf",
+      "document_id": "GdCzds3gCoQsK4xcSujcY6Q1n0d",
+      "content_hash": "sha256:0b525087ea45a0d178f5ec6c9429565c7e60f7399077521d6135f01f974f317d"
+    },
+    "docs/realtime-beginner-walkthrough.md": {
+      "node_token": "B6xpwuQhjivxhtkxuFTczuyKnyf",
+      "document_id": "EHQwdEA7uoEKc3x3Y9EcXAGvnPb",
+      "content_hash": "sha256:9eafa0cc69a9827c1810468cc5f0ff1fc608c095dc372a56f1aeaf1e4b4f4d69"
+    },
+    "docs/realtime-websocket.md": {
+      "node_token": "RQTOwLqc3ify1lkTIoqcj2ianhc",
+      "document_id": "MAtjdFyXDoMVZrxqyZ0cEICxnBf",
+      "content_hash": "sha256:2efac2c8803f3d5bf21925a47a4b522e2b787f4ed883706ff8d07e7156310c12"
+    },
+    "docs/sse-streaming.md": {
+      "node_token": "LKNtwclj5iiHSUkhIUxcACLmnFd",
+      "document_id": "R8jJdhu1qouaaKx2atBc1U9znjh",
+      "content_hash": "sha256:9470dd0482add0d5e7003159721e4ee6290781b22307fd5d9fc879f29a191e81"
+    },
+    "docs/startup-guide.md": {
+      "node_token": "J1wBwZsjMioop1kQBKzcVj93n1g",
+      "document_id": "SNNWdMhbhoxKHLxub96cxeoOnZb",
+      "content_hash": "sha256:ad4be38ef449e861c3a419343100ec9751464528b4287162c2baa0637a73f61e"
+    },
+    "docs/supabase-integration.md": {
+      "node_token": "ZgpEwl7Rait4OpkpVmIcQtJrnXc",
+      "document_id": "Mis5d8MU7o6XURxvd8ucntQbn6c",
+      "content_hash": "sha256:dec80ebbcc8ef0c31a142c51ce21584054592c279958e26890948a5d3f1ba503"
+    },
+    "docs/transactions-beginner-walkthrough.md": {
+      "node_token": "XvmawUlWAiTa3CkIrExcjxg4nyg",
+      "document_id": "IjlHd13k6onCCJxC9QdcitW3neh",
+      "content_hash": "sha256:b8777a5d1876e4eb9f55c23879a11439ce4e7ec8e7609146de2cd757101f317c"
+    }
+  }
+}

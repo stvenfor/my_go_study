@@ -90,9 +90,11 @@ Supabase Cloud 或 local Auth + 本地 Postgres
 # 方案 A（推荐联调）：Docker 统一管理 HTTP:8080 + gRPC:9090
 # + PG + Redis + RabbitMQ + ES + Worker + Prometheus/Grafana/Alertmanager
 # cp .env.lan.example .env.lan 后：
-# 不用手改 IP：默认只写 Go + my_ai_project；其它客户端加 LAN_CLIENTS=
+# 不用手改 IP：lan-up 会先按 scripts/lan-ip.clients 的注释开关同步（行首 # = 关闭）
 make lan-up                 # docs/lan-backend-host.md；改 Go 后需再执行（会 --build）
-# make lan-up LAN_CLIENTS=my_kmp_project   # +KMP；LAN_CLIENTS=all 写清单全部
+# 只想刷 IP 不启动: make sync-lan-ip
+# 临时加客户端（不改清单文件）: make lan-up LAN_CLIENTS=my_kmp_project,kmp_kuikly
+#                              # LAN_CLIENTS=all 写清单内全部未注释行
 make lan-down
 # 勿与本机 make run 同时开，会抢 :8080
 

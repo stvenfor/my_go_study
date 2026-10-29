@@ -1,0 +1,19 @@
+sequenceDiagram
+    autonumber
+    participant FL as Flutter
+    participant H as Handler
+    participant DS as SessionUsecase
+    participant AU as AuthUsecase
+    participant RD as Redis
+    participant PG as PostgreSQL
+
+    FL->>H: POST /user/logout
+    activate H
+    H->>DS: RevokeOnLogout
+    DS->>RD: DEL auth:session:{uid}
+    H->>AU: Logout(accessToken)
+    AU->>PG: 删除该用户全部 refresh token
+    H-->>FL: 200 ok
+    deactivate H
+
+    Note over FL,PG: 白名单账号不写 Redis，登出等价于只清客户端本地凭据

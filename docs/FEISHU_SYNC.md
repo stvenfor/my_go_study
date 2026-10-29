@@ -24,10 +24,15 @@
 
 | 知识库 | 配置 | 用途 |
 |--------|------|------|
-| **code** | [`feishu-sync-code.config.yaml`](./feishu-sync-code.config.yaml) | 精选学习文档 |
+| **学习**（飞书真实库名；`code` 配置里的 `space_name: "code"` 是历史别名，实际空间名就是「学习」） | [`feishu-sync-code.config.yaml`](./feishu-sync-code.config.yaml) | 精选学习文档（架构指南 + AGENTS） |
+| **学习** | [`feishu-sync-study.config.yaml`](./feishu-sync-study.config.yaml) | 「go学习」文件夹下的项目学习/理解文档（精选学习路径：架构/启动/3 篇新手 walkthrough/核心中间件，共 19 篇） |
 | **daily** | [`feishu-sync-daily.config.yaml`](./feishu-sync-daily.config.yaml) | 「日常知识」文件夹下的日常笔记 |
 | **tool** | [`feishu-sync-tool.config.yaml`](./feishu-sync-tool.config.yaml) | 「grpc」文件夹下的 gRPC 学习文档 |
 | **tool** | [`feishu-sync-tool-docker.config.yaml`](./feishu-sync-tool-docker.config.yaml) | 「Docker 相关文档纪要」文件夹下的 Docker 联调运维文档 |
+
+> 说明：`feishu-sync-study.config.yaml` 的 `wiki.space_name` 必须写飞书真实库名 **「学习」**（不要写 `code`），
+> 脚本会按名字匹配已有空间，不会新建知识库；只在「学习」下新建一个顶层文件夹 **「go学习」**。
+> 同步后 `docs/*.md` 会落在「go学习 / docs」子目录里，`AGENTS.md` 直接落在「go学习」下。
 
 ## 一、前置准备（一次性）
 
@@ -73,6 +78,10 @@ lark-cli auth status
 # 单文件
 python3 scripts/feishu_doc_sync/main.py sync --file docs/startup-guide.md
 
+# 同步到知识库「学习」→ 文件夹「go学习」（项目学习/理解文档精选路径）
+./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-study.config.yaml
+./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-study.config.yaml
+
 # 同步到知识库「code」（架构学习指南等）
 ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-code.config.yaml
 ./scripts/sync_docs_to_feishu.sh sync --config docs/feishu-sync-code.config.yaml
@@ -92,7 +101,30 @@ python3 scripts/feishu_doc_sync/main.py sync --file docs/startup-guide.md
 
 依赖：`lark-cli`（必需）、Python 3.10+ 与 `PyYAML`（脚本自动安装）。
 
-## 三、常见问题
+## 三、富文本页（画板 / 高亮块 / 栅格）
+
+Markdown 导入**不支持**画板、高亮块(callout)、栅格(grid)、表格列宽、单元格配色、勾选框等块，这类页面改用 **DocxXML 为源**（lark-cli 的 `--content @x.xml` 路径），不走 `sync_docs_to_feishu.sh`。
+
+| 页面 | Git 源 | 飞书位置 |
+|------|--------|----------|
+| 认证时序图：登录 · SessionAuth · 刷新 · 登出 | [`docs/feishu/auth-session-sequence.xml`](./feishu/auth-session-sequence.xml) + 图源 [`docs/feishu/diagrams/auth-*.mmd`](./feishu/diagrams/) | 项目 docs → my_go_study → docs |
+
+改完源文件重推（整页覆盖）：
+
+```bash
+make feishu-push-auth
+# lark-cli 不在 PATH 时：
+make feishu-push-auth LARK_CLI=/abs/path/to/lark-cli
+```
+
+已知坑：
+
+- **画板 mermaid 不支持 `<br/>`**（participant 别名与消息文本里都不行，整块会 `degrade_code=2107` 静默丢失）；标签保持单行，细节挪到图内 `Note over` 或图下要点列表。
+- 核验样式别用默认 `docs +fetch`（`--detail simple` 不回显 callout/表头配色与 `<col width>`），要用 `--detail full`。
+- 推送返回 `result: partial_success` + warnings 即有块被丢弃，须逐条排查，不要当成功。
+- `.xml` / `.mmd` 不匹配 `docs/**/*.md` include，md 管线不会覆盖它们；反之也别把它们改成 `.md` 走 sync。
+
+## 四、常见问题
 
 | 现象 | 处理 |
 |------|------|
@@ -101,7 +133,7 @@ python3 scripts/feishu_doc_sync/main.py sync --file docs/startup-guide.md
 | `permission denied` | 将应用加为知识库成员 |
 | 飞书内修改被覆盖 | 预期行为；请改 Git 后 sync |
 
-## 四、相关文件
+## 五、相关文件
 
 | 文件 | 说明 |
 |------|------|
@@ -109,3 +141,4 @@ python3 scripts/feishu_doc_sync/main.py sync --file docs/startup-guide.md
 | [`feishu-sync.manifest.json`](./feishu-sync.manifest.json) | space / 项目文件夹 / 文档 node 映射 |
 | [`scripts/feishu_doc_sync/`](../scripts/feishu_doc_sync/) | 扫描 + 调 lark-cli |
 | [`scripts/sync_docs_to_feishu.sh`](../scripts/sync_docs_to_feishu.sh) | 本地入口 |
+| [`docs/feishu/`](./feishu/) | 富文本页源（DocxXML + 画板 mermaid），见 §三 |

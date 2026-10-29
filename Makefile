@@ -9,7 +9,10 @@ MODULES := model common core app
 MAIN_PATH := ./cmd/api
 WORKER_PATH := ./cmd/worker
 BIN_DIR := bin
-.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto
+# 飞书富文本页推送：lark-cli 路径 + 目标文档 obj_token
+LARK_CLI ?= lark-cli
+FEISHU_AUTH_DOC ?= KIsUdqqRfocxiYxuzhHcUKFYnlh
+.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
@@ -96,16 +99,17 @@ docker-down:
 	./scripts/docker-compose.sh down
 
 # 按当前网卡同步 Go REALTIME_PUBLIC_WS_HOST 与客户端 BACKEND_HOST / LanHost.fallback
-# 默认仅 my_ai_project；例: make sync-lan-ip LAN_CLIENTS=my_kmp_project
-# 全部: make sync-lan-ip LAN_CLIENTS=all
+# 同步哪些客户端/文件，改 scripts/lan-ip.clients：行首加 # = 关闭，去掉 # = 开启
+# 一次性覆盖（不改文件）: make sync-lan-ip LAN_CLIENTS=my_kmp_project[,kmp_kuikly]
+#                         make sync-lan-ip LAN_CLIENTS=all   # 清单内全部未注释行
 LAN_CLIENTS ?=
 sync-lan-ip:
 	LAN_CLIENTS="$(LAN_CLIENTS)" ./scripts/sync-lan-ip.sh
 
 # 本机局域网后端（真机联调）：需 .env.lan，见 docs/dual-end-lan-startup.md
 # Compose（需 Docker Desktop）；改 Go 代码后需重新 make lan-up（会 --build）
-# lan-up / lan-run 会先 sync-lan-ip（默认仅 Flutter）；IP 切换后环境跟着变
-# 其它客户端: make lan-up LAN_CLIENTS=my_kmp_project[,my_rn_project] 或 LAN_CLIENTS=all
+# lan-up / lan-run 会先 sync-lan-ip（范围见 scripts/lan-ip.clients 的注释开关）
+# 临时加客户端: make lan-up LAN_CLIENTS=my_kmp_project[,my_rn_project] 或 LAN_CLIENTS=all
 lan-up:
 	@command -v docker >/dev/null 2>&1 || { \
 		echo "错误: 未安装 Docker Desktop。"; \
@@ -188,3 +192,9 @@ push-notify-user:
 # 推送前检查：入库文件不得含 Supabase service_role（GitHub 推送保护）
 check-secrets:
 	./scripts/check-secrets.sh
+
+# 富文本页（画板/高亮块/栅格）：Markdown 管线不支持，改 docs/feishu 下 XML + mmd 后重推
+# lark-cli 不在 PATH 时：make feishu-push-auth LARK_CLI=/abs/path/to/lark-cli
+feishu-push-auth:
+	$(LARK_CLI) docs +update --doc $(FEISHU_AUTH_DOC) --command overwrite \
+		--content @docs/feishu/auth-session-sequence.xml --as user

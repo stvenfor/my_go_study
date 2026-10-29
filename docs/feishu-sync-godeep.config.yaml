@@ -1,0 +1,25 @@
+# 飞书知识库「学习 / go学习 / my_go_study 深度学习」同步配置
+# 用途：my_go_study 函数级深度学习系列（00 总览 + 01-14 专题，共 15 篇）
+# 目标文件夹节点已预置在 manifest（project_folder_node_token），sync 只原地更新内容、不新建节点。
+# 用法（在仓库根目录执行）：
+#   ./scripts/sync_docs_to_feishu.sh dry-run --config docs/feishu-sync-godeep.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync    --config docs/feishu-sync-godeep.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync    --config docs/feishu-sync-godeep.config.yaml \
+#       --file docs/feishu/go-deep-dive/05-认证与会话.md
+
+wiki:
+  space_name: "学习"
+  space_description: "Migrated from Yuque"
+  # 「学习」下「go学习」内的子文件夹；token 已在 manifest 中，勿改名（改名会新建空目录）
+  project_folder: "my_go_study 深度学习"
+
+sync:
+  # sync 工具固定以仓库根为 root，用全路径 include + strip_prefix 让文档直接落在目标文件夹下
+  include:
+    - "docs/feishu/go-deep-dive/*.md"
+  exclude: []
+  strip_prefix: "docs/feishu/go-deep-dive"
+
+paths:
+  manifest: "docs/feishu/go-deep-dive/feishu-sync-godeep.manifest.json"
+  repo_root: "."

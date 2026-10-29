@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant FL as Flutter
+    participant H as Handler
+    participant AU as AuthUsecase
+    participant DS as SessionUsecase
+    participant PG as PostgreSQL
+    participant RD as Redis
+
+    FL->>H: POST /user/login
+    activate H
+    H->>AU: Login(email, password)
+    activate AU
+    AU->>PG: 查用户 · bcrypt 比对
+    PG-->>AU: 用户行
+    AU->>PG: 签发 access JWT · 写 refresh sha256
+    AU-->>H: token + refresh_token
+    deactivate AU
+    H->>DS: IssueOnLogin(user, device)
+    activate DS
+    DS->>RD: SET auth:session:{uid}
+    DS-->>H: session_id
+    deactivate DS
+    H-->>FL: 200 三件套凭据
+    deactivate H
+
+    Note over FL,RD: 覆盖旧设备 session · bcrypt 失败累加 failed_login_count 并置 locked_until

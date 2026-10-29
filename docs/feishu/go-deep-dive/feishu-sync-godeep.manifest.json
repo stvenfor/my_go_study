@@ -1,0 +1,84 @@
+{
+  "wiki_space_id": "7660024466872765661",
+  "wiki_space_name": "学习",
+  "project_folder_name": "my_go_study 深度学习",
+  "project_folder_node_token": "KjqYwp759iJVKtkr9B6cyQTCnDd",
+  "directories": {},
+  "files": {
+    "docs/feishu/go-deep-dive/00-README-总览与学习路线.md": {
+      "node_token": "L30wwoOi0iHMHOkExIPc38SSnTU",
+      "document_id": "VzgMdsX45o44jIx0UMwcZzKonk8",
+      "content_hash": "sha256:3ee679a9536ff61eb04b58c3e5b9091aa4b1b833cdf9e7a0b37eeac0429799e1"
+    },
+    "docs/feishu/go-deep-dive/01-工程结构与go-work多模块.md": {
+      "node_token": "FedswldcIijhH9kZz1GcZcEDnWg",
+      "document_id": "IuBCdxYpeo3PJrxSFrlcwZ64nre",
+      "content_hash": "sha256:76404a0ab6e66f903ccbc9abc8686ab11bc37422a96c2288f5889bb9f50ef7d3"
+    },
+    "docs/feishu/go-deep-dive/02-配置体系.md": {
+      "node_token": "XRWKwaWCOiGRZrk7jbNcNSoknDb",
+      "document_id": "SQVmdKTwhohbzqx2wEZcQ0i9n1c",
+      "content_hash": "sha256:76787b61a0be98d4650e59bc4f246839110330bc1fd2c76df0911acd781db85e"
+    },
+    "docs/feishu/go-deep-dive/03-启动流程与依赖注入.md": {
+      "node_token": "F0pAwkQ4xirGFMkBOuDcrfnGnHg",
+      "document_id": "AaPxd6OM8oMI6vxvpaEcLGdOnsf",
+      "content_hash": "sha256:7329832a8c397501d57280f7f662e7be56c224cd613a54ace397a07af573a575"
+    },
+    "docs/feishu/go-deep-dive/04-HTTP路由与中间件.md": {
+      "node_token": "O6oEwSZ7EiqBJTkLtULcSXf0nRj",
+      "document_id": "XL8mdQUkbozF3sxwp8ycvbKdnFf",
+      "content_hash": "sha256:99fb1275653d6211a6ef5611cc39876f0bb141ce18f630a2caba1fead0e9191a"
+    },
+    "docs/feishu/go-deep-dive/05-认证与会话.md": {
+      "node_token": "P1IiwCaBYi1l8TkodXDccQBpnml",
+      "document_id": "TYXide6qNoZZZRxOX6pcNrhbnPh",
+      "content_hash": "sha256:7e31e154fdba6366a28cdcf79439f64524d3a3965a93ab88122a629fb11c3ac4"
+    },
+    "docs/feishu/go-deep-dive/06-通用业务域.md": {
+      "node_token": "H6NgwcKGEi05v8kP2xxc3Jgpnid",
+      "document_id": "X9DodWJSGo6kLExDHYXc2VVWndv",
+      "content_hash": "sha256:ec4c81ad61d5fe154e6fb9b05a008ac5970e862736cf43ba93c042f7ca6c3445"
+    },
+    "docs/feishu/go-deep-dive/07-汽车业务域.md": {
+      "node_token": "AoOjwDnrfiW8EQkHkRQcmEk1nLs",
+      "document_id": "SvGIdrlXooQmTBxIDqucxDKzntg",
+      "content_hash": "sha256:d0c733ff06bc6d09140ace59623112e62f0b7d8b4af59988579c46e9bd286eae"
+    },
+    "docs/feishu/go-deep-dive/08-电商与社区域.md": {
+      "node_token": "Kdb8wxAHwi7BzJkbojNcJ4PTn4F",
+      "document_id": "DYzrdVH11oL6MJxlDUec4rkXnTh",
+      "content_hash": "sha256:8c514d2e1ea317a971b4d24835d10c15af913f902419d8460b4b148551ea81f6"
+    },
+    "docs/feishu/go-deep-dive/09-Realtime与WebSocket.md": {
+      "node_token": "Mx7uwEI4ni4L3MkENymcW5Xznsd",
+      "document_id": "FjD9dCE1ToUeGfxin8dc99vEnFf",
+      "content_hash": "sha256:d51e2c8234ef023c920ddfea247554f877ebe968bab6a1cb08349e52b72a78e9"
+    },
+    "docs/feishu/go-deep-dive/10-gRPC数据分析.md": {
+      "node_token": "Bj9hwFFbliYryVkBlifc0ICfnIf",
+      "document_id": "Q2Vjdivu5oMNyQxCwaDc2COtnde",
+      "content_hash": "sha256:4d77ecb691d065984b77689940ad656278596cf7e3117d120eddc16cc0b8aa65"
+    },
+    "docs/feishu/go-deep-dive/11-消息队列与Worker.md": {
+      "node_token": "TfCvwhfZEiw5bRkcKOMcUlTsncd",
+      "document_id": "E9JbdAWnXoCFHGxLaslcGgE8nug",
+      "content_hash": "sha256:6ae834fb35af08fca7954ad59d4190ce2cd6c719ee1d069188330d54042db0c0"
+    },
+    "docs/feishu/go-deep-dive/12-SSE与客服Agent.md": {
+      "node_token": "GdAuwU5X1ifUXBkHWFjcIyxGnVd",
+      "document_id": "Dlb2d9I6yomMV1x7Fz7ckV64nBf",
+      "content_hash": "sha256:4e6cce979615e89936ba2d03da1ae1f25096800cd6c3e8d94047f1ae2f0fed66"
+    },
+    "docs/feishu/go-deep-dive/13-数据层与存储.md": {
+      "node_token": "T8rVwxLlhiFx1ekvwH9ciUk9nob",
+      "document_id": "CPEYdznR5o5vO8x4TyBcDHQJnYb",
+      "content_hash": "sha256:51f1fefdcc3d3179c4c7fc99c9bacca02cf3cf2b10383a79adc11574226549b9"
+    },
+    "docs/feishu/go-deep-dive/14-可观测性与外部集成.md": {
+      "node_token": "GSp3wXyXXi7lVokOUTXctBgNndf",
+      "document_id": "LI36dKu6poFCKFxWZsacJ6HOnKf",
+      "content_hash": "sha256:8634826f5812ed0ef62ba7146466262cbbf21f99af03de3424b1a129cbb7e6fe"
+    }
+  }
+}

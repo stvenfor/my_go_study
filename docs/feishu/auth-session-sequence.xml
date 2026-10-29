@@ -1,0 +1,127 @@
+<title>认证时序图：登录 · SessionAuth · 刷新 · 登出</title>
+
+<h1 seq="auto">概览</h1>
+<p>本仓库 Go BFF 默认 <code>auth.provider=local</code>：账号体系落在本地 PostgreSQL（bcrypt + 自建 UUID JWT + refresh token 表），单设备在线由 Redis session（<code>auth:session:{user_id}</code>）控制。一次登录同时产出三层凭据，业务请求再按这三层逐一校验。</p>
+<grid>
+  <column width-ratio="0.34">
+    <p><b>access JWT</b></p>
+    <p>Bearer 头携带 · 本地签发 · 过期前静默续期</p>
+  </column>
+  <column width-ratio="0.33">
+    <p><b>refresh token</b></p>
+    <p>库内仅存 sha256 · 30 天 · 用一次换一次</p>
+  </column>
+  <column width-ratio="0.33">
+    <p><b>device session</b></p>
+    <p>Redis 单键 · 登录与刷新时签发或续期</p>
+  </column>
+</grid>
+<callout emoji="🔐" background-color="light-blue" border-color="blue">
+  <p>下面四张图分别对应<b>登录签发</b>、<b>业务请求校验</b>、<b>Token 刷新</b>、<b>主动登出</b>；每张只画该阶段真正参与的参与者，避免一条超长竖图。</p>
+</callout>
+
+<h1 seq="auto">时序图</h1>
+
+<h2>① 登录签发</h2>
+<p>入口 <code>POST /api/v1/user/login</code>。<code>UserHandler.Login</code> 先做 bcrypt 校验与锁定检查，签发双 token 后再向 Redis 写 session。</p>
+<whiteboard type="mermaid" path="@docs/feishu/diagrams/auth-1-login.mmd"></whiteboard>
+<ul>
+  <li><code>LocalAuthUsecase.Login</code>：查用户、bcrypt 比对、停用/软删检查。</li>
+  <li><code>issueTokens</code>：签发 access JWT，并向 refresh token 表写入 sha256 哈希（TTL 30 天）。</li>
+  <li><code>DeviceSessionUsecase.IssueOnLogin</code>：生成 session_id 写 Redis；普通用户<b>覆盖旧设备</b>，白名单账号豁免。</li>
+  <li>失败保护：bcrypt 不匹配累加 <code>failed_login_count</code>，超阈值置 <code>locked_until</code>。</li>
+</ul>
+
+<h2>② 业务请求校验</h2>
+<p>所有 <code>/api/v1/transactions*</code>、<code>/api/v1/realtime/*</code> 之类业务路由都过 <code>LocalSessionAuth</code>；gRPC 侧由 unary interceptor 走同一套 session 校验（metadata 键名小写亦可）。</p>
+<whiteboard type="mermaid" path="@docs/feishu/diagrams/auth-2-session-check.mmd"></whiteboard>
+<ul>
+  <li>先解析 Bearer JWT，失败即 401，不查 Redis。</li>
+  <li>再比对 Redis session：同 session 但 device_id 变化，允许客户端升级 device_id 并回写。</li>
+  <li>device_id 不符 → <code>ErrSessionReplaced</code>；session_id 不符 → <code>ErrSessionInvalid</code>（客户端应走 refresh 续期）。</li>
+</ul>
+
+<h2>③ Token 刷新</h2>
+<p>access token 过期前由客户端调 <code>POST /api/v1/user/refresh</code>，双 token 与 session 同时换发。</p>
+<whiteboard type="mermaid" path="@docs/feishu/diagrams/auth-3-refresh.mmd"></whiteboard>
+<ul>
+  <li>一次性轮换：按 sha256 命中旧行后<b>删除并重签发</b>，旧 refresh 立即失效。</li>
+  <li><code>RenewOnRefresh</code>：同设备（或 session_id 匹配）才生成新 session_id 续期，其他设备拒绝。</li>
+  <li>过期、账号停用或软删：删除该行并直接拒绝。</li>
+</ul>
+
+<h2>④ 主动登出</h2>
+<p><code>POST /api/v1/user/logout</code> 经 SessionAuth，双清：Redis session + 该用户全部 refresh token。</p>
+<whiteboard type="mermaid" path="@docs/feishu/diagrams/auth-4-logout.mmd"></whiteboard>
+<ul>
+  <li><code>RevokeOnLogout</code> 删 Redis 键，<code>Logout(accessToken)</code> 清 refresh token 表。</li>
+  <li>白名单账号本就不写 Redis，登出等价于只清客户端本地凭据。</li>
+</ul>
+
+<h1 seq="auto">关键语义</h1>
+<table>
+  <colgroup><col width="160"/><col width="380"/><col width="230"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray"><p>主题</p></th>
+      <th background-color="light-gray"><p>行为</p></th>
+      <th background-color="light-gray"><p>结果 / 错误码</p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><p>单设备在线</p></td>
+      <td><p>每 user_id 仅一条活跃 session，新 mobile 登录覆盖旧设备</p></td>
+      <td background-color="light-red"><p>旧设备 <code>ErrSessionReplaced</code></p></td>
+    </tr>
+    <tr>
+      <td><p>白名单豁免</p></td>
+      <td><p><code>auth.session_whitelist_user_ids</code> / emails 跳过 Redis 校验</p></td>
+      <td background-color="light-green"><p>可多设备同时在线</p></td>
+    </tr>
+    <tr>
+      <td><p>session 永不过期</p></td>
+      <td><p><code>auth.session_ttl_hours: 0</code> 时 Redis key 无 TTL</p></td>
+      <td><p>仅 logout 或他端登录失效</p></td>
+    </tr>
+    <tr>
+      <td><p>access 续期</p></td>
+      <td><p>过期前调 <code>POST /api/v1/user/refresh</code> 静默换发双 token</p></td>
+      <td background-color="light-orange"><p>session 不符 <code>ErrSessionInvalid</code></p></td>
+    </tr>
+    <tr>
+      <td><p>登录失败保护</p></td>
+      <td><p>bcrypt 不匹配累加 <code>failed_login_count</code></p></td>
+      <td><p>超阈值写 <code>locked_until</code></p></td>
+    </tr>
+    <tr>
+      <td><p>端口共用</p></td>
+      <td><p>HTTP <code>:8080</code> 与 gRPC <code>:9090</code> 同进程，鉴权同源</p></td>
+      <td><p>gRPC 走 metadata 三件套</p></td>
+    </tr>
+  </tbody>
+</table>
+
+<h1 seq="auto">源码索引</h1>
+<table>
+  <colgroup><col width="430"/><col width="340"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray"><p>文件</p></th>
+      <th background-color="light-gray"><p>职责</p></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><p><code>app/internal/delivery/http/handler/user_handler.go</code></p></td><td><p>login / refresh / logout 入口</p></td></tr>
+    <tr><td><p><code>app/internal/usecase/local_auth_usecase.go</code></p></td><td><p>bcrypt 校验、JWT 签发、refresh 轮换</p></td></tr>
+    <tr><td><p><code>app/internal/usecase/device_session_usecase.go</code></p></td><td><p>session 签发 / 校验 / 续期 / 撤销</p></td></tr>
+    <tr><td><p><code>app/internal/delivery/http/middleware/local_session_auth.go</code></p></td><td><p>业务请求鉴权中间件</p></td></tr>
+    <tr><td><p><code>app/internal/repository/redis/session_repo.go</code></p></td><td><p><code>auth:session:{uid}</code> 读写</p></td></tr>
+  </tbody>
+</table>
+
+<h1 seq="auto">维护说明</h1>
+<callout emoji="📄" background-color="light-gray">
+  <p>本页由仓库 <code>docs/feishu/auth-session-sequence.xml</code> 推送生成，四张图的源文件是 <code>docs/feishu/diagrams/auth-*.mmd</code>；Git 为唯一真相源，改图改 <code>.mmd</code> 后重推，勿直接在飞书里编辑正文。</p>
+</callout>
+<p>交互式版本（逐消息激活与源码溯源）见本地 <code>.archify/sequence-auth-session-20261026-115711/auth-session.sequence.html</code>；文字版细节另见 <code>docs/local-auth-postgres.md</code> 与 <code>docs/auth-beginner-walkthrough.md</code>。</p>

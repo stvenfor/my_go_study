@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    participant FL as Flutter
+    participant H as Handler
+    participant AU as AuthUsecase
+    participant DS as SessionUsecase
+    participant PG as PostgreSQL
+    participant RD as Redis
+
+    FL->>H: POST /user/refresh
+    activate H
+    H->>AU: RefreshToken(refresh)
+    activate AU
+    AU->>PG: 按 sha256 查旧行 → 删除 → 重签发
+    AU-->>H: 新 access + refresh_token
+    deactivate AU
+    H->>DS: RenewOnRefresh(同设备)
+    activate DS
+    DS->>RD: SET 新 session_id 续期
+    deactivate DS
+    H-->>FL: 200 新 token + session_id
+    deactivate H
+
+    Note over FL,RD: 一次性轮换 · 过期或账号停用直接删除并拒绝 · 其他设备 refresh 被拒

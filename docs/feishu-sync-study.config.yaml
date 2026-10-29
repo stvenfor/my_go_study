@@ -1,0 +1,44 @@
+# 飞书知识库「学习」同步配置（与「项目 docs」「code」并列，互不覆盖 manifest）
+# 用途：在「学习」知识库下单独开一个「go学习」文件夹，沉淀本项目的学习/理解类文档。
+# 用法：
+#   ./scripts/sync_docs_to_feishu.sh bootstrap --config docs/feishu-sync-study.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync     --config docs/feishu-sync-study.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh dry-run  --config docs/feishu-sync-study.config.yaml
+#   ./scripts/sync_docs_to_feishu.sh sync     --config docs/feishu-sync-study.config.yaml --file docs/startup-guide.md
+#
+# 注意：wiki.space_name 必须写成飞书里真实的库名「学习」（不是 code），
+#       脚本会匹配已有空间，不会新建知识库。project_folder 即「学习」下的顶层文件夹。
+
+wiki:
+  space_name: "学习"
+  space_description: "Migrated from Yuque"
+  # 「学习」知识库下的顶层文件夹；bootstrap 时若不存在则新建
+  project_folder: "go学习"
+
+sync:
+  # 精选学习路径：架构/启动/新手 walkthrough/核心中间件理解类文档
+  include:
+    - "AGENTS.md"
+    - "docs/architecture-learning-guide.md"
+    - "docs/startup-guide.md"
+    - "docs/auth-beginner-walkthrough.md"
+    - "docs/realtime-beginner-walkthrough.md"
+    - "docs/transactions-beginner-walkthrough.md"
+    - "docs/message-queue.md"
+    - "docs/realtime-websocket.md"
+    - "docs/supabase-integration.md"
+    - "docs/dual-end-lan-startup.md"
+    - "docs/lan-backend-host.md"
+    - "docs/sse-streaming.md"
+    - "docs/local-auth-postgres.md"
+    - "docs/module-parity-go-flutter.md"
+    - "docs/coding-playbook-dual-repo.md"
+    - "docs/observability-lan.md"
+    - "docs/elasticsearch-transactions.md"
+    - "docs/cs-agent-eino.md"
+    - "docs/llm-ai-fundamentals.md"
+  exclude: []
+
+paths:
+  manifest: "docs/feishu-sync-study.manifest.json"
+  repo_root: "."

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# 按当前默认路由网卡的 IPv4，同步 Go .env.lan 与选定客户端。
-# 客户端清单：scripts/lan-ip.clients（Flutter / KMP / RN / Kuikly / uni-app）。
-# 默认只写 my_ai_project；其它客户端须 LAN_CLIENTS 显式打开：
-#   make lan-up                              # 仅 Flutter
-#   make lan-up LAN_CLIENTS=my_kmp_project   # Flutter + KMP（可逗号多选）
-#   make lan-up LAN_CLIENTS=all              # 清单全部
+# 按当前默认路由网卡的 IPv4，刷新 Go .env.lan 与各客户端的局域网 IP。
+# 同步范围由 scripts/lan-ip.clients 决定：该行未被注释就同步，注释掉就跳过
+# （在文件里取消/加上行首 "#" 即可开关，文件头部有完整说明）。
+#   make sync-lan-ip                         # 只刷 IP，不启动任何东西
+#   make lan-up                              # 启动全栈（内部会先刷 IP）
+# 临时一次性覆盖（不用改清单文件）：
+#   make lan-up LAN_CLIENTS=my_kmp_project   # Flutter + 指定客户端（可逗号多选）
+#   make lan-up LAN_CLIENTS=all              # 清单内全部未注释行
 # make lan-up / make lan-run、Flutter ./scripts/run_app.sh --lan、IDE「LAN 真机」启动前会自动调用。
 # 若 Docker app 已在跑且 IP 过期，本脚本会重建该容器（不重新编译镜像）。
 # lan-compose 自己会 up，调用时设 SYNC_LAN_IP_SKIP_DOCKER=1 避免重复重建。
@@ -64,23 +66,27 @@ OLD_GO="$(grep -E '^REALTIME_PUBLIC_WS_HOST=' "$GO_ENV" | head -1 | cut -d= -f2-
 upsert_kv "$GO_ENV" REALTIME_PUBLIC_WS_HOST "$IP"
 echo "Go REALTIME_PUBLIC_WS_HOST: ${OLD_GO:-<空>} → $IP"
 
-# LAN_CLIENTS: 空=仅 my_ai_project；all=清单全部；逗号列表=默认 Flutter + 所列客户端
+# 同步范围：默认取 scripts/lan-ip.clients 里所有未注释的行（行首 # = 关闭）；
+# 若设置了 LAN_CLIENTS 则临时只同步指定 ID（all = 清单内全部未注释行）。
 LAN_CLIENTS_RAW="${LAN_CLIENTS:-}"
 python3 - "$ROOT" "$IP" "$ROOT/scripts/lan-ip.clients" "$DEFAULT_LAN_CLIENT" "$LAN_CLIENTS_RAW" <<'PY'
 import pathlib, re, sys
 root, ip, manifest, default_client, clients_raw = sys.argv[1:6]
 root_path = pathlib.Path(root)
 raw = clients_raw.strip()
-if raw.lower() == "all":
-    allow = None
-    print("客户端范围: all（清单全部）")
-elif not raw:
-    allow = {default_client}
-    print(f"客户端范围: {default_client}（默认；其它用 LAN_CLIENTS=…）")
+if raw:
+    # 显式指定：一次性覆盖，只同步这些 ID（兼容 LAN_CLIENTS=… 旧用法；默认客户端始终包含）
+    if raw.lower() == "all":
+        allow = None
+        print("客户端范围: all（清单内全部未注释行）")
+    else:
+        extras = {p.strip() for p in raw.split(",") if p.strip()}
+        allow = {default_client} | extras
+        print(f"客户端范围: {', '.join(sorted(allow))}（由 LAN_CLIENTS 指定，一次性覆盖）")
 else:
-    extras = {p.strip() for p in raw.split(",") if p.strip()}
-    allow = {default_client} | extras
-    print(f"客户端范围: {', '.join(sorted(allow))}")
+    # 未指定：按清单文件的注释开关来，未注释的行全部同步
+    allow = None
+    print("客户端范围: lan-ip.clients 内全部未注释行（行首加 # 即关闭）")
 
 for raw_line in pathlib.Path(manifest).read_text().splitlines():
     line = raw_line.strip()
