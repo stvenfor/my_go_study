@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "sequence",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/candidate.json",
+    "sha256": "b113543a5b93c039bdbaf318d16e24aefc482ba0250c259acba62b6596933e7a",
+    "bytes": 10308
+  },
+  "artifact": {
+    "path": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/auth-session.sequence.html",
+    "sha256": "ecbe256a49543e021f654bdc5e2b59723bf5618f4b8fd0f759ba6f12659f8a11",
+    "bytes": 842097
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/auth-session.sequence.finalize.json",
+    "summaryReceipt": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/auth-session.sequence.finalize-summary.json",
+    "browserCheckReceipt": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/auth-session.sequence.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-26T03:58:15.506Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4535,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

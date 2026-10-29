@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "db516fbb-a90f-4700-80ee-e22c519acfad",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/candidate.json",
+  "output": "/Users/qpy/Desktop/github/my_go_study/.archify/sequence-auth-session-20261026-115711/auth-session.sequence.html",
+  "specification": {
+    "sha256": "b113543a5b93c039bdbaf318d16e24aefc482ba0250c259acba62b6596933e7a",
+    "bytes": 10308
+  },
+  "artifact": {
+    "sha256": "ecbe256a49543e021f654bdc5e2b59723bf5618f4b8fd0f759ba6f12659f8a11",
+    "bytes": 842097
+  }
+}

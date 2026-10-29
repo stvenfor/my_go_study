@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "my_go_study BFF 整体架构",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-my-go-study-20261022-164246/my-go-study-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/stvenfor/my_go_study.git",
+      "provider": "github",
+      "revision": "a6ea7c814bb07b00a9ed2014b6eb450a261ceffa"
+    }
+  },
+  "components": [
+    { "id": "flutter", "type": "external", "label": "Flutter 客户端", "sublabel": "my_ai_project", "pos": [40, 280], "size": [120, 60] },
+    { "id": "gin", "type": "backend", "label": "Gin HTTP :8080", "sublabel": "CORS · SessionAuth · /metrics", "pos": [230, 280], "size": [150, 64], "sources": [{ "path": "app/internal/delivery/http/router/router.go", "line": 54, "end_line": 66, "label": "Setup 中间件" }] },
+    { "id": "domains", "type": "backend", "label": "业务域 ×16", "sublabel": "垂直切片 Service+Router+Repo", "pos": [470, 280], "size": [200, 64], "sources": [{ "path": "app/cmd/api/main.go", "line": 131, "end_line": 153, "label": "域 Service 声明" }, { "path": "app/cmd/api/main.go", "line": 452, "end_line": 509, "label": "域路由装配" }] },
+    { "id": "analytics", "type": "backend", "label": "gRPC :9090", "sublabel": "AnalyticsService", "pos": [760, 280], "size": [170, 64], "sources": [{ "path": "app/internal/delivery/grpc/server.go", "line": 32, "end_line": 58, "label": "gRPC Server" }] },
+    { "id": "ai", "type": "backend", "label": "AI 服务", "sublabel": "SSE 小石头 · 客服 Agent", "pos": [1000, 280], "size": [170, 64], "sources": [{ "path": "app/cmd/api/main.go", "line": 349, "end_line": 369, "label": "SSE+CsAgent 装配" }] },
+    { "id": "authuc", "type": "security", "label": "认证 / 会话", "sublabel": "登录 · OTP · DeviceSession", "pos": [230, 420], "size": [150, 64], "sources": [{ "path": "app/cmd/api/main.go", "line": 169, "end_line": 175, "label": "LocalAuth 装配" }] },
+    { "id": "realtime", "type": "backend", "label": "Realtime Hub (WS)", "sublabel": "/realtime/v1/connect", "pos": [470, 420], "size": [170, 64], "sources": [{ "path": "app/cmd/api/main.go", "line": 295, "end_line": 328, "label": "Hub+Redis 装配" }] },
+    { "id": "pushim", "type": "backend", "label": "推送 / IM", "sublabel": "JPush · 融云控制器", "pos": [1000, 420], "size": [170, 64], "sources": [{ "path": "app/cmd/api/main.go", "line": 372, "end_line": 421, "label": "JPush+融云装配" }] },
+    { "id": "es", "type": "database", "label": "Elasticsearch", "sublabel": "transactions :9200", "pos": [760, 90], "size": [150, 56], "sources": [{ "path": "app/internal/transaction/repo_es.go", "line": 23, "end_line": 36, "label": "ESStore REST" }] },
+    { "id": "llm", "type": "external", "label": "OpenAI 兼容 LLM", "sublabel": "无 key 回退 mock", "pos": [1000, 90], "size": [170, 56], "sources": [{ "path": "app/cmd/api/main.go", "line": 600, "end_line": 617, "label": "Provider 装配" }] },
+    { "id": "supabase", "type": "cloud", "label": "Supabase", "sublabel": "可选 provider", "pos": [40, 420], "size": [150, 64], "sources": [{ "path": "app/cmd/api/main.go", "line": 266, "end_line": 283, "label": "Supabase 分支" }] },
+    { "id": "redis", "type": "database", "label": "Redis", "sublabel": "session · ticket · pub/sub", "pos": [220, 590], "size": [160, 60], "sources": [{ "path": "app/cmd/api/main.go", "line": 111, "end_line": 123, "label": "连接+session" }] },
+    { "id": "mq", "type": "messagebus", "label": "RabbitMQ", "sublabel": "异步任务", "pos": [430, 590], "size": [150, 60], "sources": [{ "path": "app/cmd/api/main.go", "line": 305, "end_line": 326, "label": "入队+扇出订阅" }] },
+    { "id": "pg", "type": "database", "label": "PostgreSQL", "sublabel": "GORM · wys_* 表", "pos": [640, 590], "size": [160, 60], "sources": [{ "path": "app/cmd/api/main.go", "line": 96, "end_line": 109, "label": "连接+迁移" }] },
+    { "id": "worker", "type": "backend", "label": "Worker (cmd/worker)", "sublabel": "消费 · 定时广播", "pos": [640, 750], "size": [180, 64], "sources": [{ "path": "app/cmd/worker/main.go", "line": 64, "end_line": 129, "label": "Worker 装配" }] },
+    { "id": "jpushcloud", "type": "external", "label": "极光推送 JPush", "pos": [880, 750], "size": [150, 56] },
+    { "id": "rongcloud", "type": "external", "label": "融云 IM Cloud", "pos": [1040, 750], "size": [150, 56] }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "API 进程 cmd/api — HTTP :8080 + gRPC :9090 同进程",
+      "wraps": ["gin", "domains", "analytics", "ai", "authuc", "realtime", "pushim"]
+    }
+  ],
+  "connections": [
+    { "id": "fl-gin", "from": "flutter", "to": "gin", "label": "HTTP", "variant": "emphasis" },
+    { "id": "fl-rt", "from": "flutter", "to": "realtime", "label": "WS 实时通道", "fromSide": "bottom", "toSide": "top" },
+    { "id": "fl-grpc", "from": "flutter", "to": "analytics", "label": "gRPC :9090", "fromSide": "top", "toSide": "top" },
+    { "id": "gin-domains", "from": "gin", "to": "domains", "label": "业务路由", "variant": "emphasis" },
+    { "id": "gin-auth", "from": "gin", "to": "authuc", "label": "登录注册", "fromSide": "bottom", "toSide": "top" },
+    { "id": "auth-sb", "from": "authuc", "to": "supabase", "fromSide": "left", "toSide": "right" },
+    { "id": "auth-redis", "from": "authuc", "to": "redis", "label": "session 读写", "fromSide": "bottom", "toSide": "top" },
+    { "id": "domains-es", "from": "domains", "to": "es", "label": "交易全文 REST", "fromSide": "top", "toSide": "bottom" },
+    { "id": "domains-pg", "from": "domains", "to": "pg", "label": "GORM", "fromSide": "bottom", "toSide": "top" },
+    { "id": "rt-mq", "from": "realtime", "to": "mq", "label": "推送入队", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "redis-rt", "from": "redis", "to": "realtime", "label": "扇出广播", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "grpc-pg", "from": "analytics", "to": "pg", "label": "analytics_records", "fromSide": "bottom", "toSide": "top" },
+    { "id": "ai-llm", "from": "ai", "to": "llm", "label": "SSE 流式", "fromSide": "top", "toSide": "bottom" },
+    { "id": "push-jp", "from": "pushim", "to": "jpushcloud", "label": "推送下发", "fromSide": "bottom", "toSide": "top" },
+    { "id": "push-rc", "from": "pushim", "to": "rongcloud", "label": "IM 下发", "fromSide": "bottom", "toSide": "top" },
+    { "id": "mq-worker", "from": "mq", "to": "worker", "label": "消费任务", "fromSide": "bottom", "toSide": "left" },
+    { "id": "worker-pg", "from": "worker", "to": "pg", "label": "设备表", "fromSide": "top", "toSide": "bottom" },
+    { "id": "worker-redis", "from": "worker", "to": "redis", "label": "Pub/Sub 发布", "fromSide": "left", "toSide": "bottom" },
+    { "id": "worker-jp", "from": "worker", "to": "jpushcloud", "label": "推送", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "业务域 ×16（垂直切片）",
+      "items": [
+        "通用：access / home / points / wallet",
+        "汽车：used_car / new_car_follow / after_sales / deal_invoice / purchase_calculator",
+        "电商+社区：mall / membership / payment / community / short_video / transaction"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "go.work 多模块",
+      "items": [
+        "app（唯一可执行）→ common / core / model 单向依赖",
+        "common：config · logger · jwt · metrics；core：database · queue · supabase · jpush · rongcloud",
+        "thunder 为本地 replace 三方库，不进 workspace"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "部署与鉴权",
+      "items": [
+        "make lan-up：Docker 编排 8080+9090+PG+Redis+RabbitMQ+ES+Worker+Prometheus",
+        "两套会话中间件：LocalSessionAuth / SupabaseSessionAuth，gRPC 走 metadata 同口径",
+        "PostgREST 必须带用户 token；ES 搜索强制会话 user_id"
+      ]
+    }
+  ]
+}

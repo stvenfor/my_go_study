@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/candidate.json",
+    "sha256": "258dd94c268fc350cc9a833c23727f01e5ac127e4f7ee568b3d7dc4e5d871824",
+    "bytes": 8131
+  },
+  "artifact": {
+    "path": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/my-go-study-architecture.html",
+    "sha256": "061fa7f7b037cfab284e4ea1783df3a15bc93ff58123c330c8f5f37a45f2bb13",
+    "bytes": 850016
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/my-go-study-architecture.finalize.json",
+    "summaryReceipt": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/my-go-study-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/my-go-study-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-22T08:39:51.935Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5950,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  },
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "resolvedCrossovers": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [
+        {
+          "left": {
+            "id": "fl-rt",
+            "from": "flutter",
+            "to": "realtime",
+            "label": "WS 实时通道",
+            "collectionIndex": 1,
+            "artifactIndex": 2
+          },
+          "right": {
+            "id": "gin-auth",
+            "from": "gin",
+            "to": "authuc",
+            "label": "登录注册",
+            "collectionIndex": 4,
+            "artifactIndex": 5
+          },
+          "point": [
+            305,
+            396
+          ]
+        },
+        {
+          "left": {
+            "id": "fl-grpc",
+            "from": "flutter",
+            "to": "analytics",
+            "label": "gRPC :9090",
+            "collectionIndex": 2,
+            "artifactIndex": 3
+          },
+          "right": {
+            "id": "domains-es",
+            "from": "domains",
+            "to": "es",
+            "label": "交易全文 REST",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "point": [
+            570,
+            256
+          ]
+        }
+      ],
+      "detours": [],
+      "truncated": false
+    },
+    "hints": [
+      "flutter → realtime crosses gin → authuc: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor.",
+      "flutter → analytics crosses domains → es: move the node of whichever is a branch, return, or second entrance to the other side of the main path, so that relationship runs through an empty corridor."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

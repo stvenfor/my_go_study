@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "a23bd7cf-8801-45a9-9fb6-1f2f389e801d",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/candidate.json",
+  "output": "/Users/qpy/Desktop/github/my_go_study/.archify/architecture-my-go-study-20261022-164246/my-go-study-architecture.html",
+  "specification": {
+    "sha256": "258dd94c268fc350cc9a833c23727f01e5ac127e4f7ee568b3d7dc4e5d871824",
+    "bytes": 8131
+  },
+  "artifact": {
+    "sha256": "061fa7f7b037cfab284e4ea1783df3a15bc93ff58123c330c8f5f37a45f2bb13",
+    "bytes": 850016
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "登录认证与单设备 Session 时序",
+    "locale": "zh-CN",
+    "output": ".archify/sequence-auth-session-20261026-115711/auth-session.sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/stvenfor/my_go_study.git",
+      "provider": "github",
+      "revision": "a6ea7c814bb07b00a9ed2014b6eb450a261ceffa"
+    }
+  },
+  "participants": [
+    {
+      "id": "flutter",
+      "type": "frontend",
+      "label": "Flutter 客户端",
+      "sublabel": "my_ai_project",
+      "sources": [
+        { "path": "app/internal/delivery/http/dto/request/user_request.go", "line": 5, "label": "LoginRequest（含 device_id / platform）" }
+      ]
+    },
+    {
+      "id": "handler",
+      "type": "backend",
+      "label": "UserHandler",
+      "sublabel": "login / refresh / logout",
+      "sources": [
+        { "path": "app/internal/delivery/http/handler/user_handler.go", "line": 175, "end_line": 205, "label": "Login" },
+        { "path": "app/internal/delivery/http/handler/user_handler.go", "line": 89, "end_line": 127, "label": "Refresh" },
+        { "path": "app/internal/delivery/http/handler/user_handler.go", "line": 129, "end_line": 148, "label": "Logout" }
+      ]
+    },
+    {
+      "id": "mw",
+      "type": "security",
+      "label": "SessionAuth",
+      "sublabel": "LocalSessionAuth 中间件",
+      "sources": [
+        { "path": "app/internal/delivery/http/middleware/local_session_auth.go", "line": 15, "end_line": 49 }
+      ]
+    },
+    {
+      "id": "authuc",
+      "type": "security",
+      "label": "LocalAuthUsecase",
+      "sublabel": "bcrypt + JWT + refresh 表",
+      "sources": [
+        { "path": "app/internal/usecase/local_auth_usecase.go", "line": 79, "end_line": 112, "label": "Login" },
+        { "path": "app/internal/usecase/local_auth_usecase.go", "line": 114, "end_line": 148, "label": "RefreshToken" },
+        { "path": "app/internal/usecase/local_auth_usecase.go", "line": 374, "end_line": 404, "label": "issueTokens" }
+      ]
+    },
+    {
+      "id": "sessionuc",
+      "type": "security",
+      "label": "DeviceSession",
+      "sublabel": "DeviceSessionUsecase",
+      "sources": [
+        { "path": "app/internal/usecase/device_session_usecase.go", "line": 54, "end_line": 85, "label": "IssueOnLogin" },
+        { "path": "app/internal/usecase/device_session_usecase.go", "line": 100, "end_line": 138, "label": "Validate" },
+        { "path": "app/internal/usecase/device_session_usecase.go", "line": 150, "end_line": 187, "label": "RenewOnRefresh" }
+      ]
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "用户 + refresh token 表",
+      "sources": [
+        { "path": "model/entity/user.go", "line": 16 },
+        { "path": "model/entity/auth_user.go", "line": 9 }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "auth:session:{user_id}",
+      "sources": [
+        { "path": "app/internal/repository/redis/session_repo.go", "line": 14, "end_line": 51 }
+      ]
+    }
+  ],
+  "segments": [
+    { "from": 150, "to": 680, "label": "登录签发" },
+    { "from": 690, "to": 990, "label": "业务请求校验" },
+    { "from": 1000, "to": 1610, "label": "刷新与登出" }
+  ],
+  "messages": [
+    { "id": "m-login", "from": "flutter", "to": "handler", "y": 170, "label": "POST /api/v1/user/login", "variant": "emphasis" },
+    { "id": "m-handler-auth", "from": "handler", "to": "authuc", "y": 210, "label": "Login(email, password)" },
+    { "id": "m-query-user", "from": "authuc", "to": "pg", "y": 250, "label": "查用户 + bcrypt 比对", "variant": "security", "note": "密码错误写 failed_login_count / locked_until 后拒绝" },
+    { "id": "r-user-row", "from": "pg", "to": "authuc", "y": 310, "label": "用户行", "variant": "return" },
+    { "id": "m-insert-refresh", "from": "authuc", "to": "pg", "y": 350, "label": "写 refresh token（sha256，30 天）", "note": "issueTokens：GenerateUUID 签发 access JWT" },
+    { "id": "r-tokens", "from": "authuc", "to": "handler", "y": 410, "label": "access + refresh token", "variant": "return" },
+    { "id": "m-issue-session", "from": "handler", "to": "sessionuc", "y": 450, "label": "IssueOnLogin(device, platform)" },
+    { "id": "m-redis-set", "from": "sessionuc", "to": "redis", "y": 490, "label": "SET auth:session:{uid}", "variant": "security", "note": "覆盖旧设备 session；白名单账号豁免不写库" },
+    { "id": "r-redis-ok", "from": "redis", "to": "sessionuc", "y": 550, "label": "ok", "variant": "return" },
+    { "id": "r-session-id", "from": "sessionuc", "to": "handler", "y": 590, "label": "session_id", "variant": "return" },
+    { "id": "r-login-200", "from": "handler", "to": "flutter", "y": 630, "label": "200 { token, refresh_token, session_id }", "variant": "return" },
+
+    { "id": "m-biz-req", "from": "flutter", "to": "mw", "y": 700, "label": "业务 API：Bearer + X-Session-ID + X-Device-ID", "variant": "emphasis" },
+    { "id": "m-validate", "from": "mw", "to": "sessionuc", "y": 740, "label": "Validate(userID, session, device)", "note": "先 jwtMgr.ParseUUID 校验本地 access JWT，失败即 401" },
+    { "id": "m-redis-get", "from": "sessionuc", "to": "redis", "y": 800, "label": "GET auth:session:{uid}" },
+    { "id": "r-stored", "from": "redis", "to": "sessionuc", "y": 840, "label": "存储的 session", "variant": "return" },
+    { "id": "r-validate", "from": "sessionuc", "to": "mw", "y": 880, "label": "一致则放行", "variant": "return", "note": "device_id 不一致 → ErrSessionReplaced（被其他设备挤下线）；session_id 不一致 → ErrSessionInvalid（应走 refresh）" },
+    { "id": "r-biz-200", "from": "mw", "to": "flutter", "y": 955, "label": "注入 user 上下文 → 业务 Controller → 200", "variant": "return" },
+
+    { "id": "m-refresh", "from": "flutter", "to": "handler", "y": 1010, "label": "POST /api/v1/user/refresh" },
+    { "id": "m-refresh-uc", "from": "handler", "to": "authuc", "y": 1050, "label": "RefreshToken(refresh)" },
+    { "id": "m-rotate", "from": "authuc", "to": "pg", "y": 1090, "label": "按 sha256 查 → 删旧行 → 重签发", "variant": "security", "note": "一次性轮换；过期或账号停用即删除并拒绝" },
+    { "id": "r-new-tokens", "from": "authuc", "to": "handler", "y": 1145, "label": "新 access + refresh", "variant": "return" },
+    { "id": "m-renew", "from": "handler", "to": "sessionuc", "y": 1185, "label": "RenewOnRefresh(same device)" },
+    { "id": "m-redis-renew", "from": "sessionuc", "to": "redis", "y": 1225, "label": "存新 session_id（续期）" },
+    { "id": "r-refresh-200", "from": "handler", "to": "flutter", "y": 1275, "label": "200 新 token + session_id", "variant": "return" },
+    { "id": "m-logout-req", "from": "flutter", "to": "mw", "y": 1325, "label": "POST /api/v1/user/logout（经 SessionAuth）" },
+    { "id": "r-mw-pass", "from": "mw", "to": "handler", "y": 1365, "label": "校验通过", "variant": "return" },
+    { "id": "m-revoke", "from": "handler", "to": "sessionuc", "y": 1405, "label": "RevokeOnLogout" },
+    { "id": "m-redis-del", "from": "sessionuc", "to": "redis", "y": 1445, "label": "DEL auth:session:{uid}", "variant": "security" },
+    { "id": "m-lc-logout", "from": "handler", "to": "authuc", "y": 1485, "label": "Logout(accessToken)" },
+    { "id": "m-del-refresh", "from": "authuc", "to": "pg", "y": 1525, "label": "删该用户全部 refresh token" },
+    { "id": "r-logout-200", "from": "handler", "to": "flutter", "y": 1575, "label": "200 ok", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "handler", "from": 168, "to": 636, "type": "backend" },
+    { "participant": "authuc", "from": 208, "to": 414, "type": "security" },
+    { "participant": "pg", "from": 248, "to": 356, "type": "database" },
+    { "participant": "sessionuc", "from": 448, "to": 594, "type": "security" },
+    { "participant": "redis", "from": 488, "to": 554, "type": "database" },
+    { "participant": "mw", "from": 698, "to": 960, "type": "security" },
+    { "participant": "sessionuc", "from": 738, "to": 884, "type": "security" },
+    { "participant": "redis", "from": 798, "to": 844, "type": "database" },
+    { "participant": "handler", "from": 1008, "to": 1280, "type": "backend" },
+    { "participant": "authuc", "from": 1048, "to": 1148, "type": "security" },
+    { "participant": "pg", "from": 1088, "to": 1094, "type": "database" },
+    { "participant": "sessionuc", "from": 1183, "to": 1228, "type": "security" },
+    { "participant": "redis", "from": 1223, "to": 1228, "type": "database" },
+    { "participant": "mw", "from": 1323, "to": 1368, "type": "security" },
+    { "participant": "handler", "from": 1363, "to": 1580, "type": "backend" },
+    { "participant": "sessionuc", "from": 1403, "to": 1448, "type": "security" },
+    { "participant": "authuc", "from": 1483, "to": 1528, "type": "security" },
+    { "participant": "pg", "from": 1523, "to": 1528, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "单设备登录",
+      "items": [
+        "每个 user_id 在 Redis 仅一条 auth:session:{user_id}（session_id + device_id + platform）",
+        "新 mobile 登录覆盖旧设备；旧设备请求得到「账号已在其他设备登录」",
+        "auth.session_whitelist_user_ids / emails 账号豁免校验，可多设备同时在线"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "两层凭据",
+      "items": [
+        "access：Go 自建 UUID JWT，Bearer 携带，SessionAuth 解析",
+        "refresh：库内只存 sha256 哈希（30 天），refresh 时一次性轮换",
+        "session TTL 由 auth.session_ttl_hours 控制，配 0 时永不过期，仅 logout / 他端登录失效"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "失败分支",
+      "items": [
+        "密码错误：写 failed_login_count / locked_until 后返回凭据无效",
+        "device_id 不符 → ErrSessionReplaced；session_id 不符 → ErrSessionInvalid（客户端应走 refresh）",
+        "同 session 但 device_id 升级：Validate 允许并回写新 device_id"
+      ]
+    }
+  ]
+}

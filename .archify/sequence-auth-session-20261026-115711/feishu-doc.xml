@@ -1,0 +1,58 @@
+<title>my_go_study 认证时序图：登录 · SessionAuth · 刷新 · 登出</title>
+
+<h1>概览</h1>
+<p>本仓库 Go BFF 当前默认 <code>auth.provider=local</code>：账号体系落在本地 PostgreSQL（bcrypt + 自建 UUID JWT + refresh token 表），单设备在线由 Redis session（<code>auth:session:{user_id}</code>）控制。下图覆盖登录签发、业务请求校验、刷新与登出三个阶段。</p>
+<callout emoji="🔐" background-color="light-blue" border-color="blue">
+  <p>两层凭据 + 一个会话：<b>access JWT</b>（Bearer 携带）· <b>refresh token</b>（库内仅存 sha256，30 天，用一次换一次）· <b>device session</b>（Redis，登录/刷新时签发或续期）。</p>
+</callout>
+
+<h1>认证时序图</h1>
+<whiteboard type="mermaid" path="@.archify/sequence-auth-session-20261026-115711/auth-sequence.mmd"></whiteboard>
+
+<h1>三阶段要点</h1>
+<h2>① 登录签发</h2>
+<ul>
+  <li><code>UserHandler.Login</code> 先调 <code>LocalAuthUsecase.Login</code>：查用户、bcrypt 比对、锁定/停用检查。</li>
+  <li>成功后 <code>issueTokens</code> 签发 access JWT，并向 refresh token 表写入 sha256 哈希（TTL 30 天）。</li>
+  <li><code>DeviceSessionUsecase.IssueOnLogin</code> 生成 session_id 并写 Redis；普通用户<b>覆盖旧设备</b>，白名单账号豁免（不写 Redis，直接返回 session_id）。</li>
+  <li>响应 <code>{ token, refresh_token, session_id }</code> 给 Flutter。</li>
+</ul>
+<h2>② 业务请求校验（SessionAuth）</h2>
+<ul>
+  <li><code>LocalSessionAuth</code> 中间件解析 Bearer JWT（失败 401），再调 <code>Validate</code> 比对 Redis 中的 session。</li>
+  <li>同 session 但 device_id 变化：允许客户端升级 device_id 并回写。</li>
+  <li>device_id 不符 → <code>ErrSessionReplaced</code>（账号已在其他设备登录）；session_id 不符 → <code>ErrSessionInvalid</code>（客户端应走 refresh 续期）。</li>
+</ul>
+<h2>③ 刷新与登出</h2>
+<ul>
+  <li>refresh：按 sha256 命中旧行后<b>删除并重签发</b>（一次性轮换）；过期或账号停用直接删除并拒绝。</li>
+  <li><code>RenewOnRefresh</code>：同设备（或 session_id 匹配）才生成新 session_id 续期；其他设备拒绝。</li>
+  <li>logout：删 Redis session（<code>RevokeOnLogout</code>）+ 删该用户全部 refresh token。</li>
+</ul>
+
+<h1>关键语义</h1>
+<table>
+  <thead><tr><th background-color="light-gray"><p>主题</p></th><th background-color="light-gray"><p>行为</p></th></tr></thead>
+  <tbody>
+    <tr><td><p>单设备在线</p></td><td><p>每 user_id 仅一条活跃 session，新 mobile 登录覆盖旧设备</p></td></tr>
+    <tr><td><p>白名单豁免</p></td><td><p><code>auth.session_whitelist_user_ids</code> / emails 跳过 Redis 校验，可多设备同时在线</p></td></tr>
+    <tr><td><p>session 永不过期</p></td><td><p><code>auth.session_ttl_hours: 0</code> 时 Redis key 无 TTL，仅 logout / 他端登录失效</p></td></tr>
+    <tr><td><p>access 续期</p></td><td><p>过期前调 <code>POST /api/v1/user/refresh</code> 静默换发双 token</p></td></tr>
+    <tr><td><p>登录失败保护</p></td><td><p>bcrypt 不匹配写 <code>failed_login_count</code> / <code>locked_until</code></p></td></tr>
+  </tbody>
+</table>
+
+<h1>源码索引</h1>
+<table>
+  <thead><tr><th background-color="light-gray"><p>文件</p></th><th background-color="light-gray"><p>职责</p></th></tr></thead>
+  <tbody>
+    <tr><td><p><code>app/internal/delivery/http/handler/user_handler.go</code></p></td><td><p>login / refresh / logout 入口</p></td></tr>
+    <tr><td><p><code>app/internal/usecase/local_auth_usecase.go</code></p></td><td><p>bcrypt 校验、JWT 签发、refresh 轮换</p></td></tr>
+    <tr><td><p><code>app/internal/usecase/device_session_usecase.go</code></p></td><td><p>session 签发 / 校验 / 续期 / 撤销</p></td></tr>
+    <tr><td><p><code>app/internal/delivery/http/middleware/local_session_auth.go</code></p></td><td><p>业务请求鉴权中间件</p></td></tr>
+    <tr><td><p><code>app/internal/repository/redis/session_repo.go</code></p></td><td><p><code>auth:session:{uid}</code> 读写</p></td></tr>
+  </tbody>
+</table>
+
+<hr/>
+<p>依据 commit <code>a6ea7c8</code> 源码梳理；交互式版本（含逐消息激活与溯源）见仓库 <code>.archify/sequence-auth-session-20261026-115711/auth-session.sequence.html</code>。Git 为唯一真相源，文档由飞书同步管线维护。</p>

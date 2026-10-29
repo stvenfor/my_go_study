@@ -1,0 +1,45 @@
+sequenceDiagram
+    autonumber
+    participant FL as Flutter 客户端
+    participant H as UserHandler
+    participant MW as SessionAuth 中间件
+    participant AU as LocalAuthUsecase
+    participant DS as DeviceSessionUsecase
+    participant PG as PostgreSQL
+    participant RD as Redis
+
+    Note over FL,RD: ① 登录签发（POST /api/v1/user/login）
+    FL->>H: login(email, password, device_id, platform)
+    H->>AU: Login()
+    AU->>PG: 查用户 + bcrypt 比对（失败计次并锁定）
+    PG-->>AU: 用户行
+    AU->>PG: GenerateUUID 签发 access JWT；写 refresh 哈希（sha256 / 30 天）
+    AU-->>H: token + refresh_token
+    H->>DS: IssueOnLogin(user, device, platform)
+    DS->>RD: SET auth:session:{uid}（覆盖旧设备 session）
+    DS-->>H: session_id
+    H-->>FL: 200 { token, refresh_token, session_id }
+
+    Note over FL,RD: ② 业务请求校验（SessionAuth 中间件）
+    FL->>MW: 业务 API + Bearer + X-Session-ID + X-Device-ID
+    MW->>MW: ParseUUID 校验本地 access JWT（失败即 401）
+    MW->>DS: Validate(userID, session_id, device_id)
+    DS->>RD: GET auth:session:{uid}
+    RD-->>DS: 存储的 session
+    DS-->>MW: 一致则放行；device 不符=ErrSessionReplaced（被挤下线）；session 不符=ErrSessionInvalid（应走 refresh）
+    MW-->>FL: 注入 user 上下文 → 业务 Controller → 200
+
+    Note over FL,RD: ③ 刷新与登出
+    FL->>H: POST /api/v1/user/refresh
+    H->>AU: RefreshToken(refresh)
+    AU->>PG: 按 sha256 查旧行 → 删除 → 重签发（一次性轮换）
+    AU-->>H: 新 access + refresh_token
+    H->>DS: RenewOnRefresh（同设备才续期，异端拒绝）
+    DS->>RD: 存新 session_id（续期）
+    H-->>FL: 200 新 token + session_id
+    FL->>H: POST /api/v1/user/logout（经 SessionAuth）
+    H->>DS: RevokeOnLogout
+    DS->>RD: DEL auth:session:{uid}
+    H->>AU: Logout(accessToken)
+    AU->>PG: 删除该用户全部 refresh token
+    H-->>FL: 200 ok

@@ -18,5 +18,5 @@
 ## 约定
 - 新业务表一律 `wys_` 前缀；改 Go 在本仓库、改 Flutter 进 `../../my_ai_project`；两仓独立 git。
 - 交付物默认放 `~/Desktop/Matt/`（用户偏好，见用户级 MEMORY）。
-- **多客户端同步局域网 IP**：`make lan-up LAN_CLIENTS=my_kmp_project,kmp_kuikly`（默认只写 `my_ai_project`；`LAN_CLIENTS=all` 写清单全部）。客户端清单在 `scripts/lan-ip.clients`，目录名即 ID，必须是 `../<name>` 同级目录；目录不存在只打印「跳过」不报错。
+- **多客户端同步局域网 IP**：改 `scripts/lan-ip.clients`（开关板）——取消某行行首 `#` 即启用该客户端/文件，注释掉即关闭；默认只启用 `my_ai_project`。`make sync-lan-ip` 只刷 IP，`make lan-up`/`make lan-run` 启动前会自动刷。临时一次性覆盖：`make lan-up LAN_CLIENTS=my_kmp_project,kmp_kuikly` 或 `LAN_CLIENTS=all`。目录名即客户端 ID，必须是 `../<name>` 同级目录；目录/文件不存在只打印「跳过」不报错。清单行必须用 **TAB** 分 4 字段。
 - ⚠️ `my_kmp_project` 的 `core/network/.../LanHost.kt` **已被 git 跟踪**，清单里的 `quote` 规则会把局域网 IP 写进这个源码文件、污染其工作区（正是清单头警告的反模式）。只想同步 `.env.lan` 就注释掉该 quote 行。`kmp_kuikly` 的 LanHost.kt 尚不存在，quote 行会被跳过。
