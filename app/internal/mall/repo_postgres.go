@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"app/internal/txdb"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -281,9 +282,9 @@ func (r *PostgresRepository) ListPayments(ctx context.Context, orderID int64) ([
 	return rows, err
 }
 
-func (r *PostgresRepository) PayOrderLocal(ctx context.Context, orderID int64, buyerUserID string, channel int16) (*entity.MallOrderDetail, error) {
+func (r *PostgresRepository) PayOrderLocal(ctx context.Context, orderID int64, buyerUserID string, channel int16, channelTradeNo string) (*entity.MallOrderDetail, error) {
 	var detail entity.MallOrderDetail
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var order entity.WysMallOrder
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("order_id = ? AND buyer_user_id = ?", orderID, buyerUserID).
@@ -376,7 +377,10 @@ func (r *PostgresRepository) PayOrderLocal(ctx context.Context, orderID int64, b
 			}
 		}
 
-		tradeNo := "local-" + uuid.NewString()
+		tradeNo := channelTradeNo
+		if tradeNo == "" {
+			tradeNo = "local-" + uuid.NewString()
+		}
 
 		// 积分支付单（余额已由 PointsUsecase 在 usecase 层扣减）
 		if order.TotalPoints > 0 {
@@ -484,7 +488,7 @@ func (r *PostgresRepository) PayOrderLocal(ctx context.Context, orderID int64, b
 
 func (r *PostgresRepository) CancelUnpaidOrder(ctx context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error) {
 	var out entity.WysMallOrder
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var order entity.WysMallOrder
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("order_id = ? AND buyer_user_id = ?", orderID, buyerUserID).
@@ -531,7 +535,7 @@ func (r *PostgresRepository) CancelUnpaidOrder(ctx context.Context, orderID int6
 
 func (r *PostgresRepository) CancelPaidOrder(ctx context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error) {
 	var out entity.WysMallOrder
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var order entity.WysMallOrder
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("order_id = ? AND buyer_user_id = ?", orderID, buyerUserID).
@@ -574,6 +578,27 @@ func (r *PostgresRepository) CancelPaidOrder(ctx context.Context, orderID int64,
 		return nil, err
 	}
 	return &out, nil
+}
+
+// WithTx 见 Repository.WithTx。
+func (r *PostgresRepository) WithTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return txdb.Begin(ctx, r.db, fn)
+}
+
+// LockOrderForSettle 见 Repository.LockOrderForSettle：只加行锁 + 校验归属，不改状态。
+func (r *PostgresRepository) LockOrderForSettle(ctx context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error) {
+	var order entity.WysMallOrder
+	err := txdb.DB(ctx, r.db).WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("order_id = ? AND buyer_user_id = ?", orderID, buyerUserID).
+		First(&order).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &order, nil
 }
 
 func getOrderTx(tx *gorm.DB, orderID int64) (*entity.WysMallOrder, error) {

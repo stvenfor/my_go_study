@@ -50,6 +50,11 @@ DEFAULT_VIDEO_COVER_URL = "https://picsum.photos/seed/wys_post_video/640/360"
 - `media_type=video` → 可不传，服务端填默认 video + cover
 - `media_type=none` → 无媒体字段
 
+> **仅联调环境**（parity-p0-5）：默认填充开关是 `config.IsLabAppEnv(APP_ENV)`。
+> `APP_ENV=prod|production` 下，`image` 不带图或 `video` 缺 URL/封面 → `400`（`code 10001`）
+> 「缺少真实图片/视频 URL，上传通道未接入」。登记见
+> [placeholder-inventory.md](./placeholder-inventory.md) 条目 6。
+
 ---
 
 ## 3. 表设计（`wys_` 前缀，本地 Postgres）

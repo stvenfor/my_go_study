@@ -5,25 +5,30 @@ import "strings"
 // ThirdPartyConfig 微信 / 支付宝 / 华为开放平台与商户凭证（仅服务端）。
 // 客户端 AppID/UL 在 Flutter WysWechatConfig；此处 AppSecret、商户密钥、支付宝私钥、华为 Client Secret 不可下发 App。
 type ThirdPartyConfig struct {
-	WeChatAppID         string `mapstructure:"wechat_app_id"`
-	WeChatAppSecret     string `mapstructure:"wechat_app_secret"`
-	WeChatMchID         string `mapstructure:"wechat_mch_id"`
-	WeChatMchAPIKey     string `mapstructure:"wechat_mch_api_key"`
-	WeChatMchNotifyURL  string `mapstructure:"wechat_mch_notify_url"`
-	AlipayAppID         string `mapstructure:"alipay_app_id"`
-	AlipayPrivateKey    string `mapstructure:"alipay_private_key"`
-	AlipayNotifyURL     string `mapstructure:"alipay_notify_url"`
-	HuaweiClientID     string          `mapstructure:"huawei_client_id"`
-	HuaweiClientSecret string          `mapstructure:"huawei_client_secret"`
-	HuaweiRedirectURI  string          `mapstructure:"huawei_redirect_uri"`
-	HuaweiIAP          HuaweiIAPConfig `mapstructure:"huawei_iap"`
-	AppleIAP           AppleIAPConfig  `mapstructure:"apple_iap"`
-	JPushAppKey         string `mapstructure:"jpush_app_key"`
-	JPushMasterSecret   string `mapstructure:"jpush_master_secret"`
-	JPushAPNsProduction bool   `mapstructure:"jpush_apns_production"`
-	RongCloudAppKey     string `mapstructure:"rongcloud_app_key"`
-	RongCloudAppSecret  string `mapstructure:"rongcloud_app_secret"`
-	RongCloudAPIBaseURL string `mapstructure:"rongcloud_api_base_url"`
+	WeChatAppID        string `mapstructure:"wechat_app_id"`
+	WeChatAppSecret    string `mapstructure:"wechat_app_secret"`
+	WeChatMchID        string `mapstructure:"wechat_mch_id"`
+	WeChatMchAPIKey    string `mapstructure:"wechat_mch_api_key"`
+	WeChatMchNotifyURL string `mapstructure:"wechat_mch_notify_url"`
+	AlipayAppID        string `mapstructure:"alipay_app_id"`
+	AlipayPrivateKey   string `mapstructure:"alipay_private_key"`
+	AlipayPublicKey    string `mapstructure:"alipay_public_key"`
+	AlipayNotifyURL    string `mapstructure:"alipay_notify_url"`
+	// WeChatPayEndpoint / AlipayGateway 渠道网关地址：默认官方域名，
+	// 留出覆盖项是为了「主动查单/对账」能在本机用假网关做真 HTTP 往返测试。
+	WeChatPayEndpoint   string          `mapstructure:"wechat_pay_endpoint"`
+	AlipayGateway       string          `mapstructure:"alipay_gateway"`
+	HuaweiClientID      string          `mapstructure:"huawei_client_id"`
+	HuaweiClientSecret  string          `mapstructure:"huawei_client_secret"`
+	HuaweiRedirectURI   string          `mapstructure:"huawei_redirect_uri"`
+	HuaweiIAP           HuaweiIAPConfig `mapstructure:"huawei_iap"`
+	AppleIAP            AppleIAPConfig  `mapstructure:"apple_iap"`
+	JPushAppKey         string          `mapstructure:"jpush_app_key"`
+	JPushMasterSecret   string          `mapstructure:"jpush_master_secret"`
+	JPushAPNsProduction bool            `mapstructure:"jpush_apns_production"`
+	RongCloudAppKey     string          `mapstructure:"rongcloud_app_key"`
+	RongCloudAppSecret  string          `mapstructure:"rongcloud_app_secret"`
+	RongCloudAPIBaseURL string          `mapstructure:"rongcloud_api_base_url"`
 }
 
 // HuaweiIAPConfig AGC 应用内支付服务端密钥（JWT）。
@@ -73,12 +78,37 @@ func (t ThirdPartyConfig) AlipayPayConfigured() bool {
 		strings.TrimSpace(t.AlipayPrivateKey) != ""
 }
 
+// AlipayNotifyVerifiable 支付宝回调能否验签（缺公钥即无法校验，回调必须拒绝）。
+func (t ThirdPartyConfig) AlipayNotifyVerifiable() bool {
+	return t.AlipayPayConfigured() && strings.TrimSpace(t.AlipayPublicKey) != ""
+}
+
+const (
+	defaultWeChatPayEndpoint = "https://api.mch.weixin.qq.com"
+	defaultAlipayGateway     = "https://openapi.alipay.com/gateway.do"
+)
+
+// WeChatPayEndpointOrDefault 微信商户 API 网关（unifiedorder / orderquery 同域）。
+func (t ThirdPartyConfig) WeChatPayEndpointOrDefault() string {
+	if s := strings.TrimSpace(t.WeChatPayEndpoint); s != "" {
+		return strings.TrimRight(s, "/")
+	}
+	return defaultWeChatPayEndpoint
+}
+
+// AlipayGatewayOrDefault 支付宝开放平台网关。
+func (t ThirdPartyConfig) AlipayGatewayOrDefault() string {
+	if s := strings.TrimSpace(t.AlipayGateway); s != "" {
+		return strings.TrimRight(s, "/")
+	}
+	return defaultAlipayGateway
+}
+
 // HuaweiLoginConfigured 华为账号 OAuth 换 code 所需字段是否齐全。
 func (t ThirdPartyConfig) HuaweiLoginConfigured() bool {
 	return strings.TrimSpace(t.HuaweiClientID) != "" &&
 		strings.TrimSpace(t.HuaweiClientSecret) != ""
 }
-
 
 // JPushConfigured 极光服务端发推送所需字段是否齐全（占位 AppKey 不算）。
 func (t ThirdPartyConfig) JPushConfigured() bool {

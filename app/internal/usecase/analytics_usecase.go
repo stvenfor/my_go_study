@@ -37,6 +37,7 @@ func (u *AnalyticsUsecase) Get(ctx context.Context, id int64) (*entity.Analytics
 }
 
 // EnsureSeedData 若尚无 chart-v1 种子则清空 source_system=seed 并写入丰富演示数据。
+// 演示数据：调用方 cmd/api 仅在 APP_ENV 非正式时执行（登记 docs/placeholder-inventory.md）。
 func (u *AnalyticsUsecase) EnsureSeedData(ctx context.Context) error {
 	marked, err := u.repo.CountNotesContaining(ctx, analyticsSeedMarker)
 	if err != nil {

@@ -314,12 +314,17 @@ func (h *handler) PayOrder(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误")
 		return
 	}
-	detail, err := h.svc.PayOrder(c.Request.Context(), user.ID, orderID, body.PaymentChannel)
+	res, err := h.svc.PayOrder(c.Request.Context(), user.ID, orderID, body.PaymentChannel)
 	if err != nil {
 		writeError(c, err)
 		return
 	}
-	response.Success(c, detail)
+	// 渠道支付：回 prepay 参数，订单仍是待支付（回调核销后才变已支付）。
+	if res.Status == "pending" {
+		response.Success(c, res)
+		return
+	}
+	response.Success(c, res.Detail)
 }
 
 // CancelOrder POST /api/v1/mall/orders/:order_id/cancel
@@ -348,6 +353,10 @@ func writeError(c *gin.Context, err error) {
 		response.Error(c, http.StatusForbidden, response.CodeForbidden, err.Error())
 	case errors.Is(err, ErrNotFound):
 		response.Error(c, http.StatusNotFound, response.CodeNotFound, err.Error())
+	case errors.Is(err, ErrOrderAlreadySettled):
+		response.Error(c, http.StatusConflict, response.CodeInvalidParams, err.Error())
+	case errors.Is(err, ErrPayGatewayUnavailable):
+		response.Error(c, http.StatusServiceUnavailable, response.CodeInternalError, err.Error())
 	case errors.Is(err, ErrInvalidChannel),
 		errors.Is(err, ErrInvalidKind),
 		errors.Is(err, ErrInvalidPrice),

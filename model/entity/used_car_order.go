@@ -123,26 +123,26 @@ func ParseUsedCarKindFilter(raw string) (kind int16, filter bool, ok bool) {
 
 // WysUsedCarOrder 二手车业务单行。
 type WysUsedCarOrder struct {
-	OrderID         int64      `json:"order_id" gorm:"primaryKey"`
-	StoreID         int        `json:"store_id"`
-	UploaderUserID  string     `json:"uploader_user_id" gorm:"size:64"`
-	Kind            int16      `json:"kind"`
-	CustomerID      int64      `json:"customer_id"`
-	CustomerPhone   string     `json:"customer_phone" gorm:"size:32"`
-	CustomerName    string     `json:"customer_name" gorm:"size:128"`
-	VehicleModel    string     `json:"vehicle_model" gorm:"size:128"`
-	PlateNo         string     `json:"plate_no" gorm:"size:32"`
-	VIN             string     `json:"vin" gorm:"column:vin;size:32"`
-	MileageKm       int        `json:"mileage_km"`
-	ModelYear       int        `json:"model_year"`
-	Amount          float64    `json:"amount"`
-	Status          int16      `json:"status"`
-	ImageURL        *string    `json:"image_url,omitempty"`
-	RejectReason    *string    `json:"reject_reason,omitempty"`
-	RatingStars     *int16     `json:"rating_stars,omitempty"`
-	SubmittedAt     time.Time  `json:"submitted_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	OrderID        int64     `json:"order_id" gorm:"primaryKey"`
+	StoreID        int       `json:"store_id"`
+	UploaderUserID string    `json:"uploader_user_id" gorm:"size:64"`
+	Kind           int16     `json:"kind"`
+	CustomerID     int64     `json:"customer_id"`
+	CustomerPhone  string    `json:"customer_phone" gorm:"size:32"`
+	CustomerName   string    `json:"customer_name" gorm:"size:128"`
+	VehicleModel   string    `json:"vehicle_model" gorm:"size:128"`
+	PlateNo        string    `json:"plate_no" gorm:"size:32"`
+	VIN            string    `json:"vin" gorm:"column:vin;size:32"`
+	MileageKm      int       `json:"mileage_km"`
+	ModelYear      int       `json:"model_year"`
+	Amount         float64   `json:"amount"`
+	Status         int16     `json:"status"`
+	ImageURL       *string   `json:"image_url,omitempty"`
+	RejectReason   *string   `json:"reject_reason,omitempty"`
+	RatingStars    *int16    `json:"rating_stars,omitempty"`
+	SubmittedAt    time.Time `json:"submitted_at"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 func (WysUsedCarOrder) TableName() string { return WysUsedCarOrderTable }
@@ -157,11 +157,11 @@ type UsedCarOrderStats struct {
 
 // UsedCarOrderSummary 列表顶栏。
 type UsedCarOrderSummary struct {
-	DisplayName   string             `json:"display_name"`
-	AvatarURL     string             `json:"avatar_url"`
-	PositionLabel string             `json:"position_label"`
-	StoreName     string             `json:"store_name"`
-	Stats         UsedCarOrderStats  `json:"stats"`
+	DisplayName   string            `json:"display_name"`
+	AvatarURL     string            `json:"avatar_url"`
+	PositionLabel string            `json:"position_label"`
+	StoreName     string            `json:"store_name"`
+	Stats         UsedCarOrderStats `json:"stats"`
 }
 
 // UsedCarOrderDTO 列表/详情读模型。

@@ -8,6 +8,11 @@ grpc:
   enabled: true
   port: 9090
 
+# 小视频审核：默认拒绝直到人工放行（reject_until_manual）
+# 联调演示请在 config.dev/lan.yaml 覆盖成 auto_allow_local_only
+short_video:
+  review_mode: reject_until_manual
+
 database:
   host: localhost
   port: 5432
@@ -18,6 +23,14 @@ database:
   max_open_conns: 25
   max_idle_conns: 10
   conn_max_lifetime_minutes: 30
+  # 启动期 DDL 总开关（parity-p0-1）：默认关 —— schema 由 migrations/ + make migrate-up 管，
+  # 多实例并发启动不再抢 DDL 锁。本机联调想免迁移在 configs/config.dev.yaml 置 true；
+  # APP_ENV=lan|prod 由 common/config 强制 false（改 yaml 也开不开）。
+  auto_migrate: false
+  # 启动时比对库内 schema_migrations 版本与 migrations/ 最高版本，落后（或 dirty）即拒绝启动。
+  schema_version_check: true
+  # 相对进程工作目录；仓库根启动（make run / compose 的 /app）都能解析。
+  migrations_dir: migrations
 
 redis:
   addr: localhost:6379
@@ -25,7 +38,9 @@ redis:
   db: 0
 
 jwt:
-  secret: change-me-in-production
+  # 必须来自 JWT_SECRET（env / .env）；留空则 config.Load 直接拒绝启动，
+  # 不再有可用的硬编码兜底密钥。prod 另要求长度 ≥ 32 且不在弱值字典内。
+  secret: ""
   expire_hours: 72
 
 auth:
@@ -61,6 +76,16 @@ queue:
     url: amqp://guest:guest@localhost:5672/
     queue: my_go_study.tasks
     prefetch: 10
+    # 死信：消费失败超过 max_retries 次后 Nack(requeue=false) 进 dlq
+    # 队列参数不可变，改这里不会作用于已存在的队列，
+    # 见 scripts/rabbitmq-ensure-dlq.sh
+    dlx: my_go_study.tasks.dlx
+    dlq: my_go_study.tasks.dlq
+    max_retries: 3
+    # 单条消息处理超时，防止一条卡死 prefetch 窗口
+    handler_timeout_seconds: 30
+    # 发布侧等 broker 落盘确认（串行化发布，吞吐略降；关=false 只依赖本地错误）
+    publisher_confirm: true
   pubsub:
     channel: realtime:fanout
 
@@ -82,6 +107,15 @@ scheduler:
     action:
       type: deeplink
       route: /home
+  # 渠道支付兜底任务（P0-2，由 cmd/worker 入队、同一进程核销）：
+  # 查单是「回调丢了」的兜底；对账是 T+1 比对本日流水与渠道事实。
+  payment:
+    enabled: false
+    query_interval_minutes: 5   # 每轮扫一次超时 pending
+    pending_stale_minutes: 10   # 超过该时长仍未核销 → 认为回调可能丢失
+    query_batch: 200            # 单轮上限，避免把渠道打爆
+    reconcile_enabled: false    # 需真实商户凭据才有意义，默认关
+    reconcile_hour: 3           # 每天本地时区 03:00 对昨天
 
 # AI 小石头 SSE 生成流（与 Realtime WS 分离，见 docs/sse-streaming.md）
 sse:
@@ -107,3 +141,17 @@ cs_agent:
   keepalive_seconds: 15
   request_timeout_seconds: 120
   model: cs-mock
+
+# 客服 RAG 管线：本地 KB 文档 → 向量化 → Elasticsearch 检索 → 注入 LLM。
+# embedding_* 留空则回落到 sse.openai（即 SSE_OPENAI_* 环境变量），零新增 env。
+rag:
+  enabled: false            # 需同时配置 elasticsearch.url 与 SSE_OPENAI_API_KEY 才真正生效
+  embedding_base_url: ""
+  embedding_api_key: ""
+  embedding_model: "text-embedding-3-small"
+  index_name: "rag_chunks"
+  kb_dir: "data/cs-kb"
+  chunk_size: 800
+  chunk_overlap: 100
+  top_k: 4
+  reindex_interval_seconds: 0

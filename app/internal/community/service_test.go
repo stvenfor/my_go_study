@@ -20,6 +20,29 @@ func TestNormalizeMedia_defaults(t *testing.T) {
 	}
 }
 
+// parity-p0-5：正式环境（demoMedia=false）遇到这类输入必须拒绝，不再填充 picsum/样例视频。
+func TestRequiresRealMedia_gate(t *testing.T) {
+	str := func(s string) *string { return &s }
+	cases := []struct {
+		name string
+		in   CreatePostInput
+		want bool
+	}{
+		{"image 无 URL", CreatePostInput{MediaType: "image"}, true},
+		{"image 带 URL", CreatePostInput{MediaType: "image", ImageURLs: []string{"https://cdn/a.jpg"}}, false},
+		{"video 无 URL", CreatePostInput{MediaType: "video"}, true},
+		{"video 缺封面", CreatePostInput{MediaType: "video", VideoURL: str("https://cdn/a.mp4")}, true},
+		{"video 齐全", CreatePostInput{MediaType: "video", VideoURL: str("https://cdn/a.mp4"), VideoCoverURL: str("https://cdn/a.jpg")}, false},
+		{"none 只看正文", CreatePostInput{MediaType: "none"}, false},
+		{"空 media_type 只看正文", CreatePostInput{}, false},
+	}
+	for _, tc := range cases {
+		if got := requiresRealMedia(tc.in); got != tc.want {
+			t.Fatalf("%s: requiresRealMedia=%v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 func TestCommunitySearch_normalizeType(t *testing.T) {
 	cases := map[string]string{
 		"": "all", "all": "all", "POST": "post", "动态": "post",

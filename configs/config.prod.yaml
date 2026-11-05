@@ -8,6 +8,10 @@ log:
 
 database:
   sslmode: require
+  # 生产禁止进程建表（parity-p0-1）：schema 只能由发布流程跑 migrations/。
+  # 版本落后 / dirty / 空库一律拒绝启动，不做 Warn 继续。
+  auto_migrate: false
+  schema_version_check: true
 
 queue:
   enabled: true
@@ -16,3 +20,7 @@ scheduler:
   enabled: true
   hourly_notify:
     enabled: true
+  # 渠道支付兜底：查单补回调丢失，T+1 对账写差异表（告警见 deploy/observability/alerts.yml）。
+  payment:
+    enabled: true
+    reconcile_enabled: true

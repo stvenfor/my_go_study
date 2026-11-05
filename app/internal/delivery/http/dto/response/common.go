@@ -15,6 +15,9 @@ const (
 	CodeUnauthorized  = 10002 // 登录凭证错误（如密码错误）；勿与 token 失效混用
 	CodeForbidden     = 10003
 	CodeNotFound      = 10004
+	// 能力未接入：HTTP 501 + 本码。区别于 10003（无权限）与 10004（资源不存在），
+	// 客户端不得按「成功」或「重试」处理。登记见 docs/placeholder-inventory.md。
+	CodeNotImplemented = 10005
 	// 单设备 session：与登录 10002（密码错误）区分，客户端按 code 分支勿依赖文案。
 	CodeSessionReplaced = 10021
 	CodeSessionInvalid  = 10022

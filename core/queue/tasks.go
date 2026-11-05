@@ -13,6 +13,10 @@ const (
 	TypeScheduledBroadcastNotify = "scheduled:broadcast_notify"
 	TypeSendSMS                  = "sms:send"
 	TypeJPushRegister            = "jpush:register"
+	// TypePaymentQueryPending 主动查单兜底：扫超时未核销的渠道流水并向渠道查单。
+	TypePaymentQueryPending = "payment:query_pending"
+	// TypePaymentReconcile T+1 对账：比对本日流水与渠道事实，差异落表。
+	TypePaymentReconcile = "payment:reconcile"
 )
 
 // Envelope 入队/消费统一信封。
@@ -49,6 +53,16 @@ type JPushRegisterPayload struct {
 // BroadcastNotifyPayload 定时广播任务载荷。
 type BroadcastNotifyPayload struct {
 	ScheduleSlot string `json:"scheduleSlot,omitempty"`
+}
+
+// PaymentQueryPendingPayload 主动查单任务载荷。阈值/批量一律取 worker 侧
+// scheduler.payment.*，不放载荷：改配置不用重放旧任务，避免队列里留着过期参数。
+type PaymentQueryPendingPayload struct{}
+
+// PaymentReconcilePayload T+1 对账任务载荷。
+// Date 为空表示「昨天」；显式传 2026-11-03 可人工补跑某日。
+type PaymentReconcilePayload struct {
+	Date string `json:"date,omitempty"`
 }
 
 func newEnvelope(taskType string, payload any, taskID string) (Envelope, error) {
@@ -98,4 +112,32 @@ func NewSendSMSTask(p SendSMSPayload) (Envelope, error) {
 // NewJPushRegisterTask 创建极光推送注册任务。
 func NewJPushRegisterTask(p JPushRegisterPayload) (Envelope, error) {
 	return newEnvelope(TypeJPushRegister, p, "")
+}
+
+// NewPaymentQueryPendingTask 创建主动查单任务。
+func NewPaymentQueryPendingTask(p PaymentQueryPendingPayload) (Envelope, error) {
+	return newEnvelope(TypePaymentQueryPending, p, "")
+}
+
+// ParsePaymentQueryPendingPayload 解析主动查单任务载荷。
+func ParsePaymentQueryPendingPayload(payload []byte) (PaymentQueryPendingPayload, error) {
+	var p PaymentQueryPendingPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return PaymentQueryPendingPayload{}, fmt.Errorf("unmarshal payment query payload: %w", err)
+	}
+	return p, nil
+}
+
+// NewPaymentReconcileTask 创建 T+1 对账任务。
+func NewPaymentReconcileTask(p PaymentReconcilePayload) (Envelope, error) {
+	return newEnvelope(TypePaymentReconcile, p, "")
+}
+
+// ParsePaymentReconcilePayload 解析对账任务载荷。
+func ParsePaymentReconcilePayload(payload []byte) (PaymentReconcilePayload, error) {
+	var p PaymentReconcilePayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return PaymentReconcilePayload{}, fmt.Errorf("unmarshal payment reconcile payload: %w", err)
+	}
+	return p, nil
 }

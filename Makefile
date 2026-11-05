@@ -12,7 +12,7 @@ BIN_DIR := bin
 # 飞书富文本页推送：lark-cli 路径 + 目标文档 obj_token
 LARK_CLI ?= lark-cli
 FEISHU_AUTH_DOC ?= KIsUdqqRfocxiYxuzhHcUKFYnlh
-.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth
+.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down migrate-status migrate-baseline migrate-force docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
@@ -65,11 +65,45 @@ tidy:
 air:
 	air -c .air.toml
 
-migrate-up:
-	migrate -path migrations -database "postgres://postgres:postgres@localhost:5432/my_go_study?sslmode=disable" up
+# ---- 迁移闸门（parity-p0-1：migrations/ 是 schema 单一真相）----
+# CLI 版本 pin 死：不带 @version 的 go install 会跟 latest，等于悄悄升依赖。
+# GOSUMDB=off：sum.golang.org 在本网络不可达（走 goproxy.cn 也超时），版本已 pin。
+MIGRATE_VERSION ?= v4.15.2
+MIGRATE_BIN := $(BIN_DIR)/migrate
+MIGRATE_PATH := migrations
+MIGRATE_LATEST := $(shell basename $$(ls $(MIGRATE_PATH)/*.up.sql 2>/dev/null | tail -1) 2>/dev/null | cut -d_ -f1)
 
-migrate-down:
-	migrate -path migrations -database "postgres://postgres:postgres@localhost:5432/my_go_study?sslmode=disable" down 1
+$(MIGRATE_BIN):
+	@mkdir -p $(BIN_DIR)
+	@echo ">>> 构建 golang-migrate $(MIGRATE_VERSION) -> $(MIGRATE_BIN)（必须带 -tags，否则 unknown driver postgres）"
+	@GOBIN="$(CURDIR)/$(BIN_DIR)" GOPROXY="$${GOPROXY:-https://goproxy.cn,direct}" GOSUMDB=off \
+		go install -tags "postgres pgx" github.com/golang-migrate/migrate/v4/cmd/migrate@$(MIGRATE_VERSION)
+
+# DSN 一律取自 .env / .env.local（顺手收掉 P0-7 记的 postgres:postgres 硬编码残留）
+MIGRATE_RUN = ./scripts/load-env.sh sh -c \
+  'exec $(MIGRATE_BIN) -path $(MIGRATE_PATH) -database "postgres://$${DATABASE_USER}:$${DATABASE_PASSWORD}@$${DATABASE_HOST:-localhost}:$${DATABASE_PORT:-5432}/$${DATABASE_DBNAME:-my_go_study}?sslmode=$${DATABASE_SSLMODE:-disable}" $(1)'
+
+migrate-up: $(MIGRATE_BIN)
+	@$(call MIGRATE_RUN,up)
+
+migrate-down: $(MIGRATE_BIN)
+	@$(call MIGRATE_RUN,down 1)
+
+migrate-status: $(MIGRATE_BIN)
+	@echo "目录最新：$(MIGRATE_LATEST)"
+	@$(call MIGRATE_RUN,version) 2>&1 \
+		|| echo "库内无版本记录：历史 AutoMigrate 库用 make migrate-baseline；空库交给 make migrate-up"
+
+# 历史 AutoMigrate 建的库首次接入迁移链：声明「已是最新」，不重放 DDL。
+migrate-baseline: $(MIGRATE_BIN)
+	@test -n "$(MIGRATE_LATEST)" || { echo "migrations/ 下没有 .up.sql"; exit 1; }
+	@echo ">>> force 到 $(MIGRATE_LATEST)（不执行任何 SQL）"
+	@$(call MIGRATE_RUN,force $(MIGRATE_LATEST))
+
+# 迁移中断把库留在 dirty 状态时用：make migrate-force VERSION=20260923167500
+migrate-force: $(MIGRATE_BIN)
+	@test -n "$(VERSION)" || { echo "用法: make migrate-force VERSION=<迁移版本号>"; exit 1; }
+	@$(call MIGRATE_RUN,force $(VERSION))
 
 docker-build:
 	./scripts/docker-compose.sh build

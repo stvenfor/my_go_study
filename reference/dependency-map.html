@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>速查 · my_go_study 依赖方向与接口落地</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body>
+<header class="masthead">
+  <div class="kicker">Reference · 随时回查</div>
+  <h1>依赖方向与接口落地</h1>
+  <p class="lede">四张卡：模块角色 → 方向规则 → 验证命令 → 说法模板。面试前 5 分钟看这一页就够。</p>
+</header>
+
+<h2>1 · 四个模块各自是什么</h2>
+<table>
+  <thead><tr><th>模块</th><th>角色</th><th>允许依赖</th><th>判据</th></tr></thead>
+  <tbody>
+    <tr><td><code>model</code></td><td>领域实体 + 仓储<strong>接口</strong></td><td>谁都不依赖</td><td>叶子；零外部依赖</td></tr>
+    <tr><td><code>common</code></td><td>配置 / 日志 / JWT / metrics 底座</td><td>谁都不依赖</td><td>叶子；与 model 互不依赖</td></tr>
+    <tr><td><code>core</code></td><td>外部系统驱动（PG / Redis / RabbitMQ / Supabase / 推送）</td><td><code>common</code> <code>model</code></td><td>只碰驱动，不碰业务分发</td></tr>
+    <tr><td><code>app</code></td><td>业务用例 + delivery（HTTP/gRPC/WS/worker）+ 仓储实现 + 装配</td><td><code>common</code> <code>core</code> <code>model</code></td><td>唯一可执行模块</td></tr>
+  </tbody>
+</table>
+<p class="cite">工作区由 <code>go.work</code> 编排（<code>use ./common ./core ./model ./app</code>），根目录不是 module，所以 <code>go build ./...</code> 失效，要用 <code>go build all</code> 或 <code>go -C &lt;模块&gt;</code>。</p>
+
+<h2>2 · 方向规则（一句话 + 一个反直觉点）</h2>
+<div class="note"><b>Dependency Rule</b>
+源码依赖只能指向<strong>内层</strong>、指向更稳定的一侧。<span class="cite">出处：《Clean Architecture》第 22 章 <a href="https://www.informit.com/articles/article.aspx?p=2832399">InformIT 官方节选</a> · <a href="https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html">作者原文</a></span>
+</div>
+<p><strong>反直觉点</strong>：<em>控制流</em>是向外的（请求 <code>app → usecase → repo 接口 → Redis 实现</code>），但<em>源码依赖</em>是向内的（<code>app/internal/repository/redis</code> 里写的是 <code>import "model/repository"</code>）。两者方向相反，这个「相反」就是依赖倒置本身——不是命名游戏。</p>
+
+<h2>3 · 验证命令（自己跑，别信任何人转述）</h2>
+<pre><code># 秒级粗筛：内层不得出现外层 import 路径
+cd my_go_study
+grep -rl '"app/' core --include='*.go' | wc -l     # 期望 0
+grep -rl '"common/\|"core/\|"app/' model --include='*.go' | wc -l   # 期望 0
+grep -rl '"core/\|"model/' app --include='*.go' | wc -l             # 期望 &gt; 0（本仓库 144）</code></pre>
+<pre><code># 编译器视角（可选深挖）：解析整张模块图，本机网络受限时会长时间无输出
+go -C core list -deps ./... | grep -E '^app(/|$)'   # 期望无输出
+go -C app  list -deps ./... | grep -E '^(core|model)(/|$)' | head</code></pre>
+<p class="cite">2026-10-29 实测：本机 <code>go -C core list -deps ./...</code> 超过 8 分钟无输出（<code>go env</code> 本身 0.015s 返回，卡的不是 go 命令而是模块图解析）。所以<strong>以 grep 为准</strong>，网络正常时再用这条复核。</p>
+<div class="trap"><b>为什么 grep 也够用</b>
+Go 的 import 别名（<code>grpcdelivery "app/internal/delivery/grpc"</code>）改的是包名、不改路径字符串，所以按 <code>"app/</code> 搜不会漏。grep 的漏洞只有：字符串出现在注释或字符串字面量里（误报，不是漏报）。</div>
+
+<h2>4 · 接口在 Go 里怎么落地（本仓库真实三件套）</h2>
+<table>
+  <thead><tr><th>位置</th><th>文件</th><th>写的是什么</th></tr></thead>
+  <tbody>
+    <tr><td>内层声明</td><td><code>model/repository/session_repository.go</code></td><td><code>type SessionRepository interface</code> 4 个方法 + <code>DeviceSession</code> 结构体</td></tr>
+    <tr><td>外层实现</td><td><code>app/internal/repository/redis/session_repo.go</code></td><td><code>type SessionRepository struct</code> 同类型名，方法集覆盖接口；<code>import "model/repository"</code></td></tr>
+    <tr><td>消费方</td><td><code>app/internal/delivery/worker/handler.go</code></td><td>字段写成 <code>sessions repository.SessionRepository</code>，只认接口不认 Redis</td></tr>
+  </tbody>
+</table>
+<pre><code>// 编译期断言：Go 接口是隐式满足的，所以惯用这一行把「实现了」变成编译约束
+var _ repository.RealtimeEventRepository = (*RealtimeEventRepository)(nil)
+// 见 app/internal/repository/redis/realtime_event_repo.go:86
+// 注意 session_repo.go 目前没有这行——隐式满足不会报错，改名/漏方法要到被使用时才暴露</code></pre>
+<p class="cite">隐式满足与「接口越小抽象越强」：<a href="https://go.dev/doc/effective_go">Effective Go · Interfaces</a>；接口值内部表示与代价：<a href="https://golang.design/under-the-hood/en/part2lang/ch04type/interface/">Go: Under the Hood 4.2</a>。</p>
+
+<h2>5 · 60 秒说法模板（背结构，不背词）</h2>
+<div class="do"><b>模板</b>
+「我们后端是 <span class="fill">4 个 Go module</span>，靠 <span class="fill">go.work</span> 编排。<span class="fill">model</span> 和 <span class="fill">common</span> 是叶子，谁都不依赖；<span class="fill">core</span> 只封装外部系统驱动；<span class="fill">app</span> 装业务和装配。规则是源码依赖只能向内。<br><br>
+最典型的例子是单设备登录：<span class="fill">SessionRepository</span> 接口在 model 里，Redis 实现在 app 里。所以<strong>控制流向外、源码依赖向内</strong>——这就是依赖倒置。好处很具体：换存储不动业务代码，<span class="fill">worker 只持有接口</span>，测试可以塞内存实现。<br><br>
+代价我也说：多一层间接、读代码要多跳一次定义，小项目上这套是过度设计；我们是因为 <span class="fill">同进程双端口 + 多中间件 + 多业务域</span> 才划算。」</div>
+
+<footer class="coursefoot">
+  课：<a href="../lessons/0001-dependency-direction.html">0001 一条箭头</a> ·
+  资源：<a href="../RESOURCES.md">RESOURCES.md</a> · 依据 commit <code>a6ea7c8</code> 之后的当前工作区
+</footer>
+</body>
+</html>

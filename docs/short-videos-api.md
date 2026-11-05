@@ -32,9 +32,10 @@
 | 话题 | 复用 `wys_topics`；一条小视频 **至多 1** 个 `topic_id`；选话题走社区 `GET /api/v1/community/topics*` |
 | 标题 | 必填，trim 后 1～50 字；**不**追加 `#话题名` |
 | 媒体 | 不上传；`video_url` / `cover_url` / `duration` / `aspect_ratio` 可空 → 服务端默认 |
-| 审核态 | 发布 → `reviewing`；`created_at + review_delay` 后读路径惰性 → `normal` |
+| 审核态 | 发布 → `reviewing`；**只有人工放行**才变 `normal`（无「等一会儿自动过审」路径） |
 | 发现流 | `scope=discovery`：仅 `normal` 且未软删 |
 | 个人列表 | `scope=user`：指定 `user_id`（缺省=当前用户）；本人可见 `reviewing`，他人仅 `normal` |
+| 放行 | `POST /api/v1/short-videos/:id/review`，body `{"action":"approve"}`；仅平台管理员（能力码 `role.assign_platform`） |
 | 播放量 | `POST .../view` **每次 +1**，不做每用户去重 |
 | 点赞 | 独立表；可取消；计入视频 `like_count` 与作者统计 |
 | 删除 | `DELETE /:id` 软删；仅作者 |
@@ -42,7 +43,9 @@
 ### 配置
 
 ```text
-short_video.review_delay_seconds = 30   # env: SHORT_VIDEO_REVIEW_DELAY_SECONDS
+short_video.review_mode = reject_until_manual   # env: SHORT_VIDEO_REVIEW_MODE
+# reject_until_manual（默认）：待审内容只有人工放行后可见
+# auto_allow_local_only     ：仅当 APP_ENV 非 prod 时生效，读路径就地放行（联调/演示用）
 ```
 
 ### 默认媒体（与社区视频同源，便于联调）
@@ -64,23 +67,29 @@ DEFAULT_ASPECT_RATIO = 1.25
 
 发布时若 URL 为空：从池中按 `id` 哈希或顺序取一对 video+cover；`duration` / `aspect_ratio` 用默认。
 
-### 惰性过审算法
+> **仅联调环境**（parity-p0-5）：填充开关是 `config.IsLabAppEnv(APP_ENV)`。`APP_ENV=prod|production` 时
+> 缺 `video_url` 或 `cover_url` → `400`（`code 10001`）并提示「上传通道未接入」，不再伪造媒体；
+> 即便传了真实 URL，`duration` / `aspect_ratio` 仍是默认值（未做真实探测）。
+> 登记见 [placeholder-inventory.md](./placeholder-inventory.md) 条目 5。
 
-在 **列表投影 / 详情 / 点赞 / 播放上报** 读到行时：
+### 审核状态机（parity-p0-4 后）
 
 ```text
-if status == reviewing && now >= created_at + review_delay_seconds:
-    UPDATE status = normal, approved_at = now()
+Create            → status = reviewing
+POST /:id/review  → status = normal, approved_at = now()   （需 role.assign_platform）
 ```
 
-发现流 SQL 仍过滤 `status = normal`（惰性更新发生在扫到该行之后；为避免「刚过期仍不可见」，列表查询条件用：
+没有任何按时间自动置 `normal` 的读路径；`GET /:id`、点赞、播放上报对未过审内容一律走「作者可见、他人 404」。
+
+演示模式例外：`review_mode = auto_allow_local_only` 且 `APP_ENV` 非 prod 时，
+`List` / `Get` 读到 `reviewing` 行会就地 `UPDATE status = normal, approved_at = now()`
+（保持联调时客户端仍能看到内容）。正式环境不会命中这一支。
+
+发现流 / 他人视角个人列表 SQL 过滤：
 
 ```text
 status = normal
-OR (status = reviewing AND created_at <= now() - interval 'N seconds')
 ```
-
-并对命中第二支的行批量惰性 UPDATE。个人列表对作者不过滤审核态（仍排除已软删）。
 
 ---
 
@@ -173,6 +182,7 @@ scope:  discovery | user
 | POST | `/:id/like` | 点赞 |
 | DELETE | `/:id/like` | 取消赞 |
 | POST | `/:id/view` | 播放上报（每次 +1） |
+| POST | `/:id/review` | 人工放行（`{"action":"approve"}`，仅平台管理员） |
 
 ---
 
@@ -329,6 +339,14 @@ Query：`user_id` 可选，缺省 = 当前用户。
 
 每次成功调用：`view_count + 1`（**不去重**）。目标须可见。成功返回 `{ "view_count": N }`。
 
+### 6.8 `POST /:id/review`
+
+body `{"action":"approve"}`（其它值 → 400）。权限：平台能力码 `role.assign_platform`
+（现网只有 `platform_admin` 拥有），无权限 → 10003/403。放行后返回完整读模型
+（`status=normal`、`approved_at` 非空）。重复放行为幂等 no-op，不刷新 `approved_at`。
+
+机审 provider 与「驳回态」不在本片（见 `plans/epics/xhs-parity-p2-scale.md` P2-2）。
+
 ---
 
 ## 7. 错误码（与社区同系）
@@ -349,7 +367,7 @@ Query：`user_id` 可选，缺省 = 当前用户。
 3. 列表：`scope=user` 拉网格；若产品有发现页则 `scope=discovery`。  
 4. `status=reviewing` 显示角标；播放前可调详情或直接用列表里的 `video_url`。  
 5. 播放开始/结束任选时机调 `POST .../view`（每次进播放页 +1 即可）。  
-6. 过审后约 30s 内刷新，发现流与他人视角的个人列表即可看到。  
+6. 待审内容对外不可见，需人工放行（`POST /:id/review`）后才会出现在发现流；演示环境请配 `review_mode=auto_allow_local_only`。  
 7. Profile 的 `role_badge` / `store_name` 空串时，客户端可继续用本地占位文案。
 
 ---
@@ -358,7 +376,7 @@ Query：`user_id` 可选，缺省 = 当前用户。
 
 1. migration：`wys_short_videos` + `wys_short_video_likes`  
 2. entity → repo → usecase（惰性过审抽一函数）→ controller → router  
-3. `main.go` 注入 + config `review_delay_seconds`  
+3. `main.go` 注入 + config `review_mode`  
 4. usecase 单测：发布默认 URL、惰性过审边界、scope 可见性、软删、like、view 累加  
 5. Flutter：Repository + 发布页最小字段 + 去掉 mock  
 
@@ -372,7 +390,7 @@ Query：`user_id` 可选，缺省 = 当前用户。
 | Q2 | 发现流 + 个人列表都做 |
 | Q3 | 复用社区话题，至多一个 |
 | Q4 | 有审核态；发布为 reviewing |
-| Q5 | 配置时延后自动过审（落地为读时惰性，默认 30s） |
+| Q5 | ~~配置时延后自动过审（默认 30s）~~ **已被 parity-p0-4 推翻**：无时间自动过审，默认拒绝直到人工放行；演示模式 `auto_allow_local_only` 例外 |
 | Q6 | 单一列表接口 + `scope` |
 | Q7 | 播放计数 + 点赞都做 |
 | Q8 | 按 id 软删；发布 URL 可空用默认 |

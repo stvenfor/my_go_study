@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"app/internal/txdb"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"model/entity"
@@ -18,6 +19,11 @@ type PostgresRepository struct {
 
 func NewPostgresRepository(db *gorm.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
+}
+
+// Transaction 见 Repository.Transaction。
+func (r *PostgresRepository) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return txdb.Begin(ctx, r.db, fn)
 }
 
 // EnsureSchema 幂等建表。
@@ -58,7 +64,7 @@ func (r *PostgresRepository) ExtendEntitlement(
 		return nil, fmt.Errorf("months invalid")
 	}
 	var out entity.WysMembershipEntitlement
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var cur entity.WysMembershipEntitlement
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("user_id = ? AND tier = ?", userID, tier).
@@ -124,7 +130,7 @@ func (r *PostgresRepository) GetOrder(ctx context.Context, orderID int64) (*enti
 }
 
 func (r *PostgresRepository) MarkOrderPaid(ctx context.Context, orderID int64, paidAt time.Time) error {
-	res := r.db.WithContext(ctx).Model(&entity.WysMembershipOrder{}).
+	res := txdb.DB(ctx, r.db).WithContext(ctx).Model(&entity.WysMembershipOrder{}).
 		Where("order_id = ? AND status = ?", orderID, entity.MembershipOrderPending).
 		Updates(map[string]any{
 			"status":  entity.MembershipOrderPaid,

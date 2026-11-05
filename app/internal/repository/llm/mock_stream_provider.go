@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"common/metrics"
 	"model/entity"
 	"model/provider"
 )
@@ -31,6 +32,8 @@ func (p *MockStreamProvider) Name() string {
 
 // Stream 按 rune 慢速输出；尊重 ctx 取消。
 func (p *MockStreamProvider) Stream(ctx context.Context, in provider.CompletionInput, out chan<- string) (string, error) {
+	// 命中即计数：mock 回复看似成功但没走真 LLM，Prometheus 侧要能看见（parity-p0-5）。
+	metrics.DegradedPathsTotal.WithLabelValues("llm_mock").Inc()
 	answer := mockAnswer(in)
 	if in.MaxTokens > 0 {
 		runes := []rune(answer)

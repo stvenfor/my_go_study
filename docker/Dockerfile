@@ -42,6 +42,12 @@ RUN arch="${TARGETARCH}" \
     && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH="$arch" go build -ldflags="-w -s" -o /app/bin/api ./cmd/api \
     && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH="$arch" go build -ldflags="-w -s" -o /app/bin/worker ./cmd/worker
 
+# 迁移 CLI（parity-p0-1）：一次性 migrate 服务用它在 API 启动前把 schema 推平。
+# 必须是带 postgres/pgx tag 的构建，否则报 unknown driver postgres；
+# GOSUMDB=off 是因为 sum.golang.org 在构建网络里不可达（版本已 pin，不自动升）。
+RUN GOSUMDB=off GOBIN=/app/bin go install -tags "postgres pgx" \
+      github.com/golang-migrate/migrate/v4/cmd/migrate@v4.15.2
+
 FROM alpine:3.20
 
 WORKDIR /app
@@ -51,12 +57,19 @@ ARG NO_PROXY
 ENV NO_PROXY=goproxy.cn,dl-cdn.alpinelinux.org,localhost,127.0.0.1${NO_PROXY:+,${NO_PROXY}}
 ENV no_proxy=goproxy.cn,dl-cdn.alpinelinux.org,localhost,127.0.0.1${no_proxy:+,${no_proxy}}
 
-RUN apk add --no-cache ca-certificates tzdata curl \
+# postgresql16-client：migrate-entrypoint.sh 要用 psql 判断「历史 AutoMigrate 库 vs 空库」。
+# bash：entrypoint 脚本用了 [[ ]] 与 pipefail，busybox sh 跑不动（缺它时 compose 的 migrate 服务
+# 直接 `env: can't execute 'bash'` 退出，app 因 depends_on 也起不来）。
+RUN apk add --no-cache ca-certificates tzdata curl bash postgresql16-client \
     && adduser -D -g '' appuser
 
 COPY --from=builder /app/bin/api /app/api
 COPY --from=builder /app/bin/worker /app/worker
+COPY --from=builder /app/bin/migrate /app/migrate
 COPY --from=builder /app/configs /app/configs
+# API 启动要做版本校验（读 migrations/ 目录），迁移文件必须进镜像
+COPY --from=builder /app/migrations /app/migrations
+COPY --from=builder /app/scripts/migrate-entrypoint.sh /app/scripts/migrate-entrypoint.sh
 
 USER appuser
 

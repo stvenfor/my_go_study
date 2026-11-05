@@ -30,6 +30,11 @@ queue:
     url: amqp://guest:guest@localhost:5672/
     queue: my_go_study.tasks
     prefetch: 10
+    dlx: my_go_study.tasks.dlx          # 留空则按 <queue>.dlx 派生
+    dlq: my_go_study.tasks.dlq          # 留空则按 <queue>.dlq 派生
+    max_retries: 3                      # 单条最多尝试次数（含首次），超限进死信
+    handler_timeout_seconds: 30         # 单条处理超时，防一条卡死整个 prefetch 窗口
+    publisher_confirm: true             # 发布等 broker 落盘确认（吞吐略降，换入队失败可见）
   pubsub:
     channel: realtime:fanout
 ```
@@ -44,7 +49,62 @@ queue:
 | `RABBITMQ_URL` | AMQP URL（默认 `amqp://guest:guest@localhost:5672/`） |
 | `RABBITMQ_QUEUE` | 队列名（默认 `my_go_study.tasks`） |
 | `RABBITMQ_PREFETCH` | Worker QoS prefetch |
+| `RABBITMQ_DLX` / `RABBITMQ_DLQ` | 死信交换机 / 死信队列名 |
+| `RABBITMQ_MAX_RETRIES` | 重试上限（<=0 回落 3） |
+| `RABBITMQ_HANDLER_TIMEOUT_SECONDS` | 单条超时（<=0 回落 30s） |
+| `RABBITMQ_PUBLISHER_CONFIRM` | 关闭发布确认（默认开） |
 | `QUEUE_PUBSUB_CHANNEL` | Pub/Sub 频道名 |
+
+## 可靠性（重试上限 / 死信 / 确认）
+
+### 有界重试
+
+消费失败**不**用 `Nack(requeue=true)` 计数——实测 RabbitMQ 3.13 在 requeue 重投的消息上既不带 `x-delivery-count` 也不带 `x-death`（`x-death` 只在真正死信时写入），靠 broker 计数会无限重投。改成**应用侧重投**：失败后往同一队列再投一条带 `x-retry-count = 上次值+1` 的新消息，然后 Ack 原消息；`x-retry-count` 达到 `max_retries` 时 `Nack(requeue=false)` → 死信。
+
+- 计数读取顺序：`x-retry-count` → `x-delivery-count` → `x-death.count`（兼容旧消息与人工投递）。
+- 计数拿不到且 `redelivered=true` → 直接进死信，宁可牺牲一次重试也不无限循环。
+- 重投本身失败 → `Nack(requeue=true)` 保住原消息，绝不 Ack（不丢任务）。
+- 所有 `Ack`/`Nack` 的 error 都会记日志（原先被丢弃）。
+
+死信消息可在 DLQ 里查到完整取证：`x-retry-count`、`x-death[{reason:"rejected",count,queue}]`、`x-first-death-*`。
+
+### DLX / DLQ 拓扑与 406 兼容
+
+`core/queue` 启动时声明 `dlx`(direct) + `dlq` + 绑定 + 带 `x-dead-letter-*` 的业务队列，且用**独立临时 channel** 声明（406 会关掉 channel）。
+
+队列参数不可变：若已存在**无 args** 的旧队列，声明会 `PRECONDITION_FAILED (406)`。此时进程**不退出**，改用无 args 沿用旧队列并记
+`Warn("task queue args mismatch (406) …", status=degraded)`，代价是死信不生效（`dlq_wired=false`，启动日志可见）。
+在维护窗口执行下面脚本重建即恢复：
+
+```bash
+bash scripts/rabbitmq-ensure-dlq.sh status            # 看队列/交换机现状
+APP_ENV=dev bash scripts/rabbitmq-ensure-dlq.sh recreate --yes   # 删旧队列+DLQ，下次启动自动带 args 重建
+bash scripts/rabbitmq-ensure-dlq.sh rename            # 生产零丢失方案：RABBITMQ_QUEUE 切 <queue>.v2
+```
+
+`recreate` 只在 `APP_ENV=dev|lan|test` 放行，且必须显式 `--yes`（DLQ 里已有死信会一起没，先 `rabbitmqctl export_definitions`）。
+
+### 单条超时与优雅退出
+
+- 每条消息独立 goroutine（并发度受 prefetch 限制），`Dispatch` 拿到 `context.WithTimeout(context.WithoutCancel(ctx), handler_timeout)`：一条卡死只占自己那份 prefetch，关机 cancel 也不会传染在途任务。
+- SIGTERM：`cancel()` → 等消费循环退出 → `consumer.Wait()` 排在途任务收尾 → 关连接。未在途的消息由 broker 重投，不丢。
+
+### 发布确认与失败可见
+
+`publisher_confirm=true` 时 `Channel.Confirm` + 每次发布读一条确认（发布与读确认在同一把锁内串行，保证读到的就是自己那条）。broker nack / confirm channel 关闭 / 等待超时都会返回 error，调用方（`/realtime/push`、广播入队、scheduler-trigger CLI）据此返回 500 或非 0 退出，**不返回「已入队」假象**。
+
+> 已知边界：`Client` 不自动重连，broker 重启后需重启 API/Worker 进程（列入 P1 待办）。
+
+### 死信指标与告警
+
+`common/metrics.NewDepthCollector` 注册 `rabbitmq_dlq_messages{queue="…"}`（由 `cmd/api` 挂载，`/metrics` 暴露）。抓取时 `QueueInspect` 出错则**不输出该指标**——避免「broker 挂了」被误读成「死信为 0」，`absent()` 负责报警：
+
+| 规则 | 表达式 | 级别 |
+|------|--------|------|
+| `MQDeadLettersPresent` | `rabbitmq_dlq_messages > 0`（持续 5m） | critical |
+| `MQDeadLetterMetricMissing` | `absent(rabbitmq_dlq_messages)`（持续 10m） | warning |
+
+校验规则文件用 **`promtool check rules`**（`amtool check-config` 校验的是 alertmanager 自身的配置，不认 `groups:` 顶层）。
 
 ## 本地运行
 
@@ -95,11 +155,29 @@ Worker 投递完成后，客户端通过 WebSocket 实时收到，或断线后 `
 
 | 路径 | 职责 |
 |------|------|
-| `pkg/queue/` | RabbitMQ 客户端/消费者、Pub/Sub 广播 |
-| `cmd/worker/main.go` | Worker 进程入口（含整点 ticker） |
+| `core/queue/consumer.go` | 消费循环、有界重试、单条超时、在途等待 |
+| `core/queue/topology.go` | DLX/DLQ 声明与 406 降级 |
+| `core/queue/retry.go` | 尝试次数读取（`x-retry-count`/`x-delivery-count`/`x-death`） |
+| `core/queue/client.go` | 入队、publisher confirm、`DLQDepth()` |
+| `core/queue/pubsub_broadcaster.go` | Redis Pub/Sub WS 扇出 |
+| `app/internal/delivery/worker/handler.go` | 按 `type` 分发业务（基建与业务分层，见 AGENTS.md 约束 10） |
+| `app/cmd/worker/main.go` | Worker 进程入口（含整点 ticker、优雅退出） |
+| `scripts/rabbitmq-ensure-dlq.sh` | 死信拓扑体检 / 重建 / 改名迁移 |
 | `internal/usecase/realtime_push_usecase.go` | 同步/异步入队与投递 |
 | `internal/usecase/hourly_notify_usecase.go` | 定时通知消息体组装 |
 | `cmd/scheduler-trigger/main.go` | 开发环境手动触发广播 |
+
+### 重复投递语义（复核结论）
+
+队列是 at-least-once，四类任务的重复投递后果：
+
+| 任务 | 重复投递 | 去重手段 |
+|------|----------|----------|
+| `realtime:push_notify` | 可能多推一帧 WS（客户端按 `notifyId`/seq 幂等展示） | **无服务端去重**（待办：按 `task_id` SetNX） |
+| `scheduled:broadcast_notify` | 不重复 | `worker/handler.go` Redis SetNX + 确定性 taskID |
+| `sms:send` | 无副作用（占位，Warn 后丢弃） | — |
+| `jpush:register` | 幂等 upsert | 主键覆盖 |
+
 
 ## 定时每小时系统通知
 

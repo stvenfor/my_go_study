@@ -11,10 +11,12 @@ package access
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
 	"app/internal/shared"
+	"core/authz"
 	"model/entity"
 )
 
@@ -22,11 +24,19 @@ import (
 type Service struct {
 	repo           Repository
 	storeGroupSync shared.ImStoreGroupSyncer
+	enforcer       *authz.Enforcer // 可选：Casbin 授权器，nil 时行为与原 SQL 逻辑一致
 }
 
 // NewService 创建。
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
+}
+
+// SetEnforcer 注入 Casbin Enforcer（可选，nil 表示不启用 Casbin，权限判定保持原有 SQL 逻辑不变）。
+func (s *Service) SetEnforcer(enforcer *authz.Enforcer) {
+	if s != nil {
+		s.enforcer = enforcer
+	}
 }
 
 // SetStoreGroupSync 接线门店群：入店拉人 / 离店踢人。
@@ -275,6 +285,30 @@ func (s *Service) require(ctx context.Context, actorID, permission string, targe
 }
 
 func (s *Service) can(ctx context.Context, actorID, permission string, targetStoreID *int) (bool, error) {
+	// 优先走 Casbin（若已注入）。Casbin 策略存储于 casbin_rule 表，
+	// 匹配形如 sub=actorID, obj=permission, act=access 的规则。
+	if s.enforcer != nil {
+		ok, err := s.enforcer.Enforce(actorID, permission, "access")
+		if err != nil {
+			return false, fmt.Errorf("casbin enforce 失败: %w", err)
+		}
+		if ok {
+			return true, nil
+		}
+		// 若指定了目标门店，尝试带门店维度的策略（obj 形如 "member.write:store:5"）
+		if targetStoreID != nil && *targetStoreID > 0 {
+			storeObj := permission + ":store:" + strconv.Itoa(*targetStoreID)
+			ok, err = s.enforcer.Enforce(actorID, storeObj, "access")
+			if err != nil {
+				return false, fmt.Errorf("casbin enforce 失败: %w", err)
+			}
+			if ok {
+				return true, nil
+			}
+		}
+	}
+
+	// 回退到原有 SQL 权限码检查（平台角色 ∪ 店内角色）。
 	platform, err := s.repo.PlatformPermissionCodes(ctx, actorID)
 	if err != nil {
 		return false, err

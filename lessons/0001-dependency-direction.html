@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 课 · 一条箭头：证明依赖方向，说清接口为什么在最内层</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+<script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+<header class="masthead">
+  <div class="kicker">Lesson 0001 · 约 18 分钟 · 目标：面试表达</div>
+  <h1>一条箭头</h1>
+  <p class="lede">证明 <code>core</code> 不依赖 <code>app</code>，并说清「接口放在最内层」到底解决了什么。</p>
+</header>
+
+<div class="goal">
+  <strong>本课只练一件事</strong>：跑完你能（1）用一条命令<em>自己验证</em>依赖方向，（2）用 60 秒讲清依赖倒置在本仓库长什么样。不需要你记住分层名词。
+</div>
+
+<h2>A · 先给三个事实（5 分钟）</h2>
+
+<h3>事实 1：本仓库是 4 个 Go module，不是 4 个文件夹</h3>
+<p><code>go.work</code> 里 <code>use ./common ./core ./model ./app</code>。模块之间是<em>真编译边界</em>：跨模块 import 要写完整路径（<code>import "model/repository"</code>），所以「谁依赖谁」是可以被命令查出来的——这是本课的立足点。</p>
+
+<h3>事实 2：规则只有一句，方向只能向内</h3>
+<div class="note"><b>Dependency Rule</b>
+源码依赖只能指向内层、指向更稳定的一侧。<br>
+<span class="cite">《Clean Architecture》第 22 章 · <a href="https://www.informit.com/articles/article.aspx?p=2832399">InformIT 官方节选</a>（作者本人写的版本，比转述可靠）</span></div>
+<p>本仓库的落法：<code>model</code> / <code>common</code> 是叶子（谁都不依赖）→ <code>core</code> 依赖它们 → <code>app</code> 依赖全部。<strong>反向 import 是不允许的</strong>，而「不允许」这件事下面会自己去证明。</p>
+
+<h3>事实 3：反直觉的那一点，才是面试的得分点</h3>
+<p>请求真正跑起来时，<em>控制流</em>是从内往外的：<code>handler → usecase → 接口 → Redis 实现</code>。但<em>源码依赖</em>是从外向内的：<code>app/internal/repository/redis/session_repo.go</code> 里写的是 <code>import "model/repository"</code>。</p>
+<div class="trap"><b>记住这句</b>
+两条箭头方向<em>相反</em>，这个「相反」就是依赖倒置。不是命名游戏，也不是「多加一层文件夹」。</div>
+<p>为什么做得到？因为 Go 的接口是<em>隐式满足</em>的：实现方不需要知道接口存在，方法集齐了就算实现（<a href="https://go.dev/doc/effective_go">Effective Go · Interfaces</a>）。于是接口可以留在内层，实现安心放外层。</p>
+
+<h2>B · 自己去证明（6 分钟）</h2>
+<p>打开终端，在 <code>my_go_study/</code> 下逐条跑，把数字抄在这里：</p>
+<pre><code>grep -rl '"app/' core --include='*.go' | wc -l                        # 你的结果：______
+grep -rl '"common/\|"core/\|"app/' model --include='*.go' | wc -l      # 你的结果：______
+grep -rl '"core/\|"model/' app --include='*.go' | wc -l                # 你的结果：______</code></pre>
+<p>前两条必须是 <strong>0</strong>，第三条必须 <strong>&gt; 0</strong>。不为 0 就说明有反向依赖，那才是真问题。</p>
+<div class="do"><b>为什么 grep 就够（而不是必须 go list）</b>
+Go 的 import 别名只改包名、不改路径字符串——本仓库 <code>app/cmd/api/main.go:20</code> 就是 <code>grpcdelivery "app/internal/delivery/grpc"</code>，别名换了但 <code>"app/</code> 还在，搜不丢。grep 只会<em>误报</em>（注释或字符串里出现路径），不会漏报。<br>
+真要按编译器视角查传递依赖，命令是 <code>go -C core list -deps ./... | grep '^app/'</code>——但<strong>本机现在跑不动它</strong>：它会先解析整张模块图，网络受限时长时间无输出（<code>go env</code> 本身 0.015s 就返回，卡的不是 go 命令）。所以本课以 grep 为准，<code>go list</code> 只作为「你网络正常时再试」的深挖项。</div>
+
+<h3>然后对读三个文件（这是本课真正的收获）</h3>
+<ol class="steps">
+  <li><code>model/repository/session_repository.go</code> —— 4 个方法的接口 + <code>DeviceSession</code> 结构体。<em>注意它只 import 了 <code>context</code> 和 <code>time</code></em>，连 redis 这个词都没出现。</li>
+  <li><code>app/internal/repository/redis/session_repo.go:16</code> —— <code>type SessionRepository struct</code>，<em>同名但不同包</em>，它 import 了 <code>"model/repository"</code>。</li>
+  <li><code>app/internal/delivery/worker/handler.go:33</code> —— 字段类型写的是 <code>repository.SessionRepository</code>（接口），不是 Redis 那个实现类型。</li>
+</ol>
+
+<div class="quiz" data-qid="l1-mod" data-answer="1">
+  <p class="q">1. 本仓库里 <code>SessionRepository</code> 这个接口定义在哪个模块？</p>
+  <ul class="opts">
+    <li><code>app</code> —— 实现与装配所在的模块</li>
+    <li><code>model</code> —— 依赖最少的内层模块</li>
+    <li><code>core</code> —— 封装外部系统的模块</li>
+  </ul>
+  <p class="why">接口在 <code>model/repository/session_repository.go</code>。Redis 实现才在 <code>app</code>。接口留在内层，外层才能依赖它而不违反方向规则。</p>
+</div>
+
+<div class="quiz" data-qid="l1-satisfy" data-answer="2">
+  <p class="q">2. Go 判断一个类型是否实现了某接口，依据是什么？</p>
+  <ul class="opts">
+    <li>结构体声明里是否写了 implements 关键字</li>
+    <li>接口定义文件里是否登记了该类型名</li>
+    <li>该类型方法集是否覆盖接口全部方法</li>
+  </ul>
+  <p class="why">Go 没有 <code>implements</code>：方法集齐全即隐式满足。好处是实现方不必知道接口存在，坏处是「实现了」这件事在源码里看不见——所以要下一题那个写法。</p>
+</div>
+
+<div class="quiz" data-qid="l1-assert" data-answer="1">
+  <p class="q">3. <code>var _ repository.SessionRepository = (*SessionRepository)(nil)</code> 这行做什么？</p>
+  <ul class="opts">
+    <li>运行时检查该接口是否已经被初始化</li>
+    <li>编译期断言该类型确实实现了该接口</li>
+    <li>启动时把实现注册进全局依赖容器</li>
+  </ul>
+  <p class="why">纯编译期：把 <code>(*SessionRepository)(nil)</code> 赋给接口类型的空变量，方法集不齐就编译失败。Go 惯用法，零运行时开销。</p>
+</div>
+
+<div class="quiz" data-qid="l1-rule" data-answer="0">
+  <p class="q">4. Dependency Rule 的准确表述是哪个？</p>
+  <ul class="opts">
+    <li>源码依赖只能指向内层更稳定的一侧</li>
+    <li>所有函数参数都必须声明为接口类型</li>
+    <li>外层框架代码不得包含任何业务判断</li>
+  </ul>
+  <p class="why">规则只约束<em>源码依赖方向</em>，不约束控制流，也不要求「到处都是接口」。后两个是把 Clean Architecture 念歪了的常见版本——面试官很爱在这里下钩子。</p>
+</div>
+
+<h2>C · 一个真实的不一致（3 分钟）</h2>
+<p>对读时你会发现：本仓库<em>有些</em>仓储实现写了编译期断言，<code>app/internal/repository/redis/realtime_event_repo.go:86</code> 有；而 <code>session_repo.go</code> <strong>没有</strong>。</p>
+<div class="do"><b>想一想（不用答对，要有立场）</b>
+少了这行会怎样？答案是：接口加一个方法时，编译器<em>不会</em>立刻在实现文件报错，要等到这个实现被赋值给接口类型的那一刻才炸——报错位置离真正该改的地方很远。所以这行断言的价值是<em>把错误搬回现场</em>。反过来，它的代价是多一行噪音。你选哪边？</div>
+
+<h2>D · 说一遍（4 分钟，别跳过）</h2>
+<p>目标不是「看懂」，是「说得出」。打开速查页的 <a href="../reference/dependency-map.html#5--60-秒说法模板背结构不背词">60 秒模板</a>，把空填上，然后<strong>出声说一遍</strong>（对自己说，或打在聊天里让我看）。</p>
+<p>骨架就三段：<em>方向规则</em> → <em>一个真实类型证明它</em> → <em>我说出它的代价</em>。第三段是区分「背过」和「想过」的地方。</p>
+
+<div class="ask">
+  <strong>卡住就问你的老师。</strong>比如：「<code>context.Context</code> 为什么每个方法第一个参数都是它？」「<code>common</code> 和 <code>model</code> 都是叶子，为什么不合成一个模块？」「我上一题选错了，为什么 <code>core</code> 不算内层？」——这些问题比顺利学完更值钱，而且都能在本仓库里找到答案。
+</div>
+
+<h2>本课主要阅读源</h2>
+<p><a href="https://go.dev/doc/effective_go">Effective Go · Interfaces</a>（官方，读 Interfaces 一节即可，10 分钟）。理由：面试追问「Go 为什么这样设计接口」时，你需要的是官方口径 + 一两个具体理由，而不是二手博客的转述。</p>
+<p class="cite">其余出处：<a href="https://www.informit.com/articles/article.aspx?p=2832399">Clean Architecture 第 22 章节选</a>（依赖规则原文）· <a href="https://golang.design/under-the-hood/en/part2lang/ch04type/interface/">Go: Under the Hood 4.2</a>（接口值内部表示，追问「interface 有运行时代价吗」时用）· 全部见 <a href="../RESOURCES.md">RESOURCES.md</a>。</p>
+
+<footer class="coursefoot">
+  速查：<a href="../reference/dependency-map.html">依赖方向与接口落地</a> ·
+  下一课候选：装配点 <code>app/cmd/api/main.go</code>——为什么它是全仓库唯一「知道 Redis 存在」的地方 ·
+  本课证据基于当前工作区（commit <code>a6ea7c8</code> 之后）
+</footer>
+</body>
+</html>

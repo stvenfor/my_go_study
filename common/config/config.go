@@ -2,10 +2,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,10 @@ type Config struct {
 	ThirdParty    ThirdPartyConfig    `mapstructure:"third_party"`
 	Elasticsearch ElasticsearchConfig `mapstructure:"elasticsearch"`
 	CsAgent       CsAgentConfig       `mapstructure:"cs_agent"`
+	RAG           RAGConfig           `mapstructure:"rag"`
+
+	// serviceRoleSource 记 SUPABASE_SERVICE_ROLE_KEY 的来源文件（""=OS env/yaml，".env"=入库文件）。
+	serviceRoleSource string
 }
 
 // CsAgentConfig 客服 Agent（Eino Tool + SSE）。
@@ -54,6 +59,82 @@ func (c CsAgentConfig) ModelName() string {
 		return "cs-openai"
 	}
 	return "cs-mock"
+}
+
+// RAGConfig 客服 RAG 管线配置：本地 KB 文档 → 向量化 → Elasticsearch 检索。
+// embedding 字段为空时回落到 sse.openai（即 SSE_OPENAI_* env），零新增环境变量。
+type RAGConfig struct {
+	Enabled                bool   `mapstructure:"enabled"`
+	EmbeddingBaseURL       string `mapstructure:"embedding_base_url"`       // 空 → SSE_OPENAI_BASE_URL
+	EmbeddingAPIKey        string `mapstructure:"embedding_api_key"`        // 空 → SSE_OPENAI_API_KEY
+	EmbeddingModel         string `mapstructure:"embedding_model"`          // 空 → text-embedding-3-small
+	IndexName              string `mapstructure:"index_name"`               // 空 → rag_chunks
+	KBDir                  string `mapstructure:"kb_dir"`                   // 空 → data/cs-kb
+	ChunkSize              int    `mapstructure:"chunk_size"`               // 空 → 800
+	ChunkOverlap           int    `mapstructure:"chunk_overlap"`            // 空 → 100
+	TopK                   int    `mapstructure:"top_k"`                    // 空 → 4
+	ReindexIntervalSeconds int    `mapstructure:"reindex_interval_seconds"` // 0 = 不自动重建
+}
+
+// EnabledOrDefault 是否启用 RAG（还需 Elasticsearch 可用，装配处再校验）。
+func (c RAGConfig) EnabledOrDefault() bool {
+	return c.Enabled
+}
+
+// EmbeddingModelOrDefault 默认 text-embedding-3-small（1536 维）。
+func (c RAGConfig) EmbeddingModelOrDefault() string {
+	if m := strings.TrimSpace(c.EmbeddingModel); m != "" {
+		return m
+	}
+	return "text-embedding-3-small"
+}
+
+// IndexNameOrDefault 向量索引名。
+func (c RAGConfig) IndexNameOrDefault() string {
+	if n := strings.TrimSpace(c.IndexName); n != "" {
+		return n
+	}
+	return "rag_chunks"
+}
+
+// KBDirOrDefault KB 文档目录。
+func (c RAGConfig) KBDirOrDefault() string {
+	if d := strings.TrimSpace(c.KBDir); d != "" {
+		return d
+	}
+	return "data/cs-kb"
+}
+
+// ChunkSizeOrDefault 切块大小（字符）。
+func (c RAGConfig) ChunkSizeOrDefault() int {
+	if c.ChunkSize > 0 {
+		return c.ChunkSize
+	}
+	return 800
+}
+
+// ChunkOverlapOrDefault 切块重叠（字符）。
+func (c RAGConfig) ChunkOverlapOrDefault() int {
+	if c.ChunkOverlap > 0 {
+		return c.ChunkOverlap
+	}
+	return 100
+}
+
+// TopKOrDefault 检索召回数。
+func (c RAGConfig) TopKOrDefault() int {
+	if c.TopK > 0 {
+		return c.TopK
+	}
+	return 4
+}
+
+// ReindexIntervalOrDefault 周期重建间隔；<=0 表示关闭。
+func (c RAGConfig) ReindexIntervalOrDefault() time.Duration {
+	if c.ReindexIntervalSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(c.ReindexIntervalSeconds) * time.Second
 }
 
 // ChunkDelay 吐字间隔；测试可配 0。
@@ -103,17 +184,32 @@ type CommunityConfig struct {
 	AskEveryoneInviteUserIDs []string `mapstructure:"ask_everyone_invite_user_ids"`
 }
 
+// 小视频审核模式。
+const (
+	// ShortVideoReviewRejectUntilManual 默认：入库后一直是 reviewing，只有人工放行才对外可见。
+	ShortVideoReviewRejectUntilManual = "reject_until_manual"
+	// ShortVideoReviewAutoAllowLocalOnly 演示模式：读取即放行，仅在 APP_ENV 非正式时生效。
+	ShortVideoReviewAutoAllowLocalOnly = "auto_allow_local_only"
+)
+
 // ShortVideoConfig 小视频。
 type ShortVideoConfig struct {
-	ReviewDelaySeconds int `mapstructure:"review_delay_seconds"`
+	ReviewMode string `mapstructure:"review_mode"`
 }
 
-// ReviewDelayOrDefault 审核时延秒数，默认 30。
-func (c ShortVideoConfig) ReviewDelayOrDefault() int {
-	if c.ReviewDelaySeconds <= 0 {
-		return 30
+// ReviewModeOrDefault 审核模式，未配置回落 reject_until_manual。
+func (c ShortVideoConfig) ReviewModeOrDefault() string {
+	mode := strings.ToLower(strings.TrimSpace(c.ReviewMode))
+	if mode == "" {
+		return ShortVideoReviewRejectUntilManual
 	}
-	return c.ReviewDelaySeconds
+	return mode
+}
+
+// ShortVideoAutoAllowUnreviewed 是否允许「未过审即刻可见」的演示模式。
+// 只在显式配置 auto_allow_local_only 且 APP_ENV 非正式时成立；正式环境永远拒绝。
+func (c ShortVideoConfig) ShortVideoAutoAllowUnreviewed(appEnv string) bool {
+	return c.ReviewModeOrDefault() == ShortVideoReviewAutoAllowLocalOnly && IsLabAppEnv(appEnv)
 }
 
 // ServerConfig HTTP 服务配置。
@@ -139,6 +235,13 @@ type DatabaseConfig struct {
 	MaxOpenConns           int    `mapstructure:"max_open_conns"`
 	MaxIdleConns           int    `mapstructure:"max_idle_conns"`
 	ConnMaxLifetimeMinutes int    `mapstructure:"conn_max_lifetime_minutes"`
+	// AutoMigrate 是否允许进程启动期执行 DDL（GORM 建表 + 内嵌补建 SQL）。
+	// 默认 false；正式环境与 lan 由 enforceSchemaPolicy 强制置 false，DDL 归发布流程。
+	AutoMigrate bool `mapstructure:"auto_migrate"`
+	// SchemaVersionCheck 启动期比对 schema_migrations 与 migrations/ 目录版本，落后即拒绝启动。
+	SchemaVersionCheck bool `mapstructure:"schema_version_check"`
+	// MigrationsDir migrations 目录（容器内需指向镜像里的 /app/migrations）。
+	MigrationsDir string `mapstructure:"migrations_dir"`
 }
 
 // RedisConfig Redis 连接配置。
@@ -243,6 +346,18 @@ func IsLabAppEnv(appEnv string) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+// NoDDLAppEnv 该 APP_ENV 是否禁止进程启动期执行 DDL（parity-p0-1）。
+// prod/production 是硬要求；lan 跑在 compose 里，DDL 交一次性 migrate 服务，
+// 多实例同时建表会撞 DDL 锁与 42701（重复列）。
+func NoDDLAppEnv(appEnv string) bool {
+	switch strings.ToLower(strings.TrimSpace(appEnv)) {
+	case "prod", "production", "lan":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -399,6 +514,15 @@ type QueueRabbitMQConfig struct {
 	URL      string `mapstructure:"url"`
 	Queue    string `mapstructure:"queue"`
 	Prefetch int    `mapstructure:"prefetch"`
+	// DLX / DLQ 留空时按队列名派生（<queue>.dlx / <queue>.dlq）。
+	DLX string `mapstructure:"dlx"`
+	DLQ string `mapstructure:"dlq"`
+	// MaxRetries 单条消息最多尝试次数（含首次）；超限后 Nack(requeue=false) 进死信。
+	MaxRetries int `mapstructure:"max_retries"`
+	// HandlerTimeoutSeconds 单条消息处理超时，防止一条卡死整个 prefetch 窗口。
+	HandlerTimeoutSeconds int `mapstructure:"handler_timeout_seconds"`
+	// PublisherConfirm 发布侧是否等 broker 落盘确认；nil/true = 开（吞吐略降，换入队失败可见）。
+	PublisherConfirm *bool `mapstructure:"publisher_confirm"`
 }
 
 // QueuePubSubConfig Redis Pub/Sub 多实例 WS 广播参数。
@@ -430,6 +554,46 @@ func (q QueueConfig) Prefetch() int {
 	return q.RabbitMQ.Prefetch
 }
 
+// DeadLetterExchange 返回死信交换机名（默认 <queue>.dlx）。
+func (q QueueConfig) DeadLetterExchange() string {
+	if n := strings.TrimSpace(q.RabbitMQ.DLX); n != "" {
+		return n
+	}
+	return q.RabbitMQQueue() + ".dlx"
+}
+
+// DeadLetterQueue 返回死信队列名（默认 <queue>.dlq）。
+func (q QueueConfig) DeadLetterQueue() string {
+	if n := strings.TrimSpace(q.RabbitMQ.DLQ); n != "" {
+		return n
+	}
+	return q.RabbitMQQueue() + ".dlq"
+}
+
+// MaxRetries 返回单条消息最大尝试次数（含首次），<=0 时取 3。
+func (q QueueConfig) MaxRetries() int {
+	if q.RabbitMQ.MaxRetries <= 0 {
+		return 3
+	}
+	return q.RabbitMQ.MaxRetries
+}
+
+// HandlerTimeout 返回单条消息处理超时，<=0 时取 30s。
+func (q QueueConfig) HandlerTimeout() time.Duration {
+	if q.RabbitMQ.HandlerTimeoutSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(q.RabbitMQ.HandlerTimeoutSeconds) * time.Second
+}
+
+// UsePublisherConfirm 发布侧是否等待 publisher confirm。
+func (q QueueConfig) UsePublisherConfirm() bool {
+	if q.RabbitMQ.PublisherConfirm == nil {
+		return true
+	}
+	return *q.RabbitMQ.PublisherConfirm
+}
+
 // PubSubChannel 返回 Pub/Sub 广播频道名。
 func (q QueueConfig) PubSubChannel() string {
 	if ch := strings.TrimSpace(q.PubSub.Channel); ch != "" {
@@ -454,6 +618,50 @@ type SchedulerConfig struct {
 	Enabled      bool               `mapstructure:"enabled"`
 	Timezone     string             `mapstructure:"timezone"`
 	HourlyNotify HourlyNotifyConfig `mapstructure:"hourly_notify"`
+	Payment      PaymentJobsConfig  `mapstructure:"payment"`
+}
+
+// PaymentJobsConfig 渠道支付兜底任务（P0-2）。
+//
+// QueryIntervalMinutes 每隔多久扫一次超时未核销流水；
+// PendingStaleMinutes 是「超过多久还没核销就算异常」的阈值；
+// ReconcileHour 是 T+1 对账的本地整点小时（对昨天的自然日）。
+type PaymentJobsConfig struct {
+	Enabled              bool `mapstructure:"enabled"`
+	QueryIntervalMinutes int  `mapstructure:"query_interval_minutes"`
+	PendingStaleMinutes  int  `mapstructure:"pending_stale_minutes"`
+	QueryBatch           int  `mapstructure:"query_batch"`
+	ReconcileEnabled     bool `mapstructure:"reconcile_enabled"`
+	ReconcileHour        int  `mapstructure:"reconcile_hour"`
+}
+
+// 默认值：查单每 5 分钟一轮、超 10 分钟视为待兜底、单轮 200 条、每天 03:00 对账。
+func (p PaymentJobsConfig) QueryIntervalMinutesOrDefault() int {
+	if p.QueryIntervalMinutes > 0 {
+		return p.QueryIntervalMinutes
+	}
+	return 5
+}
+
+func (p PaymentJobsConfig) PendingStaleMinutesOrDefault() int {
+	if p.PendingStaleMinutes > 0 {
+		return p.PendingStaleMinutes
+	}
+	return 10
+}
+
+func (p PaymentJobsConfig) QueryBatchOrDefault() int {
+	if p.QueryBatch > 0 {
+		return p.QueryBatch
+	}
+	return 200
+}
+
+func (p PaymentJobsConfig) ReconcileHourOrDefault() int {
+	if p.ReconcileHour >= 0 && p.ReconcileHour <= 23 {
+		return p.ReconcileHour
+	}
+	return 3
 }
 
 // HourlyNotifyConfig 每天 10:00–19:00 每小时系统通知。
@@ -635,9 +843,19 @@ func Load(configPath, env string) (*Config, error) {
 	if env != "" {
 		v.SetConfigName("config." + env)
 		if err := v.MergeInConfig(); err != nil {
-			return nil, fmt.Errorf("读取环境配置 config.%s.yaml 失败: %w", env, err)
+			var nfErr viper.ConfigFileNotFoundError
+			if !errors.As(err, &nfErr) {
+				return nil, fmt.Errorf("读取环境配置 config.%s.yaml 失败: %w", env, err)
+			}
+			// 没有环境覆盖文件时退回基础配置（production/staging 常如此）
+			log.Printf("[config] APP_ENV=%q 无 configs/config.%s.yaml，使用基础 configs/config.yaml", env, env)
 		}
 	}
+
+	// 启动期 DDL 闸门默认值（parity-p0-1）：viper 布尔零值是 false，「没配」不能读成「不校验版本」。
+	v.SetDefault("database.auto_migrate", false)
+	v.SetDefault("database.schema_version_check", true)
+	v.SetDefault("database.migrations_dir", "migrations")
 
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
@@ -651,6 +869,9 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("database.user", "DATABASE_USER")
 	_ = v.BindEnv("database.password", "DATABASE_PASSWORD")
 	_ = v.BindEnv("database.dbname", "DATABASE_DBNAME")
+	_ = v.BindEnv("database.auto_migrate", "DATABASE_AUTO_MIGRATE")
+	_ = v.BindEnv("database.schema_version_check", "DATABASE_SCHEMA_VERSION_CHECK")
+	_ = v.BindEnv("database.migrations_dir", "DATABASE_MIGRATIONS_DIR")
 	_ = v.BindEnv("redis.addr", "REDIS_ADDR")
 	_ = v.BindEnv("redis.password", "REDIS_PASSWORD")
 	_ = v.BindEnv("jwt.secret", "JWT_SECRET")
@@ -669,6 +890,11 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("queue.rabbitmq.url", "RABBITMQ_URL")
 	_ = v.BindEnv("queue.rabbitmq.queue", "RABBITMQ_QUEUE")
 	_ = v.BindEnv("queue.rabbitmq.prefetch", "RABBITMQ_PREFETCH")
+	_ = v.BindEnv("queue.rabbitmq.dlx", "RABBITMQ_DLX")
+	_ = v.BindEnv("queue.rabbitmq.dlq", "RABBITMQ_DLQ")
+	_ = v.BindEnv("queue.rabbitmq.max_retries", "RABBITMQ_MAX_RETRIES")
+	_ = v.BindEnv("queue.rabbitmq.handler_timeout_seconds", "RABBITMQ_HANDLER_TIMEOUT_SECONDS")
+	_ = v.BindEnv("queue.rabbitmq.publisher_confirm", "RABBITMQ_PUBLISHER_CONFIRM")
 	_ = v.BindEnv("queue.pubsub.channel", "QUEUE_PUBSUB_CHANNEL")
 	_ = v.BindEnv("elasticsearch.url", "ELASTICSEARCH_URL")
 	_ = v.BindEnv("scheduler.enabled", "SCHEDULER_ENABLED")
@@ -690,6 +916,16 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("cs_agent.provider", "CS_AGENT_PROVIDER")
 	_ = v.BindEnv("cs_agent.chunk_delay_ms", "CS_AGENT_CHUNK_DELAY_MS")
 	_ = v.BindEnv("cs_agent.model", "CS_AGENT_MODEL")
+	_ = v.BindEnv("rag.enabled", "RAG_ENABLED")
+	_ = v.BindEnv("rag.embedding_base_url", "RAG_EMBEDDING_BASE_URL")
+	_ = v.BindEnv("rag.embedding_api_key", "RAG_EMBEDDING_API_KEY")
+	_ = v.BindEnv("rag.embedding_model", "RAG_EMBEDDING_MODEL")
+	_ = v.BindEnv("rag.index_name", "RAG_INDEX_NAME")
+	_ = v.BindEnv("rag.kb_dir", "RAG_KB_DIR")
+	_ = v.BindEnv("rag.chunk_size", "RAG_CHUNK_SIZE")
+	_ = v.BindEnv("rag.chunk_overlap", "RAG_CHUNK_OVERLAP")
+	_ = v.BindEnv("rag.top_k", "RAG_TOP_K")
+	_ = v.BindEnv("rag.reindex_interval_seconds", "RAG_REINDEX_INTERVAL_SECONDS")
 	_ = v.BindEnv("community.ask_everyone_invite_user_ids", "COMMUNITY_ASK_EVERYONE_INVITE_USER_IDS")
 	_ = v.BindEnv("third_party.wechat_app_id", "WECHAT_APP_ID")
 	_ = v.BindEnv("third_party.wechat_app_secret", "WECHAT_APP_SECRET")
@@ -698,7 +934,10 @@ func Load(configPath, env string) (*Config, error) {
 	_ = v.BindEnv("third_party.wechat_mch_notify_url", "WECHAT_MCH_NOTIFY_URL")
 	_ = v.BindEnv("third_party.alipay_app_id", "ALIPAY_APP_ID")
 	_ = v.BindEnv("third_party.alipay_private_key", "ALIPAY_PRIVATE_KEY")
+	_ = v.BindEnv("third_party.alipay_public_key", "ALIPAY_PUBLIC_KEY")
 	_ = v.BindEnv("third_party.alipay_notify_url", "ALIPAY_NOTIFY_URL")
+	_ = v.BindEnv("third_party.wechat_pay_endpoint", "WECHAT_PAY_ENDPOINT")
+	_ = v.BindEnv("third_party.alipay_gateway", "ALIPAY_GATEWAY")
 	_ = v.BindEnv("third_party.huawei_iap.app_id", "HUAWEI_IAP_APP_ID")
 	_ = v.BindEnv("third_party.huawei_iap.issuer_id", "HUAWEI_IAP_ISSUER_ID")
 	_ = v.BindEnv("third_party.huawei_iap.key_id", "HUAWEI_IAP_KEY_ID")
@@ -725,9 +964,11 @@ func Load(configPath, env string) (*Config, error) {
 	if err := applySupabaseDefaults(configPath, &cfg); err != nil {
 		return nil, err
 	}
-	if err := applyLocalEnvDefaults(configPath, &cfg); err != nil {
+	serviceRoleSource, err := applyLocalEnvDefaults(configPath, &cfg)
+	if err != nil {
 		return nil, err
 	}
+	cfg.serviceRoleSource = serviceRoleSource
 
 	if cfg.JWT.Secret == "" {
 		return nil, fmt.Errorf("jwt.secret 不能为空")
@@ -792,11 +1033,29 @@ func Load(configPath, env string) (*Config, error) {
 	}
 	applySSEDefaults(&cfg)
 	cfg.AppEnv = strings.TrimSpace(env)
+	applySchemaPolicy(&cfg)
 	applyAuthWhitelistEnv(&cfg.Auth, cfg.AppEnv)
 	applyCommunityEnv(&cfg.Community)
 	applyShortVideoEnv(&cfg.ShortVideo)
 
+	if err := validateSecrets(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// applySchemaPolicy 收口「谁能建表」：正式环境与 lan 一律关掉启动期 DDL，
+// 不看 yaml——否则改个 APP_ENV 就漏建表路径（parity-p0-1）。
+func applySchemaPolicy(cfg *Config) {
+	if dir := strings.TrimSpace(cfg.Database.MigrationsDir); dir != "" {
+		cfg.Database.MigrationsDir = dir
+	} else {
+		cfg.Database.MigrationsDir = "migrations"
+	}
+	if NoDDLAppEnv(cfg.AppEnv) {
+		cfg.Database.AutoMigrate = false
+	}
 }
 
 func applySSEDefaults(cfg *Config) {
@@ -881,8 +1140,9 @@ func applySupabaseDefaults(configPath string, cfg *Config) error {
 	return nil
 }
 
-// applyLocalEnvDefaults 从项目根 .env / .env.local 填充仍为空的 Supabase service_role 等。
-func applyLocalEnvDefaults(configPath string, cfg *Config) error {
+// applyLocalEnvDefaults 从 .env / .env.local 补 service_role（先读到的赢）。
+// 返回该值的来源文件名，供 prod 校验「service_role 只允许来自 OS env 或 .env.local」。
+func applyLocalEnvDefaults(configPath string, cfg *Config) (serviceRoleSource string, err error) {
 	root := filepath.Dir(configPath)
 	for _, name := range []string{".env", ".env.local"} {
 		path := filepath.Join(root, name)
@@ -893,13 +1153,16 @@ func applyLocalEnvDefaults(configPath string, cfg *Config) error {
 		sv.SetConfigFile(path)
 		sv.SetConfigType("env")
 		if err := sv.ReadInConfig(); err != nil {
-			return fmt.Errorf("读取 %s 失败: %w", name, err)
+			return "", fmt.Errorf("读取 %s 失败: %w", name, err)
 		}
 		if cfg.Supabase.ServiceRoleKey == "" {
 			cfg.Supabase.ServiceRoleKey = sv.GetString("SUPABASE_SERVICE_ROLE_KEY")
+			if cfg.Supabase.ServiceRoleKey != "" {
+				serviceRoleSource = name
+			}
 		}
 	}
-	return nil
+	return serviceRoleSource, nil
 }
 
 // applyAuthWhitelistEnv 用逗号分隔的环境变量覆盖 session 白名单（便于生产注入）。
@@ -936,10 +1199,8 @@ func applyCommunityEnv(c *CommunityConfig) {
 }
 
 func applyShortVideoEnv(c *ShortVideoConfig) {
-	if raw := strings.TrimSpace(os.Getenv("SHORT_VIDEO_REVIEW_DELAY_SECONDS")); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			c.ReviewDelaySeconds = n
-		}
+	if raw := strings.TrimSpace(os.Getenv("SHORT_VIDEO_REVIEW_MODE")); raw != "" {
+		c.ReviewMode = raw
 	}
 }
 

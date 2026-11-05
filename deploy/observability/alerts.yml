@@ -33,3 +33,66 @@ groups:
         annotations:
           summary: "API P99 latency > 2s"
           description: "Overall HTTP P99 latency is above 2 seconds."
+
+  # 异步任务队列（RabbitMQ）：消费失败的消息靠 retries 上限进 DLQ，
+  # DLQ 里有任何消息都说明「有任务真的做不成」，不会自愈，必须人工看。
+  - name: queue
+    rules:
+      - alert: MQDeadLettersPresent
+        expr: rabbitmq_dlq_messages > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ DLQ 有死信（持续 5m）"
+          description: "任务队列 {{ $labels.queue }} 死信数 {{ $value }}；排查 worker 日志 'moved to DLQ'。"
+
+      - alert: MQDeadLetterMetricMissing
+        expr: absent(rabbitmq_dlq_messages)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ 深度指标缺失"
+          description: "API 未暴露 rabbitmq_dlq_messages：queue.enabled=false、旧队列 406 降级或 DLQ 采集失败，死信告警当前不可用。"
+
+  # 渠道支付（P0-2）：回调是唯一「钱到了」的信号，丢了就靠查单兜底。
+  # 这三条分别盯：签不上（凭据/被篡改）、核销停滞（兜底没跑或跑不成）、账实不符（对账差异）。
+  - name: payment
+    rules:
+      - alert: PaymentNotifySignatureRejected
+        expr: sum(rate(payment_notify_reject_total{reason="sign"}[10m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "支付回调验签持续失败"
+          description: "近 10m 有 {{ $value }}/s 回调因验签被拒：商户密钥配错，或有人在伪造回调打 /api/v1/payments/notify/*。"
+
+      # 查单每轮都会刷新该 gauge（即便扫到 0 条），所以它同时是「兜底任务活着」的心跳。
+      - alert: PaymentPendingStuck
+        expr: payment_pending_stale > 0
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "存在超时未核销的渠道流水（>30m）"
+          description: "wys_payment_records 里 {{ $value }} 条 pending 超过阈值仍未核销：渠道未收到支付，或查单补核销一直失败，看 worker 日志 '支付查单'。"
+
+      - alert: PaymentQueryJobsNotRunning
+        expr: absent(payment_pending_stale)
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "支付查单兜底任务未运行"
+          description: "指标 payment_pending_stale 缺失：worker 未启动或 scheduler.payment.enabled=false，回调丢失将无人兜底。"
+
+      - alert: PaymentReconcileDiffFound
+        expr: increase(payment_reconcile_diff_total[6h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "T+1 对账写入新差异"
+          description: "近 6h 新增 {{ $value }} 条差异（{{ $labels.kind }}）：查 wys_payment_reconcile_diff 未 resolved 的行。"

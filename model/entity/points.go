@@ -3,28 +3,28 @@ package entity
 import "time"
 
 const (
-	WysPointsWalletTable  = "wys_points_wallet"
-	WysPointsLedgerTable  = "wys_points_ledger"
-	WysCheckInTable       = "wys_check_ins"
-	WysTaskClaimTable     = "wys_task_claims"
+	WysPointsWalletTable = "wys_points_wallet"
+	WysPointsLedgerTable = "wys_points_ledger"
+	WysCheckInTable      = "wys_check_ins"
+	WysTaskClaimTable    = "wys_task_claims"
 
-	PointsReasonCheckIn     = "check_in"
-	PointsReasonTaskLogin   = "task_login"
-	PointsReasonTaskPost    = "task_post"
-	PointsReasonTaskOrder   = "task_order"
-	PointsReasonMallPay     = "mall_pay"
-	PointsReasonMallRefund  = "mall_refund"
+	PointsReasonCheckIn    = "check_in"
+	PointsReasonTaskLogin  = "task_login"
+	PointsReasonTaskPost   = "task_post"
+	PointsReasonTaskOrder  = "task_order"
+	PointsReasonMallPay    = "mall_pay"
+	PointsReasonMallRefund = "mall_refund"
 
 	TaskLogin = "login"
 	TaskPost  = "post"
 	TaskOrder = "order"
 
-	CheckInRewardBase   int64 = 5
-	CheckInRewardDay3   int64 = 10
-	CheckInRewardDay7   int64 = 20
-	TaskRewardLogin     int64 = 5
-	TaskRewardPost      int64 = 10
-	TaskRewardOrder     int64 = 20
+	CheckInRewardBase int64 = 5
+	CheckInRewardDay3 int64 = 10
+	CheckInRewardDay7 int64 = 20
+	TaskRewardLogin   int64 = 5
+	TaskRewardPost    int64 = 10
+	TaskRewardOrder   int64 = 20
 )
 
 // WysPointsWallet 账号全局积分余额。
@@ -89,11 +89,11 @@ func CheckInRewardForStreak(streak int) int64 {
 
 // PointsStatus 签到页/弹窗读模型。
 type PointsStatus struct {
-	Balance         int64            `json:"balance"`
-	CheckedInToday  bool             `json:"checked_in_today"`
-	Streak          int              `json:"streak"`
-	TodayReward     int64            `json:"today_reward"`
-	Calendar        []CheckInDayView `json:"calendar"`
+	Balance        int64            `json:"balance"`
+	CheckedInToday bool             `json:"checked_in_today"`
+	Streak         int              `json:"streak"`
+	TodayReward    int64            `json:"today_reward"`
+	Calendar       []CheckInDayView `json:"calendar"`
 }
 
 // CheckInDayView 日历一日。
@@ -106,16 +106,16 @@ type CheckInDayView struct {
 
 // GrowthTaskView 成长任务读模型。
 type GrowthTaskView struct {
-	Code      string `json:"code"`
-	Title     string `json:"title"`
-	Reward    int64  `json:"reward"`
-	Progress  string `json:"progress"` // incomplete | claimable | claimed
+	Code     string `json:"code"`
+	Title    string `json:"title"`
+	Reward   int64  `json:"reward"`
+	Progress string `json:"progress"` // incomplete | claimable | claimed
 }
 
 // CheckInResult 签到成功结果。
 type CheckInResult struct {
-	Points  int64 `json:"points"`
-	Balance int64 `json:"balance"`
-	Streak  int   `json:"streak"`
+	Points  int64  `json:"points"`
+	Balance int64  `json:"balance"`
+	Streak  int    `json:"streak"`
 	Day     string `json:"day"`
 }

@@ -13,10 +13,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
 	"app/internal/access"
+	"app/internal/payment"
 	"app/internal/points"
 	"app/internal/wallet"
 	"github.com/google/uuid"
@@ -29,11 +31,24 @@ type Service struct {
 	accessSvc *access.Service
 	pointsSvc *points.Service
 	walletSvc *wallet.Service
+	// pay 渠道支付网关（微信/支付宝）。为 nil 时渠道支付直接报错，
+	// 不再保留「本地标记已付」的退路。
+	pay *payment.Service
 }
 
 // NewService 创建。points / wallet 可为 nil。
 func NewService(repo Repository, accessSvc *access.Service, pointsSvc *points.Service, walletSvc *wallet.Service) *Service {
 	return &Service{repo: repo, accessSvc: accessSvc, pointsSvc: pointsSvc, walletSvc: walletSvc}
+}
+
+// WithPayment 注入 payment 域并把自己注册为该 ref_type 的核销器。
+func (u *Service) WithPayment(pay *payment.Service) *Service {
+	if pay == nil {
+		return u
+	}
+	u.pay = pay
+	pay.RegisterSettler(entity.PaymentRefMallOrder, u)
+	return u
 }
 
 // CreateProduct 店员创建商品。
@@ -481,8 +496,162 @@ func (u *Service) ListOrders(ctx context.Context, buyerUserID string, statuses [
 	return out, total, nil
 }
 
-// PayOrder 支付：积分经 Points 账本扣减；人民币余额渠道经 Wallet 扣减；混合需人民币渠道；失败则退回已扣。
-func (u *Service) PayOrder(ctx context.Context, buyerUserID string, orderID int64, channel int16) (*entity.MallOrderDetail, error) {
+// PayOrder 支付入口。
+//
+// 微信 / 支付宝是「客户端在 App 里付款」，本地无权判定成功：改走 StartChannelPay
+// 落 pending 流水，等渠道回调（或查单）核销后由 SettleChannelPaid 推进订单，
+// 消除 P0-2 之前「调用即已付、无流水」的假成功。
+// 余额 / 积分 / IAP 占位渠道仍走 settleLocal。
+func (u *Service) PayOrder(ctx context.Context, buyerUserID string, orderID int64, channel int16) (*MallPayResult, error) {
+	if !entity.ValidMallPaymentChannel(channel) {
+		return nil, ErrInvalidChannel
+	}
+	if channel == entity.MallPayWeChat || channel == entity.MallPayAlipay {
+		return u.StartChannelPay(ctx, buyerUserID, orderID, channel)
+	}
+	detail, err := u.settleLocal(ctx, buyerUserID, orderID, channel)
+	if err != nil {
+		return nil, err
+	}
+	return &MallPayResult{Status: "paid", Detail: detail}, nil
+}
+
+// MallPayResult 支付返回：本地结单给订单详情；渠道支付给唤起参数与 out_trade_no。
+type MallPayResult struct {
+	Status        string                  `json:"status"` // paid | pending
+	Detail        *entity.MallOrderDetail `json:"detail,omitempty"`
+	OutTradeNo    string                  `json:"out_trade_no,omitempty"`
+	PrepayChannel string                  `json:"prepay_channel,omitempty"`
+	PrepayParams  map[string]any          `json:"prepay_params,omitempty"`
+}
+
+// StartChannelPay 落一条 pending 渠道流水并取回 SDK 唤起参数（不改订单状态）。
+func (u *Service) StartChannelPay(ctx context.Context, buyerUserID string, orderID int64, channel int16) (*MallPayResult, error) {
+	if u.pay == nil {
+		return nil, ErrPayGatewayUnavailable
+	}
+	order, err := u.repo.GetOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.BuyerUserID != buyerUserID {
+		return nil, ErrNotFound
+	}
+	switch order.Status {
+	case entity.MallOrderPaid, entity.MallOrderFulfilled:
+		return nil, ErrOrderAlreadySettled
+	case entity.MallOrderUnpaid:
+	default:
+		return nil, ErrOrderNotPayable
+	}
+	if entity.MallOrderPayExpired(order.Status, order.CreatedAt, time.Now()) {
+		return nil, ErrOrderPayExpired
+	}
+	if entity.IsZeroMoney(order.Amount) {
+		return nil, ErrNeedCNYChannel
+	}
+	fen, err := entity.ParseYuanToFen(order.Amount)
+	if err != nil || fen <= 0 {
+		return nil, ErrInvalidPrice
+	}
+	channelName, err := mallPayChannelName(channel)
+	if err != nil {
+		return nil, err
+	}
+	prepay, err := u.pay.Prepay(ctx, payment.PrepayInput{
+		Channel:   channelName,
+		AmountFen: fen,
+		Subject:   mallPaySubject(order.OrderNo),
+		UserID:    buyerUserID,
+		RefType:   entity.PaymentRefMallOrder,
+		RefID:     strconv.FormatInt(orderID, 10),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &MallPayResult{
+		Status:        "pending",
+		OutTradeNo:    prepay.OutTradeNo,
+		PrepayChannel: prepay.Channel,
+		PrepayParams:  prepay.Params,
+	}, nil
+}
+
+// SettleChannelPaid 实现 payment.Settler：渠道核销后把商城单推进到已支付。
+//
+// 与 payment.settleByFact 同处一个事务：这里失败会连流水一起回滚，
+// 不会出现「流水 paid、订单 unpaid」。混合单（积分 + 人民币）的积分在这一步才扣，
+// 渠道未收款成功就不能动积分账。
+func (u *Service) SettleChannelPaid(ctx context.Context, refType, refID string, rec *entity.WysPaymentRecord) error {
+	if refType != entity.PaymentRefMallOrder {
+		return ErrNotFound
+	}
+	orderID, err := strconv.ParseInt(refID, 10, 64)
+	if err != nil || orderID <= 0 {
+		return ErrNotFound
+	}
+	channel, err := mallPayChannelByName(rec.Channel)
+	if err != nil {
+		return err
+	}
+	return u.repo.WithTx(ctx, func(ctx context.Context) error {
+		locked, err := u.repo.LockOrderForSettle(ctx, orderID, rec.UserID)
+		if err != nil {
+			return err
+		}
+		if locked.Status == entity.MallOrderPaid || locked.Status == entity.MallOrderFulfilled {
+			return nil
+		}
+		if locked.Status != entity.MallOrderUnpaid {
+			return ErrOrderNotPayable
+		}
+		if locked.TotalPoints > 0 {
+			if u.pointsSvc == nil {
+				return points.ErrPointsInsufficient
+			}
+			if _, err := u.pointsSvc.Debit(ctx, rec.UserID, locked.TotalPoints,
+				entity.PointsReasonMallPay, refID); err != nil {
+				return err
+			}
+		}
+		_, err = u.repo.PayOrderLocal(ctx, orderID, rec.UserID, channel, rec.OutTradeNo)
+		return err
+	})
+}
+
+// mallPayChannelName 商城渠道编号 → payment 域渠道名。
+func mallPayChannelName(channel int16) (string, error) {
+	switch channel {
+	case entity.MallPayWeChat:
+		return entity.PaymentChannelWeChat, nil
+	case entity.MallPayAlipay:
+		return entity.PaymentChannelAlipay, nil
+	default:
+		return "", ErrInvalidChannel
+	}
+}
+
+// mallPayChannelByName payment 域渠道名 → 商城渠道编号。
+func mallPayChannelByName(name string) (int16, error) {
+	switch name {
+	case entity.PaymentChannelWeChat:
+		return entity.MallPayWeChat, nil
+	case entity.PaymentChannelAlipay:
+		return entity.MallPayAlipay, nil
+	default:
+		return 0, ErrInvalidChannel
+	}
+}
+
+func mallPaySubject(orderNo string) string {
+	if strings.TrimSpace(orderNo) == "" {
+		return "商城订单"
+	}
+	return "商城订单-" + orderNo
+}
+
+// settleLocal 余额 / 积分 / IAP 占位渠道的本地结单（P0-3 的单事务形态）。
+func (u *Service) settleLocal(ctx context.Context, buyerUserID string, orderID int64, channel int16) (*entity.MallOrderDetail, error) {
 	if !entity.ValidMallPaymentChannel(channel) {
 		return nil, ErrInvalidChannel
 	}
@@ -510,48 +679,50 @@ func (u *Service) PayOrder(ctx context.Context, buyerUserID string, orderID int6
 		channel = entity.MallPayPoints
 	}
 
-	debitedPts := int64(0)
-	debitedFen := int64(0)
 	ref := fmt.Sprintf("%d", orderID)
-	if needsPoints {
-		if u.pointsSvc == nil {
-			return nil, points.ErrPointsInsufficient
+	var detail *entity.MallOrderDetail
+	// 扣积分 + 扣钱包 + 改单/履约在同一事务里完成：任一步失败整体回滚，
+	// 不再有「补偿也可能失败还被吞掉」的 restorePayDebits 分支。
+	err = u.repo.WithTx(ctx, func(ctx context.Context) error {
+		// 资金动作前必须先锁订单行：
+		// 1) 并发两笔支付若先扣款后锁单，会各扣一次、只有一单生效；
+		// 2) 对已支付订单重复支付时，旧实现会再扣一次款然后幂等返回 —— 现在跳过扣减。
+		locked, err := u.repo.LockOrderForSettle(ctx, orderID, buyerUserID)
+		if err != nil {
+			return err
 		}
-		if _, err := u.pointsSvc.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, ref); err != nil {
-			return nil, err
+		alreadySettled := locked.Status == entity.MallOrderPaid || locked.Status == entity.MallOrderFulfilled
+		if needsPoints && !alreadySettled {
+			if u.pointsSvc == nil {
+				return points.ErrPointsInsufficient
+			}
+			if _, err := u.pointsSvc.Debit(ctx, buyerUserID, order.TotalPoints, entity.PointsReasonMallPay, ref); err != nil {
+				return err
+			}
 		}
-		debitedPts = order.TotalPoints
-	}
-	if needsCNY && channel == entity.MallPayBalance {
-		if u.walletSvc == nil {
-			return nil, wallet.ErrCashInsufficient
+		if needsCNY && channel == entity.MallPayBalance && !alreadySettled {
+			if u.walletSvc == nil {
+				return wallet.ErrCashInsufficient
+			}
+			fen, err := entity.ParseYuanToFen(order.Amount)
+			if err != nil || fen <= 0 {
+				return ErrInvalidPrice
+			}
+			if _, err := u.walletSvc.Debit(ctx, buyerUserID, fen, entity.CashReasonMallPay, ref); err != nil {
+				return err
+			}
 		}
-		fen, err := entity.ParseYuanToFen(order.Amount)
-		if err != nil || fen <= 0 {
-			u.restorePayDebits(ctx, buyerUserID, debitedPts, 0, ref)
-			return nil, ErrInvalidPrice
+		d, err := u.repo.PayOrderLocal(ctx, orderID, buyerUserID, channel, "")
+		if err != nil {
+			return err
 		}
-		if _, err := u.walletSvc.Debit(ctx, buyerUserID, fen, entity.CashReasonMallPay, ref); err != nil {
-			u.restorePayDebits(ctx, buyerUserID, debitedPts, 0, ref)
-			return nil, err
-		}
-		debitedFen = fen
-	}
-	detail, err := u.repo.PayOrderLocal(ctx, orderID, buyerUserID, channel)
+		detail = d
+		return nil
+	})
 	if err != nil {
-		u.restorePayDebits(ctx, buyerUserID, debitedPts, debitedFen, ref)
 		return nil, err
 	}
 	return detail, nil
-}
-
-func (u *Service) restorePayDebits(ctx context.Context, userID string, pts, fen int64, ref string) {
-	if pts > 0 && u.pointsSvc != nil {
-		_, _ = u.pointsSvc.Credit(ctx, userID, pts, entity.PointsReasonMallRefund, ref)
-	}
-	if fen > 0 && u.walletSvc != nil {
-		_, _ = u.walletSvc.Credit(ctx, userID, fen, entity.CashReasonMallRefund, ref)
-	}
 }
 
 // CancelOrder 取消未支付订单；已支付未履约则取消并按 ADR-0015 将人民币退回钱包、积分退回积分账。
@@ -569,18 +740,45 @@ func (u *Service) CancelOrder(ctx context.Context, buyerUserID string, orderID i
 	if order.Status != entity.MallOrderPaid {
 		return nil, ErrOrderNotCancelable
 	}
-	cancelled, err := u.repo.CancelPaidOrder(ctx, orderID, buyerUserID)
+	ref := fmt.Sprintf("%d", orderID)
+	var cancelled *entity.WysMallOrder
+	// 改单 + 退款同事务：退款入账失败（含金额解析失败、服务未配置）不再静默跳过，直接回滚取消动作。
+	err = u.repo.WithTx(ctx, func(ctx context.Context) error {
+		// 与支付一致：先锁订单行，再动钱包/积分。
+		if _, err := u.repo.LockOrderForSettle(ctx, orderID, buyerUserID); err != nil {
+			return err
+		}
+		row, err := u.repo.CancelPaidOrder(ctx, orderID, buyerUserID)
+		if err != nil {
+			return err
+		}
+		if !entity.IsZeroMoney(row.Amount) {
+			fen, err := entity.ParseYuanToFen(row.Amount)
+			if err != nil {
+				return fmt.Errorf("%w: 订单金额无法解析: %v", ErrRefundUnavailable, err)
+			}
+			if fen > 0 {
+				if u.walletSvc == nil {
+					return ErrRefundUnavailable
+				}
+				if _, err := u.walletSvc.Credit(ctx, buyerUserID, fen, entity.CashReasonMallRefund, ref); err != nil {
+					return err
+				}
+			}
+		}
+		if row.TotalPoints > 0 {
+			if u.pointsSvc == nil {
+				return ErrRefundUnavailable
+			}
+			if _, err := u.pointsSvc.Credit(ctx, buyerUserID, row.TotalPoints, entity.PointsReasonMallRefund, ref); err != nil {
+				return err
+			}
+		}
+		cancelled = row
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	ref := fmt.Sprintf("%d", orderID)
-	if !entity.IsZeroMoney(cancelled.Amount) && u.walletSvc != nil {
-		if fen, err := entity.ParseYuanToFen(cancelled.Amount); err == nil && fen > 0 {
-			_, _ = u.walletSvc.Credit(ctx, buyerUserID, fen, entity.CashReasonMallRefund, ref)
-		}
-	}
-	if cancelled.TotalPoints > 0 && u.pointsSvc != nil {
-		_, _ = u.pointsSvc.Credit(ctx, buyerUserID, cancelled.TotalPoints, entity.PointsReasonMallRefund, ref)
 	}
 	return cancelled, nil
 }

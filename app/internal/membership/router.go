@@ -43,6 +43,7 @@ func (r *Router) Register(engine *gin.Engine) {
 	g.POST("/buyout/confirm", r.handler.ConfirmBuyout)
 	g.POST("/huawei/verify", r.handler.VerifyHuawei)
 	g.POST("/apple/verify", r.handler.VerifyApple)
-	// 关键事件通知可不带用户 Session（华为服务器回调）；MVP stub 仍挂同组便于联调。
+	// 关键事件通知可不带用户 Session（华为服务器回调）；回调未接入前该路由恒返 501，
+	// 挂同组仅保留占位与联调可见性（见 docs/placeholder-inventory.md）。
 	g.POST("/huawei/notifications", r.handler.HuaweiNotifications)
 }

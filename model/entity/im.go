@@ -3,12 +3,12 @@ package entity
 import "time"
 
 const (
-	WysImFriendRequestTable  = "wys_im_friend_request"
-	WysImFriendshipTable     = "wys_im_friendship"
-	WysImFreeGroupTable      = "wys_im_free_group"
+	WysImFriendRequestTable   = "wys_im_friend_request"
+	WysImFriendshipTable      = "wys_im_friendship"
+	WysImFreeGroupTable       = "wys_im_free_group"
 	WysImFreeGroupMemberTable = "wys_im_free_group_member"
-	WysImStoreGroupTable     = "wys_im_store_group"
-	WysImMessageBackupTable  = "wys_im_message_backup"
+	WysImStoreGroupTable      = "wys_im_store_group"
+	WysImMessageBackupTable   = "wys_im_message_backup"
 
 	ImFriendRequestPending  = "pending"
 	ImFriendRequestAccepted = "accepted"

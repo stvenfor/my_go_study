@@ -32,7 +32,7 @@ curl_json() {
   rc=$?
   set -e
   if [[ "$rc" -ne 0 ]]; then
-    echo "错误: $label 失败 (curl 退出码 $rc，28=超时)" >&2
+    echo "错误: $label 失败 (curl 退出码 ${rc}，28=超时)" >&2
     echo "  请确认 API/Supabase 可达；可先 make run，或 export CURL_MAX=120" >&2
     [[ -n "${out:-}" ]] && echo "$out" >&2
     exit "$rc"

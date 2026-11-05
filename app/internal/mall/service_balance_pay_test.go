@@ -12,8 +12,33 @@ import (
 
 type payOrderRepo struct {
 	Repository
-	order   *entity.WysMallOrder
-	failPay bool
+	order       *entity.WysMallOrder
+	failPay     bool
+	cash        *memCashRepo
+	lastTradeNo string
+}
+
+func (r *payOrderRepo) WithTx(ctx context.Context, fn func(context.Context) error) error {
+	var bal map[string]int64
+	var ledgerLen int
+	if r.cash != nil {
+		bal, ledgerLen = r.cash.snapshot()
+	}
+	if err := fn(ctx); err != nil {
+		if r.cash != nil {
+			r.cash.restore(bal, ledgerLen)
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *payOrderRepo) LockOrderForSettle(_ context.Context, orderID int64, buyerUserID string) (*entity.WysMallOrder, error) {
+	if r.order == nil || r.order.OrderID != orderID || r.order.BuyerUserID != buyerUserID {
+		return nil, ErrNotFound
+	}
+	cp := *r.order
+	return &cp, nil
 }
 
 func (r *payOrderRepo) GetOrder(_ context.Context, orderID int64) (*entity.WysMallOrder, error) {
@@ -24,11 +49,12 @@ func (r *payOrderRepo) GetOrder(_ context.Context, orderID int64) (*entity.WysMa
 	return &cp, nil
 }
 
-func (r *payOrderRepo) PayOrderLocal(_ context.Context, orderID int64, buyerUserID string, channel int16) (*entity.MallOrderDetail, error) {
+func (r *payOrderRepo) PayOrderLocal(_ context.Context, orderID int64, buyerUserID string, channel int16, channelTradeNo string) (*entity.MallOrderDetail, error) {
 	if r.failPay {
 		return nil, ErrStockInsufficient
 	}
 	r.order.Status = entity.MallOrderPaid
+	r.lastTradeNo = channelTradeNo
 	ch := channel
 	r.order.PaymentChannel = &ch
 	return &entity.MallOrderDetail{Order: *r.order}, nil
@@ -51,14 +77,15 @@ func (r *payOrderRepo) CancelUnpaidOrder(_ context.Context, orderID int64, buyer
 }
 
 func TestMallBalancePayAndCancelRefund(t *testing.T) {
-	cash := wallet.NewService(newMemCashRepo())
+	mem := newMemCashRepo()
+	cash := wallet.NewService(mem)
 	ctx := context.Background()
 	uid := "buyer1"
 	_, err := cash.Recharge(ctx, uid, wallet.RechargeInput{Amount: "20.00", Channel: entity.WalletRechargeAlipay})
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo := &payOrderRepo{order: &entity.WysMallOrder{
+	repo := &payOrderRepo{cash: mem, order: &entity.WysMallOrder{
 		OrderID: 11, BuyerUserID: uid, Status: entity.MallOrderUnpaid,
 		Amount: "10.00", TotalPoints: 0, CreatedAt: time.Now(),
 	}}
@@ -84,10 +111,11 @@ func TestMallBalancePayAndCancelRefund(t *testing.T) {
 }
 
 func TestMallBalancePayInsufficient(t *testing.T) {
-	cash := wallet.NewService(newMemCashRepo())
+	mem := newMemCashRepo()
+	cash := wallet.NewService(mem)
 	ctx := context.Background()
 	uid := "buyer2"
-	repo := &payOrderRepo{order: &entity.WysMallOrder{
+	repo := &payOrderRepo{cash: mem, order: &entity.WysMallOrder{
 		OrderID: 12, BuyerUserID: uid, Status: entity.MallOrderUnpaid,
 		Amount: "5.00", CreatedAt: time.Now(),
 	}}
@@ -99,11 +127,13 @@ func TestMallBalancePayInsufficient(t *testing.T) {
 }
 
 func TestMallBalancePayRestoresOnLocalFail(t *testing.T) {
-	cash := wallet.NewService(newMemCashRepo())
+	mem := newMemCashRepo()
+	cash := wallet.NewService(mem)
 	ctx := context.Background()
 	uid := "buyer3"
 	_, _ = cash.Recharge(ctx, uid, wallet.RechargeInput{Amount: "10.00", Channel: entity.WalletRechargeWeChat})
 	repo := &payOrderRepo{
+		cash: mem,
 		order: &entity.WysMallOrder{
 			OrderID: 13, BuyerUserID: uid, Status: entity.MallOrderUnpaid,
 			Amount: "3.00", CreatedAt: time.Now(),
@@ -122,11 +152,12 @@ func TestMallBalancePayRestoresOnLocalFail(t *testing.T) {
 }
 
 func TestMallRejectsBalanceOnPointsOnly(t *testing.T) {
-	cash := wallet.NewService(newMemCashRepo())
+	mem := newMemCashRepo()
+	cash := wallet.NewService(mem)
 	ctx := context.Background()
 	uid := "buyer4"
 	_, _ = cash.Recharge(ctx, uid, wallet.RechargeInput{Amount: "10.00", Channel: entity.WalletRechargeAlipay})
-	repo := &payOrderRepo{order: &entity.WysMallOrder{
+	repo := &payOrderRepo{cash: mem, order: &entity.WysMallOrder{
 		OrderID: 14, BuyerUserID: uid, Status: entity.MallOrderUnpaid,
 		Amount: "0.00", TotalPoints: 100, CreatedAt: time.Now(),
 	}}

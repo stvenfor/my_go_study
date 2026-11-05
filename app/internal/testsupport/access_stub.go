@@ -24,6 +24,8 @@ type AccessStub struct {
 	Store *entity.WysStore
 	// StorePermsByUser 按用户给出的店内能力码（配合 StoreID 判定成员）。
 	StorePermsByUser map[string][]string
+	// PlatformPermsByUser 按用户给出的平台能力码（平台级权限判定用）。
+	PlatformPermsByUser map[string][]string
 }
 
 // Service 用桩构造真实的 access.Service（走公开方法，不走私有字段）。
@@ -70,7 +72,10 @@ func (s *AccessStub) CurrentStoreID(context.Context, string) (*int, error) {
 
 func (s *AccessStub) ClearCurrentStoreIf(context.Context, string, int) error { return nil }
 
-func (s *AccessStub) PlatformPermissionCodes(context.Context, string) ([]string, error) {
+func (s *AccessStub) PlatformPermissionCodes(_ context.Context, userID string) ([]string, error) {
+	if s.PlatformPermsByUser != nil {
+		return s.PlatformPermsByUser[userID], nil
+	}
 	return nil, nil
 }
 

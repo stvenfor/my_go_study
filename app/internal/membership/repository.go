@@ -24,4 +24,8 @@ type Repository interface {
 	GetOrder(ctx context.Context, orderID int64) (*entity.WysMembershipOrder, error)
 	MarkOrderPaid(ctx context.Context, orderID int64, paidAt time.Time) error
 	FindPaidByOutTradeNo(ctx context.Context, outTradeNo string) (*entity.WysMembershipOrder, error)
+	// Transaction 把 fn 里的写落到同一事务（复用 P0-3 的 txdb）。
+	// 余额购买必须「扣款 + 改单 + 发权益」同生共死：以前失败时靠 Credit 补偿，
+	// 而补偿是 `_, _ =` 写的，补偿失败就等于钱凭空消失。
+	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }

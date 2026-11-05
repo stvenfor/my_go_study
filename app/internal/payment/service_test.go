@@ -14,7 +14,7 @@ import (
 )
 
 func TestServiceNotConfigured(t *testing.T) {
-	svc := NewService(config.ThirdPartyConfig{})
+	svc := NewService(config.ThirdPartyConfig{}, nil)
 	_, err := svc.Prepay(context.Background(), PrepayInput{
 		Channel:   "wechat",
 		AmountFen: 100,

@@ -90,9 +90,10 @@ POST /api/v1/new-car-follow-files/:file_id/logs
 POST /api/v1/purchase-calculator/quote
 POST /api/v1/used-car-orders`
 
-// batch3Want 批 3（电商 + 社区 6 域）基线，50 条。
-// 脚本从 mall_routes.go / membership_routes.go / payment_routes.go /
-// community_routes.go / short_video_routes.go / transaction_routes.go 机械提取。
+// batch3Want 批 3（电商 + 社区 6 域）基线，51 条。
+// 前 50 条由脚本从 mall_routes.go / membership_routes.go / payment_routes.go /
+// community_routes.go / short_video_routes.go / transaction_routes.go 机械提取；
+// `POST /api/v1/short-videos/:id/review` 是 parity-p0-4（人工放行入口）新增的第 51 条。
 // 注意 transaction 是两组（/transactions legacy + /transactions/manage 统一格式）。
 const batch3Want = `DELETE /api/v1/community/posts/:id
 DELETE /api/v1/community/posts/:id/like
@@ -137,8 +138,11 @@ POST /api/v1/membership/buyout/confirm
 POST /api/v1/membership/huawei/notifications
 POST /api/v1/membership/huawei/verify
 POST /api/v1/payments/prepay
+POST /api/v1/payments/notify/alipay
+POST /api/v1/payments/notify/wechat
 POST /api/v1/short-videos
 POST /api/v1/short-videos/:id/like
+POST /api/v1/short-videos/:id/review
 POST /api/v1/short-videos/:id/view
 POST /api/v1/transactions
 POST /api/v1/transactions/manage
@@ -264,14 +268,14 @@ func batch3Routers(sessionAuth gin.HandlerFunc) []shared.Registrable {
 	return []shared.Registrable{
 		mall.NewRouter(mall.NewService(nil, nil, nil, nil), sessionAuth, nil),
 		membership.NewRouter(membership.NewService(nil, nil, nil, nil, nil, ""), sessionAuth, nil),
-		community.NewRouter(community.NewService(nil, nil, nil), sessionAuth, nil),
-		short_video.NewRouter(short_video.NewService(nil, 0), sessionAuth, nil),
+		community.NewRouter(community.NewService(nil, nil, nil, "dev"), sessionAuth, nil),
+		short_video.NewRouter(short_video.NewService(nil, nil, false, "dev"), sessionAuth, nil),
 		transaction.NewRouter(transaction.NewService(nil), sessionAuth, nil),
-		payment.NewRouter(payment.NewService(config.ThirdPartyConfig{}), sessionAuth, nil),
+		payment.NewRouter(payment.NewService(config.ThirdPartyConfig{}, nil), sessionAuth, nil),
 	}
 }
 
-// TestBatch3DomainRoutes 批 3 六域注册的路由必须与切片前基线逐条一致（50 条）。
+// TestBatch3DomainRoutes 批 3 六域注册的路由必须与基线逐条一致（51 条）。
 func TestBatch3DomainRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -295,15 +299,22 @@ func TestBatch3DomainRoutes(t *testing.T) {
 }
 
 // TestBatch3DomainRoutesSkippedWithoutSessionAuth sessionAuth 为 nil 时，
-// 批 3 六域都不应注册任何路由。
+// 批 3 六域的受保护路由都不应注册；例外是 payment 的两条渠道回调 ——
+// 渠道没有会话，它的信任来源是验签而不是 SessionAuth，所以必须免鉴权可达。
 func TestBatch3DomainRoutesSkippedWithoutSessionAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	for _, r := range batch3Routers(nil) {
 		r.Register(engine)
 	}
-	if n := len(engine.Routes()); n != 0 {
-		t.Fatalf("sessionAuth 为 nil 时不应注册路由，实际 %d 条", n)
+	got := make([]string, 0, len(engine.Routes()))
+	for _, r := range engine.Routes() {
+		got = append(got, r.Method+" "+r.Path)
+	}
+	sort.Strings(got)
+	want := []string{"POST /api/v1/payments/notify/alipay", "POST /api/v1/payments/notify/wechat"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("无 sessionAuth 时只应剩下两条公开回调\n got=%v want=%v", got, want)
 	}
 }
 

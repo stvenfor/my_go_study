@@ -20,9 +20,7 @@ const (
 type ShortVideoListQuery struct {
 	Scope            string
 	AuthorID         string // scope=user
-	IncludeReviewing bool   // 本人看自己
-	Now              time.Time
-	ReviewDelay      time.Duration
+	IncludeReviewing bool   // 本人看自己，或演示模式下「读取即放行」
 	Offset           int
 	Limit            int
 }
@@ -41,7 +39,7 @@ type Repository interface {
 	LikedIDs(ctx context.Context, userID string, videoIDs []uuid.UUID) (map[uuid.UUID]bool, error)
 	IncrementView(ctx context.Context, id uuid.UUID) (int64, error)
 
-	Stats(ctx context.Context, authorID string, includeReviewing bool, now time.Time, delay time.Duration) (entity.ShortVideoStats, error)
+	Stats(ctx context.Context, authorID string, includeReviewing bool) (entity.ShortVideoStats, error)
 
 	GetTopic(ctx context.Context, id uuid.UUID) (*entity.WysTopic, error)
 	TopicsByIDs(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]*entity.WysTopic, error)

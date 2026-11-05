@@ -4,6 +4,7 @@ go 1.24.6
 
 require (
 	github.com/cloudwego/eino v0.9.21
+	github.com/mszlu521/thunder v0.0.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
@@ -18,6 +19,8 @@ require (
 	google.golang.org/protobuf v1.36.6
 	gorm.io/gorm v1.25.12
 )
+
+replace github.com/mszlu521/thunder => ../thunder
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect

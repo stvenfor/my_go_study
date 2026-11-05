@@ -31,7 +31,7 @@ services:
       AUTH_DEV_TEST_PHONE: ${AUTH_DEV_TEST_PHONE:-}
       AUTH_DEV_TEST_OTP: ${AUTH_DEV_TEST_OTP:-}
       AUTH_DEV_TEST_PASSWORD: ${AUTH_DEV_TEST_PASSWORD:-}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必填：本地见 .env.lan.example（联调可用占位值），部署须注入随机串}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
@@ -51,7 +51,7 @@ services:
       REDIS_ADDR: redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       QUEUE_ENABLED: "true"
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必填：本地见 .env.lan.example（联调可用占位值），部署须注入随机串}
       AUTH_SESSION_WHITELIST_EMAILS: ${AUTH_SESSION_WHITELIST_EMAILS:-}
       AUTH_SESSION_WHITELIST_USER_IDS: ${AUTH_SESSION_WHITELIST_USER_IDS:-}
       SUPABASE_URL: ${SUPABASE_URL:-}

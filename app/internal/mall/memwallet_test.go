@@ -35,6 +35,28 @@ func (m *memCashRepo) GetBalanceFen(_ context.Context, userID string) (int64, er
 	return m.balance[userID], nil
 }
 
+// snapshot/restore 只服务于 payOrderRepo.WithTx：内存仓储没有真事务，
+// 用「进闭包前快照、出错还原」模拟原子性，让「失败必回滚」这条在单测里也有断言点。
+// 真正的 PG 回滚语义由 integration tag 的用例覆盖（见 service_money_tx_integration_test.go）。
+func (m *memCashRepo) snapshot() (map[string]int64, int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make(map[string]int64, len(m.balance))
+	for k, v := range m.balance {
+		cp[k] = v
+	}
+	return cp, len(m.ledger)
+}
+
+func (m *memCashRepo) restore(bal map[string]int64, ledgerLen int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.balance = bal
+	if ledgerLen <= len(m.ledger) {
+		m.ledger = m.ledger[:ledgerLen]
+	}
+}
+
 func (m *memCashRepo) Credit(_ context.Context, userID string, deltaFen int64, reason, refID string) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

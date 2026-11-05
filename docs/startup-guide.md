@@ -88,7 +88,7 @@ cd /path/to/my_go_study   # 进入项目根目录
 | `DATABASE_PASSWORD` | `postgres` | 数据库密码 |
 | `DATABASE_DBNAME` | `my_go_study` | 数据库名 |
 | `REDIS_ADDR` | `localhost:6379` | Redis 地址 |
-| `JWT_SECRET` | （必填） | JWT 签名密钥，生产环境务必修改 |
+| `JWT_SECRET` | **必填** | JWT 签名密钥；dev/lan 可用占位值（启动会 Warn），prod 硬校验（见 §13） |
 | `SUPABASE_URL` | `configs/supabase.env` | Supabase Project URL |
 | `SUPABASE_ANON_KEY` | `configs/supabase.env` | anon / publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | `.env.local` | service_role；勿写入入库文件 |
@@ -493,8 +493,11 @@ make test-realtime   # 一键联调（需 Redis + make run）
 | `make test` | 运行全部单元测试 |
 | `make tidy` | `go mod tidy` |
 | `make air` | Air 热加载开发 |
-| `make migrate-up` | 执行数据库迁移（升级） |
+| `make migrate-up` | 应用 `migrations/` 全部未执行迁移（DSN 取自 `.env` 的 `DATABASE_*`） |
 | `make migrate-down` | 回滚最近一次迁移 |
+| `make migrate-status` | 库内版本 + 目录最新版本 |
+| `make migrate-baseline` | 历史 AutoMigrate 库首次接入迁移链（`force` 到最新，不重放 SQL） |
+| `make migrate-force VERSION=<n>` | 迁移中断留下 `dirty` 时重置版本号 |
 | `make docker-up` | 构建并启动全部容器（app + worker + postgres + redis；注入 SUPABASE_*） |
 | `make docker-down` | 停止并移除上述容器 |
 | `make lan-up` / `lan-down` | 局域网全栈（需 `.env.lan`；改代码需重建镜像） |
@@ -578,7 +581,8 @@ cd my_go_study
 
 ### `jwt.secret 不能为空`
 
-设置环境变量 `JWT_SECRET`，或检查 `configs/config.yaml` 中 `jwt.secret` 是否有值。
+`configs/config.yaml` 里 `jwt.secret` 刻意留空（不再有兜底默认密钥），值只能由 `JWT_SECRET` 注入。
+本机用 `./scripts/load-env.sh <cmd>` 或 `make run`（会自动 source `.env`）；IDE 直跑请把 §9「IDE 环境变量」配全。
 
 ### `make docker-up` 报 `docker: No such file or directory`
 
@@ -633,19 +637,93 @@ cd my_go_study
 make deps-up
 # 或: docker compose -f docker/docker-compose.yml up -d postgres redis
 
-# 3. 拉依赖
-go mod tidy
+# 3. 首次/落后时把 schema 推平（本机 APP_ENV=dev 有 AutoMigrate 逃生门，可跳过）
+make migrate-up
 
 # 4. 启动服务
 make run
 ```
+
+> 平时**不要**跑 `make tidy` / 逐模块 `go mod tidy`：缺依赖时它会把 viper / zap / gorm 拉到最新版
+> （AGENTS.md 约束 9）。要加依赖就在对应模块 `go.mod` 显式写 pinned 版本。
 
 ---
 
 ## 12. 生产部署提示
 
 1. 设置 `APP_ENV=prod`，使用 `configs/config.prod.yaml`
-2. **务必修改** `JWT_SECRET` 和数据库密码
+2. **务必修改** `JWT_SECRET` 和数据库密码（见 §13，prod 由 `config.Load` 硬校验）
 3. 数据库 `sslmode` 建议设为 `require`
-4. 使用 `make build` 编译二进制，或通过 `docker/Dockerfile` 多阶段构建镜像部署
-5. `.env` 须入库；`SUPABASE_SERVICE_ROLE_KEY` 仅放 `.env.local`；推送前运行 `make check-secrets`
+4. **发布流程先跑迁移，再滚更服务**：`make migrate-up`（K8s 用 Job / compose 用一次性 `migrate` 服务）。
+   进程启动期不再建表（`APP_ENV=prod|lan` 代码强制 `database.auto_migrate=false`），
+   库版本落后 / `dirty` / 空库一律**拒绝启动**——`/health` 连不上即是信号，见 §14
+5. 使用 `make build` 编译二进制，或通过 `docker/Dockerfile` 多阶段构建镜像部署
+   （镜像内含 `/app/migrations` + `/app/migrate`，API 启动要做版本比对）
+6. `.env` 须入库；`SUPABASE_SERVICE_ROLE_KEY` 仅放 `.env.local`；推送前运行 `make check-secrets`
+
+---
+
+## 13. 密钥
+
+**本地可弱、部署必改**：`.env` 与 `.env.lan` 是**有意入库**的文件（历史 commit `afbc29f`），里面
+`JWT_SECRET=change-me-in-production`、`DATABASE_PASSWORD=postgres` 这类占位值只允许出现在本机联调。
+任何共享 / 生产环境复用同一组值都等于没有密钥——这是本项目此前最大的未闭环风险（`docs/project-detail.md` H11）。
+
+三道闸门（已落地）：
+
+| 层 | 位置 | 行为 |
+|----|------|------|
+| compose | `docker/docker-compose.yml`、`docker/docker-compose.lan.yml` | `JWT_SECRET: ${JWT_SECRET:?...}`——**没配就直接拒绝**，不再兜底默认值 |
+| 配置加载 | `common/config/secrets.go`（`config.Load` 内） | `APP_ENV=prod/production` 硬校验：JWT 非占位值 / 长度 ≥32 / 无空白 / 非全同字符；`DATABASE_PASSWORD` 非默认且 ≥8；`SUPABASE_SERVICE_ROLE_KEY` 不得来自入库 `.env` |
+| 启动日志 | `app/cmd/api/main.go` | lab 环境放行但打印 `密钥体检：存在联调可用、生产必改的配置 {findings:[…]}` |
+| 推送前扫描 | `scripts/check-secrets.sh` | 三级判定，见下 |
+
+`configs/config.yaml` 的 `jwt.secret` 现为**空串**：密钥只能从 `JWT_SECRET` 注入，缺失即 `jwt.secret 不能为空` 启动失败。
+
+### `make check-secrets` 判定口径
+
+| 判定 | 触发条件 | 结果 |
+|------|----------|------|
+| ❌ 硬失败 | `sb_secret_*` / `SUPABASE_SERVICE_ROLE_KEY=sb_`；非 lab 文件里的占位默认值；secret 类变量含空白、疑似高熵真值（≥20 位且 ≥3 类字符）、或长度 <16 | 退出 1，拦推送 |
+| ⚠️ 提示 | 有意入库的 `.env` 里的占位弱值 | 仅提示，退出 0（否则每次推送都要改 `.env`） |
+| `CHECK_SECRETS_STRICT=1` | 把上面「提示」升级为失败 | 部署前 / CI 用 |
+
+`*.example` 模板与设计上公开的标识位（`SUPABASE_ANON_KEY`、各平台 `*_APP_ID` / `*_APP_KEY`）不参与弱值与高熵判定。
+也可显式传文件自检：`./scripts/check-secrets.sh /tmp/我新写的.env`。
+
+### 轮换
+
+改 `JWT_SECRET` 会使**已签发的 access token 全部失效**（Flutter 端会走一次 `/api/v1/user/refresh` 或重新登录）；
+`DATABASE_PASSWORD` 需与 Postgres 侧同步改。两者都要双端确认后一起发版，不在联调中途随手换。
+
+---
+
+## 14. 数据库 schema 闸门
+
+一句话：**进程启动不再建表，`migrations/` 是 schema 的单一真相，版本落后就拒绝启动。**
+
+| 配置（`configs/config.yaml` → `database.*`） | env | 默认 | prod/lan |
+|-------------------------------------------|-----|------|----------|
+| `auto_migrate` | `DATABASE_AUTO_MIGRATE` | `false` | 代码强制 `false`（`common/config.NoDDLAppEnv`） |
+| `schema_version_check` | `DATABASE_SCHEMA_VERSION_CHECK` | `true` | 不可关（关掉的后果是老 schema 上跑新代码） |
+| `migrations_dir` | `DATABASE_MIGRATIONS_DIR` | `migrations` | 镜像里是 `/app/migrations` |
+
+唯一入口 `app/internal/schemaboot.Boot()`（API 与 Worker 共用）。启动即失败的五种情况与处置：
+
+| 日志 | 含义 | 处置 |
+|------|------|------|
+| `schema 版本落后：库内 X，迁移目录最高 Y；缺失 N 个迁移：…` | 迁移没跑完 | `make migrate-up` |
+| `上一次迁移中断（schema_migrations.dirty=true…）` | 某条迁移跑到一半失败 | 修好 SQL → `make migrate-force VERSION=<n>` |
+| `数据库未初始化：缺少 schema_migrations 且无业务表` | 空库直接上正式环境 | 发布流程先 `make migrate-up`（compose 由 `migrate` 服务代劳） |
+| `migrations 存在重复版本号` | 两个文件同号，后一个会被永久跳过 | 把后一个改成更大的唯一版本号 |
+| `库由历史 AutoMigrate 建立，尚无 schema_migrations 版本记录`（Warn，放行） | 旧库首次接入 | 确认 schema 已最新后 `make migrate-baseline` |
+
+本机想跳过迁移：`APP_ENV=dev`（`configs/config.dev.yaml` 里 `auto_migrate: true`）——空库也能 `make run`，
+但**一旦库里出现过 `schema_migrations`，本机同样受版本校验约束**。
+
+compose（`make lan-up` / `make docker-up`）里多了一个一次性 `migrate` 服务，`app`/`worker` 以
+`depends_on: service_completed_successfully` 等它；判库与自动基线见
+[`scripts/migrate-entrypoint.sh`](../scripts/migrate-entrypoint.sh)（想禁掉自动基线：`MIGRATE_BASELINE=off`）。
+
+加表 / 加索引 / 回滚的完整步骤：[`docs/migration-workflow.md`](./migration-workflow.md)。
+

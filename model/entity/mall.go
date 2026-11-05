@@ -202,21 +202,21 @@ type MallProductDetail struct {
 
 // WysMallSKU 规格与价格。金额用字符串承载 numeric，避免 float。
 type WysMallSKU struct {
-	SKUID       int64          `json:"sku_id" gorm:"column:sku_id;primaryKey"`
-	ProductID   int64          `json:"product_id"`
-	SKUCode     string         `json:"sku_code" gorm:"column:sku_code"`
-	Title       string         `json:"title"`
+	SKUID       int64           `json:"sku_id" gorm:"column:sku_id;primaryKey"`
+	ProductID   int64           `json:"product_id"`
+	SKUCode     string          `json:"sku_code" gorm:"column:sku_code"`
+	Title       string          `json:"title"`
 	Specs       json.RawMessage `json:"specs" gorm:"type:jsonb"`
 	Price       string          `json:"price" gorm:"type:numeric(10,2)"` // CNY
 	PricePoints int64           `json:"price_points" gorm:"column:price_points"`
-	StockQty    int            `json:"stock_qty"`
-	Version     int            `json:"version"`
-	Status      int16          `json:"status"`
-	DeliverType *int16         `json:"deliver_type,omitempty"`
-	ContentURL  *string        `json:"content_url,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   *time.Time     `json:"deleted_at,omitempty"`
+	StockQty    int             `json:"stock_qty"`
+	Version     int             `json:"version"`
+	Status      int16           `json:"status"`
+	DeliverType *int16          `json:"deliver_type,omitempty"`
+	ContentURL  *string         `json:"content_url,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	DeletedAt   *time.Time      `json:"deleted_at,omitempty"`
 }
 
 func (WysMallSKU) TableName() string { return WysMallSKUTable }
@@ -267,21 +267,21 @@ func (WysMallOrder) TableName() string { return WysMallOrderTable }
 
 // WysMallOrderItem 订单行快照。
 type WysMallOrderItem struct {
-	ItemID       int64          `json:"item_id" gorm:"primaryKey"`
-	OrderID      int64          `json:"order_id"`
-	SKUID        int64          `json:"sku_id" gorm:"column:sku_id"`
-	ProductID    int64          `json:"product_id"`
-	Kind         int16          `json:"kind"`
-	ProductTitle string         `json:"product_title"`
-	CoverURL     *string        `json:"cover_url,omitempty"`
+	ItemID       int64           `json:"item_id" gorm:"primaryKey"`
+	OrderID      int64           `json:"order_id"`
+	SKUID        int64           `json:"sku_id" gorm:"column:sku_id"`
+	ProductID    int64           `json:"product_id"`
+	Kind         int16           `json:"kind"`
+	ProductTitle string          `json:"product_title"`
+	CoverURL     *string         `json:"cover_url,omitempty"`
 	Specs        json.RawMessage `json:"specs" gorm:"type:jsonb"`
 	Price        string          `json:"price" gorm:"type:numeric(10,2)"`
 	PricePoints  int64           `json:"price_points"`
 	Qty          int             `json:"qty"`
 	LineAmount   string          `json:"line_amount" gorm:"type:numeric(10,2)"`
 	LinePoints   int64           `json:"line_points"`
-	ContentURL   *string        `json:"content_url,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
+	ContentURL   *string         `json:"content_url,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
 }
 
 func (WysMallOrderItem) TableName() string { return WysMallOrderItemTable }
@@ -300,14 +300,14 @@ func (WysMallOrderLog) TableName() string { return WysMallOrderLogTable }
 
 // WysMallPayment 支付单。
 type WysMallPayment struct {
-	PaymentID      int64          `json:"payment_id" gorm:"primaryKey"`
-	PaymentNo      string         `json:"payment_no"`
-	OrderID        int64          `json:"order_id"`
-	UserID         string         `json:"user_id" gorm:"size:64"`
-	PaymentChannel int16          `json:"payment_channel"`
-	Amount         string         `json:"amount" gorm:"type:numeric(10,2)"`
-	Status         int16          `json:"status"`
-	ChannelTradeNo *string        `json:"channel_trade_no,omitempty"`
+	PaymentID      int64           `json:"payment_id" gorm:"primaryKey"`
+	PaymentNo      string          `json:"payment_no"`
+	OrderID        int64           `json:"order_id"`
+	UserID         string          `json:"user_id" gorm:"size:64"`
+	PaymentChannel int16           `json:"payment_channel"`
+	Amount         string          `json:"amount" gorm:"type:numeric(10,2)"`
+	Status         int16           `json:"status"`
+	ChannelTradeNo *string         `json:"channel_trade_no,omitempty"`
 	ChannelPayload json.RawMessage `json:"channel_payload" gorm:"type:jsonb"`
 	PaidAt         *time.Time      `json:"paid_at,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`

@@ -26,7 +26,8 @@ func NewRouter(svc *Service, sessionAuth, accountGate gin.HandlerFunc) *Router {
 	}
 }
 
-// Register 挂载 /api/v1/short-videos。8 条路由，对照切片前 short_video_routes.go 基线。
+// Register 挂载 /api/v1/short-videos。9 条路由：切片前 short_video_routes.go 基线 8 条
+// + parity-p0-4 的人工放行 1 条。
 func (r *Router) Register(engine *gin.Engine) {
 	if r == nil || r.handler == nil || r.sessionAuth == nil {
 		return
@@ -45,5 +46,6 @@ func (r *Router) Register(engine *gin.Engine) {
 		g.POST("/:id/like", r.handler.Like)
 		g.DELETE("/:id/like", r.handler.Unlike)
 		g.POST("/:id/view", r.handler.View)
+		g.POST("/:id/review", r.handler.Review)
 	}
 }

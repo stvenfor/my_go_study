@@ -1,6 +1,12 @@
 # config.lan.yaml — 本机局域网后端（本地 Auth + Postgres + 局域网暴露）。
 # 真实 IP / 白名单见 .env.lan；详见 docs/lan-backend-host.md · docs/local-auth-postgres.md
 
+database:
+  # compose 里 DDL 交一次性 migrate 服务（parity-p0-1），API/Worker 启动零建表。
+  # 代码层 APP_ENV=lan|prod 也会强制 false，这里的 true 开不起来。
+  auto_migrate: false
+  schema_version_check: true
+
 server:
   mode: debug
 
@@ -22,3 +28,11 @@ scheduler:
   enabled: true
   hourly_notify:
     enabled: false
+  # 同 dev：查单兜底开着（无凭据只 Warn），对账需真实商户凭据故关。
+  payment:
+    enabled: true
+    reconcile_enabled: false
+
+# 局域网联调：同 dev，发布即放行，避免 Flutter 真机看到空发现流
+short_video:
+  review_mode: auto_allow_local_only

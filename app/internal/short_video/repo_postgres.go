@@ -49,17 +49,16 @@ func (r *PostgresRepository) SoftDelete(ctx context.Context, id uuid.UUID, userI
 
 func (r *PostgresRepository) List(ctx context.Context, q ShortVideoListQuery) ([]entity.WysShortVideo, int64, error) {
 	tx := r.db.WithContext(ctx).Model(&entity.WysShortVideo{}).Where("deleted_at IS NULL")
-	threshold := q.Now.Add(-q.ReviewDelay)
 
 	switch q.Scope {
 	case ShortVideoScopeDiscovery:
-		tx = tx.Where("status = ? OR (status = ? AND created_at <= ?)",
-			entity.ShortVideoStatusNormal, entity.ShortVideoStatusReviewing, threshold)
+		if !q.IncludeReviewing {
+			tx = tx.Where("status = ?", entity.ShortVideoStatusNormal)
+		}
 	case ShortVideoScopeUser:
 		tx = tx.Where("user_id = ?", q.AuthorID)
 		if !q.IncludeReviewing {
-			tx = tx.Where("status = ? OR (status = ? AND created_at <= ?)",
-				entity.ShortVideoStatusNormal, entity.ShortVideoStatusReviewing, threshold)
+			tx = tx.Where("status = ?", entity.ShortVideoStatusNormal)
 		}
 	default:
 		return nil, 0, nil
@@ -160,13 +159,11 @@ func (r *PostgresRepository) IncrementView(ctx context.Context, id uuid.UUID) (i
 	return viewCount, err
 }
 
-func (r *PostgresRepository) Stats(ctx context.Context, authorID string, includeReviewing bool, now time.Time, delay time.Duration) (entity.ShortVideoStats, error) {
+func (r *PostgresRepository) Stats(ctx context.Context, authorID string, includeReviewing bool) (entity.ShortVideoStats, error) {
 	tx := r.db.WithContext(ctx).Model(&entity.WysShortVideo{}).
 		Where("user_id = ? AND deleted_at IS NULL", authorID)
 	if !includeReviewing {
-		threshold := now.Add(-delay)
-		tx = tx.Where("status = ? OR (status = ? AND created_at <= ?)",
-			entity.ShortVideoStatusNormal, entity.ShortVideoStatusReviewing, threshold)
+		tx = tx.Where("status = ?", entity.ShortVideoStatusNormal)
 	}
 	var stats entity.ShortVideoStats
 	err := tx.Select("COUNT(*) AS video_count, COALESCE(SUM(view_count),0) AS view_count, COALESCE(SUM(like_count),0) AS like_count").

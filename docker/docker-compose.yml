@@ -59,17 +59,45 @@ services:
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
 
+  # 一次性迁移服务（parity-p0-1）：app/worker 启动前把 schema 推平后退出。
+  # 复用 app 镜像（镜像里带 /app/migrate + /app/migrations + psql）。
+  # 判库逻辑见 scripts/migrate-entrypoint.sh；想禁用旧库自动基线：MIGRATE_BASELINE=off。
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: my_go_study-app:latest
+    container_name: my_go_study_migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_DBNAME: my_go_study
+      DATABASE_SSLMODE: disable
+      MIGRATE_BASELINE: ${MIGRATE_BASELINE:-auto}
+    command: ["/app/scripts/migrate-entrypoint.sh"]
+    restart: "no"
+
   app:
     build:
       context: ..
       dockerfile: docker/Dockerfile
       args:
         GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+    image: my_go_study-app:latest
     container_name: my_go_study_app
     # 冷启动时 RabbitMQ 的 AMQP 监听可能比 healthcheck 慢一拍，app 连不上会直接退出；
     # 加重启策略让其自愈，避免 make lan-up 首启偶发 Exited(1)。
     restart: unless-stopped
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -88,10 +116,16 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
+      # compose 里 DDL 只由一次性 migrate 服务负责（parity-p0-1）：显式置 false，
+      # 免得 APP_ENV=dev 时 configs/config.dev.yaml 的逃生门把建表又带回启动路径，
+      # 和 worker 并发撞 DDL。要临时恢复建表：DATABASE_AUTO_MIGRATE=true make docker-up。
+      DATABASE_AUTO_MIGRATE: ${DATABASE_AUTO_MIGRATE:-false}
+      DATABASE_SCHEMA_VERSION_CHECK: ${DATABASE_SCHEMA_VERSION_CHECK:-true}
+      DATABASE_MIGRATIONS_DIR: /app/migrations
       REDIS_ADDR: redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:-http://elasticsearch:9200}
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必填：本地见 .env.example，部署须注入随机串（不再有兜底默认值）}
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       GRPC_ENABLED: ${GRPC_ENABLED:-true}
       GRPC_PORT: ${GRPC_PORT:-9090}
@@ -141,9 +175,12 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       DATABASE_DBNAME: my_go_study
+      DATABASE_AUTO_MIGRATE: ${DATABASE_AUTO_MIGRATE:-false}
+      DATABASE_SCHEMA_VERSION_CHECK: ${DATABASE_SCHEMA_VERSION_CHECK:-true}
+      DATABASE_MIGRATIONS_DIR: /app/migrations
       REDIS_ADDR: redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必填：本地见 .env.example，部署须注入随机串（不再有兜底默认值）}
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}

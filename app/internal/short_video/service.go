@@ -8,6 +8,11 @@
 //     community 与 short_video 双域消费，已上提跨域实体层）；
 //     原 `errors.Is(err, repository.ErrCommunityNotFound)` 分支随之删除 ——
 //     GetTopic 的 Postgres 实现本就返回本域 ErrNotFound，该分支是历史冗余。
+//
+// 审核语义（parity-p0-4）：发布 → `reviewing`，此后状态只由人工放行
+// （Approve）改变；「等待若干秒即自动过审」的假审核路径已删除。
+// 仅当 config 显式开启演示模式（short_video.review_mode=auto_allow_local_only
+// 且 APP_ENV 非正式）时，读路径才就地放行，保证 Flutter 联调不阻塞。
 package short_video
 
 import (
@@ -20,6 +25,9 @@ import (
 
 	"github.com/google/uuid"
 	"model/entity"
+
+	"app/internal/access"
+	"common/config"
 )
 
 var (
@@ -44,18 +52,25 @@ var (
 
 // Service 小视频。
 type Service struct {
-	repo        Repository
-	reviewDelay time.Duration
+	repo Repository
+	// accessSvc 为 nil 时人工放行一律拒绝（缺权限体系 = 不放行）。
+	accessSvc *access.Service
+	// demoMedia 为 true 时允许用内置公网样例 URL 填充未上传的媒体（仅联调/演示）；
+	// 正式环境对象存储未接入，缺 URL 必须报错而不是伪造媒体。
+	demoMedia   bool
+	autoApprove bool
 	now         func() time.Time
 }
 
-func NewService(repo Repository, reviewDelaySeconds int) *Service {
-	if reviewDelaySeconds <= 0 {
-		reviewDelaySeconds = 30
-	}
+// NewService 创建。autoApprove 仅应来自 config.ShortVideoAutoAllowUnreviewed
+// （演示模式：读取即放行）；正式环境必须为 false，未过审内容只有人工放行后可见。
+// appEnv 只用于 IsLabAppEnv 判定演示媒体填充，正式环境（prod/production）关闭。
+func NewService(repo Repository, accessSvc *access.Service, autoApprove bool, appEnv string) *Service {
 	return &Service{
 		repo:        repo,
-		reviewDelay: time.Duration(reviewDelaySeconds) * time.Second,
+		accessSvc:   accessSvc,
+		demoMedia:   config.IsLabAppEnv(appEnv),
+		autoApprove: autoApprove,
 		now:         time.Now,
 	}
 }
@@ -119,6 +134,10 @@ func (u *Service) Create(ctx context.Context, userID string, in CreateShortVideo
 	}
 
 	id := uuid.New()
+	// 对象存储未接入：正式环境不再用内置样例 URL 冒充已上传的视频/封面。
+	if !u.demoMedia && (blankMediaURL(in.VideoURL) || blankMediaURL(in.CoverURL)) {
+		return nil, fmt.Errorf("%w: 缺少 video_url / cover_url，上传通道未接入（见 docs/placeholder-inventory.md）", ErrInvalid)
+	}
 	videoURL, coverURL := pickDefaultMedia(id, in.VideoURL, in.CoverURL)
 	duration := defaultShortDuration
 	if in.Duration != nil && strings.TrimSpace(*in.Duration) != "" {
@@ -183,12 +202,13 @@ func (u *Service) List(ctx context.Context, viewerID, scope, userID string, page
 	}
 
 	authorID := strings.TrimSpace(userID)
-	includeReviewing := false
+	// 本人看自己带 reviewing；演示模式（autoApprove）下读取即放行，同样放行查询
+	includeReviewing := u.autoApprove
 	if scope == ShortVideoScopeUser {
 		if authorID == "" {
 			authorID = viewerID
 		}
-		includeReviewing = authorID == viewerID
+		includeReviewing = includeReviewing || authorID == viewerID
 	}
 
 	now := u.now()
@@ -196,8 +216,6 @@ func (u *Service) List(ctx context.Context, viewerID, scope, userID string, page
 		Scope:            scope,
 		AuthorID:         authorID,
 		IncludeReviewing: includeReviewing,
-		Now:              now,
-		ReviewDelay:      u.reviewDelay,
 		Offset:           (page - 1) * size,
 		Limit:            size,
 	}
@@ -228,7 +246,7 @@ func (u *Service) Get(ctx context.Context, viewerID, idStr string) (*ShortVideoD
 	if err := u.lazyApproveOne(ctx, row, now); err != nil {
 		return nil, err
 	}
-	if !u.visibleTo(viewerID, row, now) {
+	if !u.visibleTo(viewerID, row) {
 		return nil, ErrNotFound
 	}
 	return u.toDTO(ctx, viewerID, row, nil, true)
@@ -290,9 +308,8 @@ func (u *Service) Profile(ctx context.Context, viewerID, userID string) (*ShortV
 	if target == "" {
 		target = viewerID
 	}
-	includeReviewing := target == viewerID
-	now := u.now()
-	stats, err := u.repo.Stats(ctx, target, includeReviewing, now, u.reviewDelay)
+	includeReviewing := u.autoApprove || target == viewerID
+	stats, err := u.repo.Stats(ctx, target, includeReviewing)
 	if err != nil {
 		return nil, err
 	}
@@ -315,6 +332,10 @@ func (u *Service) Profile(ctx context.Context, viewerID, userID string) (*ShortV
 	return out, nil
 }
 
+func blankMediaURL(u *string) bool {
+	return u == nil || strings.TrimSpace(*u) == ""
+}
+
 func pickDefaultMedia(id uuid.UUID, videoURL, coverURL *string) (string, string) {
 	idx := int(id[0]) % len(defaultShortVideoURLs)
 	v := defaultShortVideoURLs[idx]
@@ -335,26 +356,56 @@ func statusString(s int16) string {
 	return "reviewing"
 }
 
-func (u *Service) dueForApprove(row *entity.WysShortVideo, now time.Time) bool {
-	return row.Status == entity.ShortVideoStatusReviewing &&
-		!row.CreatedAt.After(now.Add(-u.reviewDelay))
-}
-
-func (u *Service) visibleTo(viewerID string, row *entity.WysShortVideo, now time.Time) bool {
+// visibleTo 未过审内容只有作者本人可见；不存在「等一会儿就对外可见」的路径。
+func (u *Service) visibleTo(viewerID string, row *entity.WysShortVideo) bool {
 	if row.DeletedAt != nil {
 		return false
 	}
 	if row.UserID == viewerID {
 		return true
 	}
-	if row.Status == entity.ShortVideoStatusNormal {
-		return true
-	}
-	return u.dueForApprove(row, now)
+	return row.Status == entity.ShortVideoStatusNormal
 }
 
+// Approve 人工放行（POST /api/v1/short-videos/:id/review）。
+// 权限对齐现成的平台能力码 role.assign_platform（平台管理员专属），不新建权限码以免动迁移。
+func (u *Service) Approve(ctx context.Context, actorID, idStr string) (*ShortVideoDTO, error) {
+	if u.accessSvc == nil {
+		return nil, ErrForbidden
+	}
+	if err := u.accessSvc.RequirePermission(ctx, actorID, entity.PermRoleAssignPlatform, nil); err != nil {
+		if errors.Is(err, access.ErrForbidden) {
+			return nil, ErrForbidden
+		}
+		return nil, err
+	}
+	id, err := uuid.Parse(strings.TrimSpace(idStr))
+	if err != nil {
+		return nil, fmt.Errorf("%w: id", ErrInvalid)
+	}
+	row, err := u.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if row.DeletedAt != nil {
+		return nil, ErrNotFound
+	}
+	if row.Status != entity.ShortVideoStatusReviewing {
+		// 已是 normal 时幂等返回，避免重复放行把 approved_at 冲掉
+		return u.toDTO(ctx, actorID, row, nil, true)
+	}
+	now := u.now()
+	if err := u.repo.MarkApproved(ctx, id, now); err != nil {
+		return nil, err
+	}
+	row.Status = entity.ShortVideoStatusNormal
+	row.ApprovedAt = &now
+	return u.toDTO(ctx, actorID, row, nil, true)
+}
+
+// lazyApproveOne 演示模式下把待审内容就地放行；正式模式（autoApprove=false）什么都不做。
 func (u *Service) lazyApproveOne(ctx context.Context, row *entity.WysShortVideo, now time.Time) error {
-	if !u.dueForApprove(row, now) {
+	if !u.autoApprove || row.Status != entity.ShortVideoStatusReviewing {
 		return nil
 	}
 	if err := u.repo.MarkApproved(ctx, row.ID, now); err != nil {
@@ -367,9 +418,12 @@ func (u *Service) lazyApproveOne(ctx context.Context, row *entity.WysShortVideo,
 }
 
 func (u *Service) lazyApproveBatch(ctx context.Context, list []entity.WysShortVideo, now time.Time) error {
+	if !u.autoApprove {
+		return nil
+	}
 	ids := make([]uuid.UUID, 0)
 	for i := range list {
-		if u.dueForApprove(&list[i], now) {
+		if list[i].Status == entity.ShortVideoStatusReviewing {
 			ids = append(ids, list[i].ID)
 			list[i].Status = entity.ShortVideoStatusNormal
 			t := now

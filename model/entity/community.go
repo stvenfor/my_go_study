@@ -39,10 +39,10 @@ type WysPost struct {
 	LikeCount     int        `gorm:"not null;default:0"`
 	CommentCount  int        `gorm:"not null;default:0"`
 	// Heat = like_count*2 + comment_count；热门 Tab 排序用。
-	Heat          int64      `gorm:"not null;default:0;index"`
-	DeletedAt     *time.Time `gorm:"index"`
-	CreatedAt     time.Time  `gorm:"autoCreateTime;index"`
-	UpdatedAt     time.Time  `gorm:"autoUpdateTime"`
+	Heat      int64      `gorm:"not null;default:0;index"`
+	DeletedAt *time.Time `gorm:"index"`
+	CreatedAt time.Time  `gorm:"autoCreateTime;index"`
+	UpdatedAt time.Time  `gorm:"autoUpdateTime"`
 }
 
 func (WysPost) TableName() string { return "wys_posts" }

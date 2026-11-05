@@ -9,6 +9,9 @@ log:
 
 database:
   host: localhost
+  # 本机逃生门（parity-p0-1）：空库也能 make run 起来。
+  # 注意此时版本校验会走「库无 schema_migrations」分支，只提示不拦启动。
+  auto_migrate: true
 
 redis:
   addr: localhost:6379
@@ -39,3 +42,13 @@ scheduler:
   enabled: true
   hourly_notify:
     enabled: false
+  # 本地没有商户凭据时，查单只会逐条 Warn（不会误置 failed），保持开启以便联调核销链路。
+  # 对账需要真实凭据 + 渠道账单，dev 关闭以免天天写假差异。
+  payment:
+    enabled: true
+    reconcile_enabled: false
+
+# 演示/联调：短视频发布后读取即放行，Flutter 侧不会看到空白发现流
+# （仅因 APP_ENV=dev 非正式才生效；正式环境永远是 reject_until_manual）
+short_video:
+  review_mode: auto_allow_local_only

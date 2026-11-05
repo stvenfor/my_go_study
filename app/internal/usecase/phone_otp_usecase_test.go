@@ -48,6 +48,29 @@ func TestPhoneOTPUsecase_VerifyPhoneOTP_Validation(t *testing.T) {
 	}
 }
 
+// parity-p0-5 硬门槛：APP_ENV=production 时固定测试号 + 固定码 123456 不得换到登录态。
+func TestPhoneOTP_ProductionRejectsDevFixedCode(t *testing.T) {
+	auth := config.AuthConfig{DevTestPhone: "13400000000", DevTestOTP: "123456"}
+
+	if _, err := NewPhoneOTPUsecase(&pkgsb.Client{}, auth, "production").
+		VerifyPhoneOTP(context.Background(), "13400000000", "123456"); err != ErrPhoneLoginNotAvailable {
+		t.Fatalf("supabase prod verify: want ErrPhoneLoginNotAvailable, got %v", err)
+	}
+
+	local := NewLocalAuthUsecase(nil, nil, auth, "production")
+	if err := local.SendPhoneOTP(context.Background(), "13400000000"); err != ErrPhoneLoginNotAvailable {
+		t.Fatalf("local prod send: want ErrPhoneLoginNotAvailable, got %v", err)
+	}
+	if _, err := local.VerifyPhoneOTP(context.Background(), "13400000000", "123456"); err != ErrPhoneLoginNotAvailable {
+		t.Fatalf("local prod verify: want ErrPhoneLoginNotAvailable, got %v", err)
+	}
+
+	// 联调环境：发送仍是 no-op 成功（Placeholder，见 docs/placeholder-inventory.md），登录放行。
+	if err := NewLocalAuthUsecase(nil, nil, auth, "dev").SendPhoneOTP(context.Background(), "13400000000"); err != nil {
+		t.Fatalf("dev send should no-op succeed, got %v", err)
+	}
+}
+
 func TestAuthConfig_IsDevTestPhone(t *testing.T) {
 	auth := config.AuthConfig{DevTestPhone: "13400000000,13400000001,13400000002,13400000003,13400000004"}
 	cases := []struct {

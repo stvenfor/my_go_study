@@ -24,6 +24,7 @@
 | **数据分析 gRPC 联调** | [grpc/analytics-flutter-trial.md](./grpc/analytics-flutter-trial.md) | ✅ 列表/详情试验 |
 | **Docker 联调运维（A/B/C）** | [docker/lan-ops-abc-beginner.md](./docker/lan-ops-abc-beginner.md) | ✅ Flutter 对齐 · 改码生效 · 排障；飞书 tool / Docker 相关文档纪要 |
 | 消息队列 | [message-queue.md](./message-queue.md) | ✅ RabbitMQ + Redis Pub/Sub |
+| **假实现清单** | [placeholder-inventory.md](./placeholder-inventory.md) | ✅ 五态登记 stub/mock/seed 路径 + `degraded_path_total` 指标 |
 | 飞书同步 | [FEISHU_SYNC.md](./FEISHU_SYNC.md) | ✅ |
 | **本机局域网后端** | [lan-backend-host.md](./lan-backend-host.md) | ✅ `make lan-up`（现为本地 Auth） |
 | **两端联调启动手册** | [dual-end-lan-startup.md](./dual-end-lan-startup.md) | ✅ Go + Flutter 配置与启动清单 |
@@ -133,7 +134,11 @@ cp .env.local.example .env.local   # 填写 SUPABASE_SERVICE_ROLE_KEY（不入�
 
 加载顺序：`config.yaml` → `config.{APP_ENV}.yaml` → 环境变量 → supabase.env / `.env.local`。
 
-推送前：`make check-secrets`。
+推送前：`make check-secrets`（service_role 真值 = 硬失败；`.env` 里的占位弱值 = 提示，部署口径下用 `CHECK_SECRETS_STRICT=1` 变硬失败）。
+
+**本地可弱、部署必改**：`.env` / `.env.lan` 是有意入库的联调文件，其中 `JWT_SECRET` / `DATABASE_PASSWORD` 为占位值。
+`make lan-up` 起在 compose 层就要求 `JWT_SECRET` 必须存在；`APP_ENV=prod` 起在 `config.Load` 里硬校验（占位值、长度 <32、默认 DB 口令、service_role 取自 `.env` 一律拒绝启动）。
+→ [startup-guide.md](./startup-guide.md) §13 密钥
 
 完整配置说明 → [startup-guide.md](./startup-guide.md) §3
 

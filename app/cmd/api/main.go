@@ -39,6 +39,7 @@ import (
 	"app/internal/payment"
 	"app/internal/points"
 	"app/internal/purchase_calculator"
+	"app/internal/schemaboot"
 	"app/internal/shared"
 	"app/internal/short_video"
 	"app/internal/transaction"
@@ -50,11 +51,14 @@ import (
 	repoqueue "app/internal/repository/queue"
 	redisrepo "app/internal/repository/redis"
 	sbrepo "app/internal/repository/supabase"
+	"app/internal/rag"
 	"app/internal/usecase"
 	"common/config"
 	jwtmanager "common/jwt"
 	"common/logger"
+	"common/metrics"
 	"core/database"
+	"core/authz"
 	"core/jpush"
 	"core/queue"
 	"core/rongcloud"
@@ -63,6 +67,7 @@ import (
 	"gorm.io/gorm"
 	"model/entity"
 	"model/provider"
+	"model/repository"
 )
 
 func main() {
@@ -89,6 +94,15 @@ func run() error {
 	}
 	defer logger.Sync()
 
+	if findings := cfg.SecretFindings(); len(findings) > 0 {
+		// lab 环境放行但必须可见：部署前照单改掉（校验入口 common/config/secrets.go）。
+		log.Warn("密钥体检：存在联调可用、生产必改的配置",
+			zap.Strings("findings", findings),
+			zap.String("app_env", cfg.AppEnv),
+			zap.String("inventory", "docs/startup-guide.md#密钥"),
+		)
+	}
+
 	if !cfg.Supabase.Enabled() && !cfg.Auth.IsLocalProvider() {
 		log.Warn("Supabase 未启用：请检查 configs/supabase.env，或设置 auth.provider=local")
 	}
@@ -104,7 +118,28 @@ func run() error {
 	}
 	defer sqlDB.Close()
 
-	if err := autoMigrate(db); err != nil {
+	// 启动期唯一 DDL 入口（parity-p0-1）：auto_migrate=false 时这里一条 DDL 都不跑，
+	// 只校验 schema_migrations 版本，落后即拒绝启动。
+	if err := schemaboot.Boot(db, schemaboot.Options{
+		AppEnv:        cfg.AppEnv,
+		AutoMigrate:   cfg.Database.AutoMigrate,
+		VersionCheck:  cfg.Database.SchemaVersionCheck,
+		MigrationsDir: cfg.Database.MigrationsDir,
+		Required: []schemaboot.Step{
+			{Name: "核心建表链（AutoMigrate + 内嵌 SQL）", Fn: func() error { return autoMigrate(db) }},
+		},
+		BestEffort: []schemaboot.Step{
+			{Name: "会员订阅表", Fn: func() error { return membership.EnsureSchema(db) }},
+			{Name: "渠道支付流水表", Fn: func() error { return payment.EnsureSchema(db) }},
+			{Name: "成交发票表", Fn: func() error { return deal_invoice.EnsureSchema(db) }},
+			{Name: "二手车业务单表", Fn: func() error { return used_car.EnsureSchema(db) }},
+			{Name: "新车跟进档案表", Fn: func() error { return new_car_follow.EnsureSchema(db) }},
+			{Name: "售后专区表", Fn: func() error { return after_sales.EnsureSchema(db) }},
+			{Name: "社区搜索索引", Fn: func() error { return community.EnsureSearchIndexes(db) }},
+			{Name: "极光设备表", Fn: func() error { return postgres.EnsurePushDeviceSchema(db) }},
+			{Name: "融云 IM 表", Fn: func() error { return postgres.EnsureImSchema(db) }},
+		},
+	}, log); err != nil {
 		return err
 	}
 
@@ -119,6 +154,9 @@ func run() error {
 	}()
 
 	jwtMgr := jwtmanager.NewManager(cfg.JWT)
+	// 演示种子只在联调/开发 APP_ENV 下自动执行（parity-p0-5）：正式环境启动不得
+	// 往真实库里写 13400000000 这类假数据。
+	labSeeds := config.IsLabAppEnv(cfg.AppEnv)
 	sessionRepo := redisrepo.NewSessionRepository(redisClient)
 	deviceSessionUC := usecase.NewDeviceSessionUsecase(sessionRepo, cfg.Auth, cfg.AppEnv)
 	var sessionAuthUC usecase.SessionAuth
@@ -178,83 +216,58 @@ func run() error {
 		profileUC = usecase.NewProfileUsecase(profileRepo, storeStatsRepo)
 		profileController = controller.NewProfileController(profileUC)
 		accessSvc = access.NewService(access.NewPostgresRepository(db))
+		// Casbin 授权器（可选）：基于 GORM 适配器，策略持久化于 casbin_rule 表。
+		// 若构造失败，仅 Warn 不中断启动，权限判定保持原有 SQL 逻辑。
+		// gorm-adapter 在表不存在时会自己 CREATE TABLE —— 那是绕过 auto_migrate 闸门的 DDL，
+		// 所以闸门关着且表缺失时直接不构造（表由 migrations/20260923167500 建）。
+		casbinTableOK, casbinTableErr := schemaboot.HasTable(db, "casbin_rule")
+		if casbinTableErr != nil {
+			log.Warn("检查 casbin_rule 失败，跳过 Casbin 构造", zap.Error(casbinTableErr))
+		}
+		if !casbinTableOK && !cfg.Database.AutoMigrate {
+			log.Info("casbin_rule 不存在且启动期 DDL 已关闭：权限判定保持原有 SQL 逻辑",
+				zap.String("create_via", "make migrate-up"))
+		} else if casbinEnforcer, casbinErr := authz.NewEnforcer(db); casbinErr != nil {
+			log.Warn("Casbin Enforcer 构造失败，权限判定回退原有 SQL 逻辑", zap.Error(casbinErr))
+		} else {
+			accessSvc.SetEnforcer(casbinEnforcer)
+			log.Info("Casbin Enforcer 已就绪")
+		}
 		pointsSvc = points.NewService(points.NewPostgresRepository(db), points.NewPointsTaskProgress(db))
 		walletSvc = wallet.NewService(wallet.NewPostgresRepository(db))
 		mallSvc = mall.NewService(mall.NewPostgresRepository(db), accessSvc, pointsSvc, walletSvc)
 		membershipRepo := membership.NewPostgresRepository(db)
-		if err := membership.EnsureSchema(db); err != nil {
-			log.Warn("会员订阅表准备失败", zap.Error(err))
-		}
-		// membership 依赖 payment（会员下单复用预支付通道），payment 先切；
-		// 这里与下方 paymentSvc 各建一次实例（切片前同为两次 NewPaymentUsecase，
-		// Service 只持有 cfg + http.Client，无状态，保持原结构不动）。
-		paymentSvcForMembership := payment.NewService(cfg.ThirdParty)
+		// payment 只建一次实例：流水仓储要有 DB，回调核销要回调 mall 做发货。
+		// （原先这里与下方各建一次、都无仓储，等于「生成即丢 out_trade_no」。）
+		paymentSvc = payment.NewService(cfg.ThirdParty, payment.NewPostgresRepository(db)).WithLogger(log)
+		mallSvc.WithPayment(paymentSvc)
 		huaweiVerifier := membership.NewLiveHuaweiSubscriptionVerifier(cfg.ThirdParty.HuaweiIAP)
 		appleVerifier := membership.NewLiveAppleReceiptVerifier(cfg.ThirdParty.AppleIAP)
-		membershipSvc = membership.NewService(membershipRepo, walletSvc, paymentSvcForMembership, huaweiVerifier, appleVerifier, cfg.AppEnv)
+		membershipSvc = membership.NewService(membershipRepo, walletSvc, paymentSvc, huaweiVerifier, appleVerifier, cfg.AppEnv)
 		communityRepo = community.NewPostgresRepository(db)
-		shortVideoSvc = short_video.NewService(short_video.NewPostgresRepository(db), cfg.ShortVideo.ReviewDelayOrDefault())
-		if err := short_video.EnsureSeed(db); err != nil {
-			log.Warn("小视频种子写入失败", zap.Error(err))
-		} else {
-			log.Info("小视频种子已就绪（13400000000 / 16 条）")
-		}
+		shortVideoSvc = short_video.NewService(short_video.NewPostgresRepository(db), accessSvc,
+			cfg.ShortVideo.ShortVideoAutoAllowUnreviewed(cfg.AppEnv), cfg.AppEnv)
+		seedIfLab(labSeeds, log, "小视频种子（13400000000 / 16 条）", func() error { return short_video.EnsureSeed(db) })
 		addressRepo := postgres.NewAddressRepository(db)
 		addressUC := usecase.NewAddressUsecase(addressRepo)
 		addressController = controller.NewAddressController(addressUC)
 		homeSvc = home.NewService(home.NewPostgresRepository(db), accessSvc)
-		if err := homeSvc.EnsureSeed(context.Background(), 1, ""); err != nil {
-			log.Warn("首页待办种子写入失败", zap.Error(err))
-		} else {
-			log.Info("首页待办种子已就绪（门店1）")
-		}
-		if err := home.EnsurePackingDemo(db); err != nil {
-			log.Warn("首页待办装箱演示种子失败", zap.Error(err))
-		} else {
-			log.Info("首页待办装箱演示已就绪（13400000000 / 1大3中4小）")
-		}
+		seedIfLab(labSeeds, log, "首页待办种子（门店1）", func() error {
+			return homeSvc.EnsureSeed(context.Background(), 1, "")
+		})
+		seedIfLab(labSeeds, log, "首页待办装箱演示（13400000000 / 1大3中4小）", func() error {
+			return home.EnsurePackingDemo(db)
+		})
 		dealInvoiceSvc = deal_invoice.NewService(deal_invoice.NewPostgresRepository(db), accessSvc)
-		if err := deal_invoice.EnsureSchema(db); err != nil {
-			log.Warn("成交发票表准备失败", zap.Error(err))
-		}
-		if err := deal_invoice.EnsureSeed(db); err != nil {
-			log.Warn("成交发票种子写入失败", zap.Error(err))
-		} else {
-			log.Info("成交发票种子已就绪（13400000000）")
-		}
+		seedIfLab(labSeeds, log, "成交发票种子（13400000000）", func() error { return deal_invoice.EnsureSeed(db) })
 		usedCarSvc = used_car.NewService(used_car.NewPostgresRepository(db), accessSvc)
-		if err := used_car.EnsureSchema(db); err != nil {
-			log.Warn("二手车业务单表准备失败", zap.Error(err))
-		}
-		if err := used_car.EnsureSeed(db); err != nil {
-			log.Warn("二手车业务单种子写入失败", zap.Error(err))
-		} else {
-			log.Info("二手车业务单种子已就绪（13400000000）")
-		}
+		seedIfLab(labSeeds, log, "二手车业务单种子（13400000000）", func() error { return used_car.EnsureSeed(db) })
 		newCarFollowSvc = new_car_follow.NewService(new_car_follow.NewPostgresRepository(db), accessSvc)
-		if err := new_car_follow.EnsureSchema(db); err != nil {
-			log.Warn("新车跟进档案表准备失败", zap.Error(err))
-		}
-		if err := new_car_follow.EnsureSeed(db); err != nil {
-			log.Warn("新车跟进档案种子写入失败", zap.Error(err))
-		} else {
-			log.Info("新车跟进档案种子已就绪（13400000000）")
-		}
+		seedIfLab(labSeeds, log, "新车跟进档案种子（13400000000）", func() error { return new_car_follow.EnsureSeed(db) })
 		afterSalesSvc = after_sales.NewService(after_sales.NewPostgresRepository(db), accessSvc)
-		if err := after_sales.EnsureSchema(db); err != nil {
-			log.Warn("售后专区表准备失败", zap.Error(err))
-		}
 		purchaseCalcSvc = purchase_calculator.NewService(purchase_calculator.NewPostgresRepository(db))
-		if err := purchase_calculator.EnsureSeed(db); err != nil {
-			log.Warn("购车金融产品种子写入失败", zap.Error(err))
-		} else {
-			log.Info("购车金融产品种子已就绪")
-		}
-		if err := mall.EnsureSeed(db); err != nil {
-			log.Warn("商城种子商品写入失败", zap.Error(err))
-		} else {
-			log.Info("商城种子商品已就绪（门店1 ≥35 条）")
-		}
+		seedIfLab(labSeeds, log, "购车金融产品种子", func() error { return purchase_calculator.EnsureSeed(db) })
+		seedIfLab(labSeeds, log, "商城种子商品（门店1 ≥35 条）", func() error { return mall.EnsureSeed(db) })
 		transactionSvc = transaction.NewService(transaction.NewPostgresRepository(db))
 		log.Info("Auth provider=local（本机 Postgres Auth + 业务表）")
 		if phones := cfg.Auth.DevTestPhones(); len(phones) > 0 {
@@ -305,10 +318,20 @@ func run() error {
 		var pushEnqueuer usecase.PushEnqueuer
 		if cfg.Queue.Enabled {
 			var qErr error
-			queueClient, qErr = queue.NewClient(*cfg)
+			queueClient, qErr = queue.NewClient(*cfg, log)
 			if qErr != nil {
 				return fmt.Errorf("连接 RabbitMQ 失败: %w", qErr)
 			}
+			// DLQ 深度只有 API 进程能暴露（Worker 无 /metrics）；采集失败则不出数。
+			metrics.Registry.MustRegister(metrics.NewDepthCollector(
+				"rabbitmq_dlq_messages",
+				"Dead-letter queue depth for the async task queue.",
+				map[string]string{"queue": queueClient.DLQ()},
+				func() (float64, error) {
+					depth, err := queueClient.DLQDepth()
+					return float64(depth), err
+				},
+			))
 			pushEnqueuer = repoqueue.NewPushEnqueuer(queueClient)
 			fanoutSub = queue.NewFanoutSubscriber(
 				redisClient,
@@ -331,15 +354,8 @@ func run() error {
 			// community 属批 3、realtime（pushUC）属批 4：本域只声明消费端最小接口
 			// PushNotifier，装配处用适配器把 PushRequest 桥到 RealtimePushInput。
 			// 批 4 切完 realtime 后删除适配器，直接传 realtime 域的公开 Service。
-			communitySvc = community.NewService(communityRepo, communityPushAdapter{uc: pushUC}, cfg.Community.AskEveryoneInviteUserIDs)
-			if err := community.EnsureSearchIndexes(db); err != nil {
-				log.Warn("社区搜索索引准备失败（ILIKE 仍可用）", zap.Error(err))
-			}
-			if err := communitySvc.EnsureSeed(context.Background()); err != nil {
-				log.Warn("社区种子数据写入失败", zap.Error(err))
-			} else {
-				log.Info("社区话题/动态种子已就绪")
-			}
+			communitySvc = community.NewService(communityRepo, communityPushAdapter{uc: pushUC}, cfg.Community.AskEveryoneInviteUserIDs, cfg.AppEnv)
+			seedIfLab(labSeeds, log, "社区话题/动态种子", func() error { return communitySvc.EnsureSeed(context.Background()) })
 		}
 		log.Info("Realtime WebSocket 已启用",
 			zap.String("ws_path", cfg.Realtime.WsPath),
@@ -360,22 +376,22 @@ func run() error {
 		}
 
 		if cfg.CsAgent.Enabled {
-			csUC := usecase.NewCsAgentUsecase(transactionSvc, cfg.CsAgent)
+			csOpts := make([]usecase.CsAgentOption, 0, 2)
+			if r, llm := buildCsAgentRAG(cfg, log); r != nil && llm != nil {
+				csOpts = append(csOpts, usecase.WithRetriever(r), usecase.WithLLM(llm))
+			}
+			csUC := usecase.NewCsAgentUsecase(transactionSvc, cfg.CsAgent, csOpts...)
 			csAgentController = controller.NewCsAgentController(csUC, cfg.CsAgent)
 			log.Info("客服 Agent 已启用",
 				zap.String("provider", cfg.CsAgent.Provider),
 				zap.String("model", cfg.CsAgent.ModelName()),
+				zap.Bool("rag_enabled", len(csOpts) > 0),
 			)
 		}
 	}
 
 	if businessEnabled {
 		pushDeviceRepo := postgres.NewPushDeviceRepository(db)
-		if err := postgres.EnsurePushDeviceSchema(db); err != nil {
-			log.Warn("极光设备表初始化失败", zap.Error(err))
-		} else {
-			log.Info("极光设备表已就绪")
-		}
 		jpushClient := jpush.NewClient(jpush.Config{
 			AppKey:         cfg.ThirdParty.JPushAppKey,
 			MasterSecret:   cfg.ThirdParty.JPushMasterSecret,
@@ -392,11 +408,6 @@ func run() error {
 			log.Info("JPush 服务端未配置（跳过真实下发；登记 API 仍可用）")
 		}
 
-		if err := postgres.EnsureImSchema(db); err != nil {
-			log.Warn("融云 IM 表初始化失败", zap.Error(err))
-		} else {
-			log.Info("融云 IM 表已就绪")
-		}
 		rcClient := rongcloud.NewClient(rongcloud.Config{
 			AppKey:     cfg.ThirdParty.RongCloudAppKey,
 			AppSecret:  cfg.ThirdParty.RongCloudAppSecret,
@@ -423,18 +434,14 @@ func run() error {
 
 	userHandler := handler.NewUserHandler(sessionAuthUC, deviceSessionUC, phoneOTPUC, wechatLoginUC, huaweiLoginUC)
 
-	if businessEnabled {
-		paymentSvc = payment.NewService(cfg.ThirdParty)
-	}
+	// paymentSvc 在业务装配段已建好（带流水仓储），此处不再另起无仓储实例。
 
 	var analyticsUC *usecase.AnalyticsUsecase
 	analyticsRepo := postgres.NewAnalyticsRepository(db)
 	analyticsUC = usecase.NewAnalyticsUsecase(analyticsRepo)
-	if err := analyticsUC.EnsureSeedData(context.Background()); err != nil {
-		log.Warn("analytics 种子数据写入失败", zap.Error(err))
-	} else {
-		log.Info("analytics 数据表已就绪（含种子数据）")
-	}
+	seedIfLab(labSeeds, log, "analytics 演示数据", func() error {
+		return analyticsUC.EnsureSeedData(context.Background())
+	})
 
 	// 业务会话中间件在装配层构造一次，既给 router.Setup 里的遗留路由用，
 	// 也给各域 Router 用（域内 sessionAuth 为 nil 时会跳过注册）。
@@ -607,14 +614,125 @@ func buildSSEProvider(sseCfg config.SSEConfig, log *zap.Logger) provider.StreamP
 			Timeout: sseCfg.RequestTimeout(),
 		})
 		if strings.TrimSpace(sseCfg.OpenAI.APIKey) == "" {
-			log.Warn("sse.provider=openai_compatible 但未配置 SSE_OPENAI_API_KEY，回退 mock")
+			log.Warn("sse.provider=openai_compatible 但未配置 SSE_OPENAI_API_KEY，回退 mock（未配置 LLM，回复为内置样例）",
+				zap.String("status", "degraded"),
+				zap.String("inventory", "docs/placeholder-inventory.md"),
+			)
 			return llmrepo.NewMockStreamProvider()
 		}
 		log.Info("SSE Provider=openai_compatible", zap.String("model", sseCfg.OpenAI.Model))
 		return p
 	default:
+		log.Warn("SSE Provider=mock（未配置 LLM，回复为内置样例）",
+			zap.String("status", "degraded"),
+			zap.String("inventory", "docs/placeholder-inventory.md"),
+		)
 		return llmrepo.NewMockStreamProvider()
 	}
+}
+
+// buildCsAgentRAG 装配客服 RAG：本地 KB → 向量化（thunder 聚焦子包优先 / app 原生回落）→
+// Elasticsearch 检索 + LLM 生成。任何环节不可用则返回 (nil, nil)，CsAgent 自动回落模板。
+// 装配失败不致命：仅关闭 RAG，不影响客服模板路径。
+func buildCsAgentRAG(cfg *config.Config, log *zap.Logger) (provider.Retriever, provider.StreamProvider) {
+	if !cfg.RAG.EnabledOrDefault() || !cfg.Elasticsearch.Enabled() {
+		return nil, nil
+	}
+	ctx := context.Background()
+
+	// embedding 凭据：RAG 配置优先，回落到 SSE_OPENAI_*（零新增环境变量）。
+	embBase := strings.TrimSpace(cfg.RAG.EmbeddingBaseURL)
+	if embBase == "" {
+		embBase = cfg.SSE.OpenAI.BaseURL
+	}
+	embKey := strings.TrimSpace(cfg.RAG.EmbeddingAPIKey)
+	if embKey == "" {
+		embKey = cfg.SSE.OpenAI.APIKey
+	}
+	embModel := cfg.RAG.EmbeddingModelOrDefault()
+
+	var emb provider.EmbeddingProvider
+	te, terr := rag.NewThunderEmbedding(ctx, embBase, embKey, embModel)
+	if terr != nil {
+		if embKey == "" {
+			log.Warn("RAG 未配置 embedding API Key（RAG_EMBEDDING_API_KEY / SSE_OPENAI_API_KEY），RAG 关闭", zap.Error(terr))
+			return nil, nil
+		}
+		log.Warn("RAG thunder embedding 不可用，回退原生 /embeddings 客户端", zap.Error(terr))
+		emb = rag.NewNativeEmbedding(embBase, embKey, embModel)
+	} else {
+		emb = te
+	}
+
+	// 向量库（手写 ES dense_vector + kNN）。
+	store := rag.NewESVectorStore(cfg.Elasticsearch.BaseURL(), cfg.RAG.IndexNameOrDefault())
+	if err := store.EnsureIndex(ctx); err != nil {
+		log.Warn("RAG ES 索引创建失败，RAG 关闭", zap.Error(err))
+		return nil, nil
+	}
+
+	// 生成用 LLM：需 SSE_OPENAI_API_KEY；缺失则仅检索可用、生成回落模板。
+	if strings.TrimSpace(cfg.SSE.OpenAI.APIKey) == "" {
+		log.Warn("RAG 生成需要 SSE_OPENAI_API_KEY，未配置则 RAG 检索可用但生成回落模板")
+		return nil, nil
+	}
+	llm := llmrepo.NewOpenAICompatibleProvider(llmrepo.OpenAICompatibleConfig{
+		BaseURL: cfg.SSE.OpenAI.BaseURL,
+		APIKey:  cfg.SSE.OpenAI.APIKey,
+		Model:   cfg.SSE.OpenAI.Model,
+		Timeout: cfg.SSE.RequestTimeout(),
+		SystemPrompt: "你是本 App / 4S 场景的客服助手。请仅依据「知识库」与「用户交易检索」结果，用简洁中文、纯文本回答用户问题；" +
+			"知识库未覆盖时礼貌说明无法回答，不要编造。",
+	})
+
+	retriever := rag.NewESRetriever(store, emb, cfg.RAG.TopKOrDefault())
+
+	// 启动期同步建索引（best-effort），失败不致命。
+	n, ierr := rag.IndexKB(ctx, cfg.RAG.KBDirOrDefault(), emb, store, cfg.RAG.ChunkSizeOrDefault(), cfg.RAG.ChunkOverlapOrDefault())
+	if ierr != nil {
+		log.Warn("RAG 初始索引失败（运行时检索可能为 0 结果）", zap.Error(ierr))
+	} else {
+		log.Info("RAG 初始索引完成", zap.Int("chunks", n), zap.String("kb_dir", cfg.RAG.KBDirOrDefault()))
+	}
+
+	// 周期重建索引（rag.reindex_interval_seconds > 0 时）。
+	if iv := cfg.RAG.ReindexIntervalOrDefault(); iv > 0 {
+		go runRAGReindexer(context.Background(), iv, cfg.RAG, emb, store, log)
+	}
+	return retriever, llm
+}
+
+// runRAGReindexer 按固定间隔重建 KB 索引；ctx 取消即退出。
+func runRAGReindexer(ctx context.Context, interval time.Duration, ragCfg config.RAGConfig, emb provider.EmbeddingProvider, store repository.VectorRepository, log *zap.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := rag.IndexKB(ctx, ragCfg.KBDirOrDefault(), emb, store, ragCfg.ChunkSizeOrDefault(), ragCfg.ChunkOverlapOrDefault())
+			if err != nil {
+				log.Warn("RAG 周期重建索引失败", zap.Error(err))
+			} else {
+				log.Info("RAG 周期重建索引完成", zap.Int("chunks", n))
+			}
+		}
+	}
+}
+
+// seedIfLab 演示种子统一入口：正式环境（APP_ENV=prod/production）跳过，
+// 避免启动往真实库写 13400000000 一类假数据（parity-p0-5）。
+func seedIfLab(lab bool, log *zap.Logger, label string, fn func() error) {
+	if !lab {
+		log.Info("跳过演示种子（APP_ENV 非联调环境）", zap.String("seed", label))
+		return
+	}
+	if err := fn(); err != nil {
+		log.Warn(label+" 写入失败", zap.Error(err))
+		return
+	}
+	log.Info(label + " 已就绪")
 }
 
 // autoMigrate 自动迁移数据库表结构。

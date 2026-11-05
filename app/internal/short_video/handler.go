@@ -161,6 +161,32 @@ func (h *handler) View(c *gin.Context) {
 	response.Success(c, gin.H{"view_count": n})
 }
 
+// Review 人工放行（parity-p0-4）：body 只接受 {"action":"approve"}，权限在 Service 内校验。
+func (h *handler) Review(c *gin.Context) {
+	user, _, ok := authctx.SupabaseAuthContext(c)
+	if !ok {
+		response.Error(c, http.StatusUnauthorized, response.CodeUnauthorized, "未授权")
+		return
+	}
+	var body struct {
+		Action string `json:"action"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误")
+		return
+	}
+	if strings.ToLower(strings.TrimSpace(body.Action)) != "approve" {
+		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "action 仅支持 approve")
+		return
+	}
+	dto, err := h.svc.Approve(c.Request.Context(), user.ID, c.Param("id"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	response.Success(c, dto)
+}
+
 func writeError(c *gin.Context, err error) {
 	shared.WriteResourceCRUDError(c, err, ErrInvalid, ErrNotFound, ErrForbidden)
 }

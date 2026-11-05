@@ -16,6 +16,11 @@ type memMembershipRepo struct {
 	ents map[string]entity.WysMembershipEntitlement // user|tier
 	ords map[int64]entity.WysMembershipOrder
 	seq  int64
+	// cash 与 wallet 夹具的绑定：夹具的「事务」是快照/还原假演，和 mall 的
+	// payOrderRepo.WithTx 同构 —— 真实原子性由 postgres 侧保证，这里只验编排。
+	cash *memCashForMembership
+	// failExtend 测试开关：让发权益失败，断言扣款跟着回滚。
+	failExtend bool
 }
 
 func newMemMembershipRepo() *memMembershipRepo {
@@ -52,6 +57,9 @@ func (m *memMembershipRepo) GetEntitlement(_ context.Context, userID, tier strin
 func (m *memMembershipRepo) ExtendEntitlement(_ context.Context, userID, tier, channel string, months int, now time.Time, huaweiToken, huaweiSubID, appleOriginalTxID string) (*entity.WysMembershipEntitlement, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.failExtend {
+		return nil, errors.New("mem: extend entitlement failed")
+	}
 	base := now
 	if cur, ok := m.ents[entKey(userID, tier)]; ok && cur.ExpiresAt.After(now) {
 		base = cur.ExpiresAt
@@ -118,9 +126,53 @@ func (m *memMembershipRepo) FindPaidByOutTradeNo(_ context.Context, outTradeNo s
 	return nil, nil
 }
 
+func (m *memMembershipRepo) Transaction(ctx context.Context, fn func(context.Context) error) error {
+	m.mu.Lock()
+	ents := make(map[string]entity.WysMembershipEntitlement, len(m.ents))
+	for k, v := range m.ents {
+		ents[k] = v
+	}
+	ords := make(map[int64]entity.WysMembershipOrder, len(m.ords))
+	for k, v := range m.ords {
+		ords[k] = v
+	}
+	m.mu.Unlock()
+
+	var bal map[string]int64
+	if m.cash != nil {
+		bal = m.cash.snapshotBal()
+	}
+	if err := fn(ctx); err != nil {
+		m.mu.Lock()
+		m.ents, m.ords = ents, ords
+		m.mu.Unlock()
+		if m.cash != nil {
+			m.cash.restoreBal(bal)
+		}
+		return err
+	}
+	return nil
+}
+
 type memCashForMembership struct {
 	mu  sync.Mutex
 	bal map[string]int64
+}
+
+func (m *memCashForMembership) snapshotBal() map[string]int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make(map[string]int64, len(m.bal))
+	for k, v := range m.bal {
+		cp[k] = v
+	}
+	return cp
+}
+
+func (m *memCashForMembership) restoreBal(bal map[string]int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bal = bal
 }
 
 func (m *memCashForMembership) GetBalanceFen(_ context.Context, userID string) (int64, error) {
@@ -159,6 +211,7 @@ func (m *memCashForMembership) DeleteCard(context.Context, string, int64) error 
 func TestMembershipBalanceBuyoutAndExtend(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 100000}}
+	repo.cash = cash
 	walletSvc := wallet.NewService(cash)
 	uc := NewService(repo, walletSvc, nil, nil, nil, "dev")
 
@@ -188,9 +241,34 @@ func TestMembershipBalanceBuyoutAndExtend(t *testing.T) {
 	}
 }
 
+func TestMembershipBalanceBuyoutRollsBackDebit(t *testing.T) {
+	repo := newMemMembershipRepo()
+	cash := &memCashForMembership{bal: map[string]int64{"u1": 100000}}
+	repo.cash = cash
+	repo.failExtend = true // 发权益失败：扣款与改单必须一起回滚
+	walletSvc := wallet.NewService(cash)
+	uc := NewService(repo, walletSvc, nil, nil, nil, "dev")
+
+	if _, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance"); err == nil {
+		t.Fatal("发权益失败却返回成功")
+	}
+	if cash.bal["u1"] != 100000 {
+		t.Fatalf("余额=%d，期望 100000（补偿式回滚已删，只剩事务回滚）", cash.bal["u1"])
+	}
+	for _, o := range repo.ords {
+		if o.Status != entity.MembershipOrderPending {
+			t.Fatalf("订单 %d 状态=%d，期望仍为待支付", o.OrderID, o.Status)
+		}
+	}
+	if len(repo.ents) != 0 {
+		t.Fatalf("权益已写入 %v，期望回滚后为空", repo.ents)
+	}
+}
+
 func TestMembershipBalanceInsufficient(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 100}}
+	repo.cash = cash
 	walletSvc := wallet.NewService(cash)
 	uc := NewService(repo, walletSvc, nil, nil, nil, "dev")
 	_, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance")
@@ -202,6 +280,7 @@ func TestMembershipBalanceInsufficient(t *testing.T) {
 func TestMembershipDualTierIndependent(t *testing.T) {
 	repo := newMemMembershipRepo()
 	cash := &memCashForMembership{bal: map[string]int64{"u1": 1000000}}
+	repo.cash = cash
 	walletSvc := wallet.NewService(cash)
 	uc := NewService(repo, walletSvc, nil, nil, nil, "dev")
 	if _, err := uc.Buyout(context.Background(), "u1", "svip_1m", "balance"); err != nil {
@@ -269,7 +348,9 @@ func TestMembershipAppleDevVerify(t *testing.T) {
 	}
 }
 
-func TestMembershipConfirmIdempotent(t *testing.T) {
+// 渠道单不能靠客户端回跳就发权益：没有 payment 域（拿不到已核销流水）必须拒绝。
+// P0-2 之前这里「调用即 paid」，正是「无流水的已付单」的来源。
+func TestMembershipConfirmRequiresPaymentLedger(t *testing.T) {
 	repo := newMemMembershipRepo()
 	uc := NewService(repo, nil, nil, nil, nil, "dev")
 	order := &entity.WysMembershipOrder{
@@ -278,15 +359,35 @@ func TestMembershipConfirmIdempotent(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 	_ = repo.CreateOrder(context.Background(), order)
-	out1, err := uc.ConfirmBuyout(context.Background(), "u1", order.OrderID)
-	if err != nil {
+
+	if _, err := uc.ConfirmBuyout(context.Background(), "u1", order.OrderID); !errors.Is(err, ErrPaymentNotConfirmed) {
+		t.Fatalf("无流水却确认成功，实得 %v", err)
+	}
+	if ent, err := repo.GetEntitlement(context.Background(), "u1", "svip"); err != nil || ent != nil {
+		t.Fatalf("未核销却发了权益：%+v %v", ent, err)
+	}
+}
+
+// 已核销（订单已置 paid）后重复确认幂等：不再改状态，只回同一份权益。
+func TestMembershipConfirmIdempotent(t *testing.T) {
+	repo := newMemMembershipRepo()
+	uc := NewService(repo, nil, nil, nil, nil, "dev")
+	order := &entity.WysMembershipOrder{
+		UserID: "u1", Tier: "svip", PlanID: "svip_1m", Channel: "wechat",
+		AmountFen: 3000, Status: entity.MembershipOrderPending, OutTradeNo: "ot2",
+		CreatedAt: time.Now(),
+	}
+	_ = repo.CreateOrder(context.Background(), order)
+	if err := repo.MarkOrderPaid(context.Background(), order.OrderID, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	out2, err := uc.ConfirmBuyout(context.Background(), "u1", order.OrderID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out1.Status != "paid" || out2.Status != "paid" {
-		t.Fatalf("%+v %+v", out1, out2)
+	for i := 0; i < 2; i++ {
+		out, err := uc.ConfirmBuyout(context.Background(), "u1", order.OrderID)
+		if err != nil {
+			t.Fatalf("第 %d 次确认失败：%v", i+1, err)
+		}
+		if out.Status != "paid" {
+			t.Fatalf("第 %d 次确认 %+v", i+1, out)
+		}
 	}
 }

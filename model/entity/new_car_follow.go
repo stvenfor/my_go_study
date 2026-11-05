@@ -120,22 +120,22 @@ func FollowFileIsOpen(stage int16) bool {
 
 // WysNewCarFollowFile 跟进档案行。
 type WysNewCarFollowFile struct {
-	FileID           int64      `json:"file_id" gorm:"primaryKey"`
-	StoreID          int        `json:"store_id"`
-	OwnerUserID      string     `json:"owner_user_id" gorm:"size:64"`
-	CustomerID       int64      `json:"customer_id"`
-	FollowLevel      string     `json:"follow_level" gorm:"size:1"`
-	Stage            int16      `json:"stage"`
-	VehicleInterest  string     `json:"vehicle_interest" gorm:"size:256"`
-	BudgetNote       string     `json:"budget_note" gorm:"size:256"`
-	Source           string     `json:"source" gorm:"size:64"`
-	NextFollowUpAt   *time.Time `json:"next_follow_up_at,omitempty"`
-	LastFollowAt     *time.Time `json:"last_follow_at,omitempty"`
-	ClosedReason     string     `json:"closed_reason" gorm:"size:128"`
-	CustomerName     string     `json:"customer_name" gorm:"size:128"`
-	CustomerPhone    string     `json:"customer_phone" gorm:"size:32"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	FileID          int64      `json:"file_id" gorm:"primaryKey"`
+	StoreID         int        `json:"store_id"`
+	OwnerUserID     string     `json:"owner_user_id" gorm:"size:64"`
+	CustomerID      int64      `json:"customer_id"`
+	FollowLevel     string     `json:"follow_level" gorm:"size:1"`
+	Stage           int16      `json:"stage"`
+	VehicleInterest string     `json:"vehicle_interest" gorm:"size:256"`
+	BudgetNote      string     `json:"budget_note" gorm:"size:256"`
+	Source          string     `json:"source" gorm:"size:64"`
+	NextFollowUpAt  *time.Time `json:"next_follow_up_at,omitempty"`
+	LastFollowAt    *time.Time `json:"last_follow_at,omitempty"`
+	ClosedReason    string     `json:"closed_reason" gorm:"size:128"`
+	CustomerName    string     `json:"customer_name" gorm:"size:128"`
+	CustomerPhone   string     `json:"customer_phone" gorm:"size:32"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 func (WysNewCarFollowFile) TableName() string { return WysNewCarFollowFileTable }
@@ -159,23 +159,23 @@ type NewCarFollowSummary struct {
 
 // NewCarFollowFileDTO 列表/详情读模型。
 type NewCarFollowFileDTO struct {
-	FileID            string     `json:"file_id"`
-	OwnerUserID       string     `json:"owner_user_id"`
-	OwnerDisplayName  string     `json:"owner_display_name,omitempty"`
-	CustomerID        string     `json:"customer_id"`
-	CustomerName      string     `json:"customer_name"`
-	CustomerPhone     string     `json:"customer_phone"`
-	FollowLevel       string     `json:"follow_level"`
-	IntentBand        string     `json:"intent_band"`
-	Stage             string     `json:"stage"`
-	VehicleInterest   string     `json:"vehicle_interest"`
-	BudgetNote        string     `json:"budget_note"`
-	Source            string     `json:"source"`
-	NextFollowUpAt    *time.Time `json:"next_follow_up_at,omitempty"`
-	LastFollowAt      *time.Time `json:"last_follow_at,omitempty"`
-	ClosedReason      string     `json:"closed_reason,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	FileID           string     `json:"file_id"`
+	OwnerUserID      string     `json:"owner_user_id"`
+	OwnerDisplayName string     `json:"owner_display_name,omitempty"`
+	CustomerID       string     `json:"customer_id"`
+	CustomerName     string     `json:"customer_name"`
+	CustomerPhone    string     `json:"customer_phone"`
+	FollowLevel      string     `json:"follow_level"`
+	IntentBand       string     `json:"intent_band"`
+	Stage            string     `json:"stage"`
+	VehicleInterest  string     `json:"vehicle_interest"`
+	BudgetNote       string     `json:"budget_note"`
+	Source           string     `json:"source"`
+	NextFollowUpAt   *time.Time `json:"next_follow_up_at,omitempty"`
+	LastFollowAt     *time.Time `json:"last_follow_at,omitempty"`
+	ClosedReason     string     `json:"closed_reason,omitempty"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // ToNewCarFollowFileDTO 行 → DTO。
@@ -215,15 +215,15 @@ func (WysNewCarFollowLog) TableName() string { return WysNewCarFollowLogTable }
 
 // NewCarFollowLogDTO 流水读模型。
 type NewCarFollowLogDTO struct {
-	LogID            string     `json:"log_id"`
-	FileID           string     `json:"file_id"`
-	AuthorUserID     string     `json:"author_user_id"`
-	AuthorDisplayName string    `json:"author_display_name,omitempty"`
-	Body             string     `json:"body"`
-	FollowLevel      string     `json:"follow_level,omitempty"`
-	IntentBand       string     `json:"intent_band,omitempty"`
-	NextFollowUpAt   *time.Time `json:"next_follow_up_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
+	LogID             string     `json:"log_id"`
+	FileID            string     `json:"file_id"`
+	AuthorUserID      string     `json:"author_user_id"`
+	AuthorDisplayName string     `json:"author_display_name,omitempty"`
+	Body              string     `json:"body"`
+	FollowLevel       string     `json:"follow_level,omitempty"`
+	IntentBand        string     `json:"intent_band,omitempty"`
+	NextFollowUpAt    *time.Time `json:"next_follow_up_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
 }
 
 // ToNewCarFollowLogDTO 行 → DTO。

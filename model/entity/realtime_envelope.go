@@ -3,8 +3,10 @@
 // 层级：Domain（领域层）—— 只定义「消息长什么样」，不依赖 HTTP/Redis/WebSocket
 //
 // 【初学者】为什么单独放一个文件？
-//   Go 后端和 Flutter 客户端通过 JSON 通信，两边字段必须一致。
-//   把结构体放在 domain/entity，是全项目共用的「契约」。
+//
+//	Go 后端和 Flutter 客户端通过 JSON 通信，两边字段必须一致。
+//	把结构体放在 domain/entity，是全项目共用的「契约」。
+//
 // =============================================================================
 package entity
 
@@ -39,15 +41,15 @@ type RealtimeEnvelope struct {
 // Topic 常量：与 Flutter RealtimeTopics 保持一致。
 // 用常量而不是手写字符串，避免拼写错误导致订阅失败。
 const (
-	TopicSysNotify    = "sys.notify"     // 系统通知
-	TopicPresenceBulk = "presence.bulk"  // 在线状态批量频道
+	TopicSysNotify    = "sys.notify"    // 系统通知
+	TopicPresenceBulk = "presence.bulk" // 在线状态批量频道
 )
 
 // EventName 常量：放在 payload.name 里，用于区分同一 topic 下的不同事件。
 const (
-	EventSysNotifyShow  = "sys.notify.show"  // 展示 Banner 通知
-	EventPresenceReport = "presence.report"  // 客户端 → 服务端：上报在线
-	EventPresenceUpdate = "presence.update"  // 服务端 → 其他客户端：某用户状态变更
+	EventSysNotifyShow  = "sys.notify.show" // 展示 Banner 通知
+	EventPresenceReport = "presence.report" // 客户端 → 服务端：上报在线
+	EventPresenceUpdate = "presence.update" // 服务端 → 其他客户端：某用户状态变更
 )
 
 // WebSocket 关闭码：与 Flutter RealtimeConfig 对齐。

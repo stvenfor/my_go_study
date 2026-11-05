@@ -4,37 +4,87 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sync"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"common/config"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"go.uber.org/zap"
 )
 
 // Client 封装 RabbitMQ 入队操作。
 type Client struct {
-	conn  *amqp.Connection
-	ch    *amqp.Channel
-	queue string
+	conn     *amqp.Connection
+	ch       *amqp.Channel
+	queue    string
+	dlq      string
+	dlqWired bool
+	// confirms 非 nil 表示开启 publisher confirm；conflictMu 保证
+	// 「发布 → 读一条确认」串行，读到的确认一定对应刚发的那条。
+	confirms  chan amqp.Confirmation
+	publishMu sync.Mutex
 }
 
-// NewClient 创建 RabbitMQ 客户端并声明队列。
-func NewClient(cfg config.Config) (*Client, error) {
+// NewClient 创建 RabbitMQ 客户端并声明队列（含死信拓扑）。
+func NewClient(cfg config.Config, log *zap.Logger) (*Client, error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	conn, err := amqp.Dial(cfg.Queue.RabbitMQURL())
 	if err != nil {
 		return nil, fmt.Errorf("rabbitmq dial: %w", err)
+	}
+	topo := newTaskTopology(cfg)
+	dlqWired, err := ensureTopology(conn, topo, log)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
 	}
 	ch, err := conn.Channel()
 	if err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("rabbitmq channel: %w", err)
 	}
-	qName := cfg.Queue.RabbitMQQueue()
-	if _, err := ch.QueueDeclare(qName, true, false, false, false, nil); err != nil {
-		_ = ch.Close()
-		_ = conn.Close()
-		return nil, fmt.Errorf("rabbitmq declare: %w", err)
+	client := &Client{conn: conn, ch: ch, queue: topo.queue, dlq: topo.dlq, dlqWired: dlqWired}
+	if cfg.Queue.UsePublisherConfirm() {
+		if err := ch.Confirm(false); err != nil {
+			_ = ch.Close()
+			_ = conn.Close()
+			return nil, fmt.Errorf("rabbitmq confirm mode: %w", err)
+		}
+		client.confirms = ch.NotifyPublish(make(chan amqp.Confirmation, 1))
 	}
-	return &Client{conn: conn, ch: ch, queue: qName}, nil
+	return client, nil
+}
+
+// Queue 返回任务队列名。
+func (c *Client) Queue() string { return c.queue }
+
+// DLQ 返回死信队列名。
+func (c *Client) DLQ() string { return c.dlq }
+
+// DLQWired 死信拓扑是否声明成功（false = 406 降级沿用旧队列）。
+func (c *Client) DLQWired() bool { return c.dlqWired }
+
+// DLQDepth 返回死信队列当前消息数。
+//
+// 走独立 channel，避免与发布争用同一 channel；QueueInspect 失败会关闭所在
+// channel，这里用完即关，故每次新建。
+func (c *Client) DLQDepth() (int, error) {
+	if c == nil {
+		return 0, errors.New("queue client is nil")
+	}
+	ch, err := c.conn.Channel()
+	if err != nil {
+		return 0, fmt.Errorf("rabbitmq channel: %w", err)
+	}
+	defer func() { _ = ch.Close() }()
+	q, err := ch.QueueInspect(c.dlq)
+	if err != nil {
+		return 0, fmt.Errorf("inspect dlq %s: %w", c.dlq, err)
+	}
+	return q.Messages, nil
 }
 
 // Close 关闭 RabbitMQ 连接。
@@ -61,6 +111,9 @@ func (c *Client) publish(ctx context.Context, env Envelope) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("marshal envelope: %w", err)
 	}
+	c.publishMu.Lock()
+	defer c.publishMu.Unlock()
+
 	err = c.ch.PublishWithContext(ctx, "", c.queue, false, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
@@ -70,7 +123,32 @@ func (c *Client) publish(ctx context.Context, env Envelope) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// broker 未落盘（连接断开 / 内存告警拒收）时 PublishWithContext 仍可能返回 nil，
+	// 必须靠 confirm 才能判定失败；失败一律上抛，调用方不得当成功。
+	if c.confirms != nil {
+		select {
+		case conf, ok := <-c.confirms:
+			if !ok {
+				return "", errors.New("publisher confirm channel closed")
+			}
+			if !conf.Ack {
+				return "", errors.New("publisher nack: broker 未接收消息")
+			}
+		case <-ctx.Done():
+			return "", fmt.Errorf("wait publisher confirm: %w", ctx.Err())
+		}
+	}
 	return env.TaskID, nil
+}
+
+// Enqueue 入队任意已构造好的信封。
+// 定时任务（payment 查单/对账）用它，避免每加一种任务就抄一份 6 行样板。
+func (c *Client) Enqueue(ctx context.Context, env Envelope) (string, error) {
+	id, err := c.publish(ctx, env)
+	if err != nil {
+		return "", fmt.Errorf("enqueue %s: %w", env.Type, err)
+	}
+	return id, nil
 }
 
 // EnqueuePushNotify 将 Realtime 推送任务入队。

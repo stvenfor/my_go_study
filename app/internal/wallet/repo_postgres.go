@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"app/internal/txdb"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"model/entity"
@@ -21,7 +22,7 @@ func NewPostgresRepository(db *gorm.DB) *PostgresRepository {
 
 func (r *PostgresRepository) GetBalanceFen(ctx context.Context, userID string) (int64, error) {
 	var w entity.WysCashWallet
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&w).Error
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Where("user_id = ?", userID).First(&w).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, nil
 	}
@@ -36,7 +37,7 @@ func (r *PostgresRepository) Credit(ctx context.Context, userID string, deltaFen
 		return 0, ErrCashInvalidAmount
 	}
 	var bal int64
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var w entity.WysCashWallet
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", userID).First(&w).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -72,7 +73,7 @@ func (r *PostgresRepository) Debit(ctx context.Context, userID string, deltaFen 
 		return 0, ErrCashInvalidAmount
 	}
 	var bal int64
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := txdb.DB(ctx, r.db).WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var w entity.WysCashWallet
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ?", userID).First(&w).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {

@@ -19,6 +19,8 @@ import (
 
 	"github.com/google/uuid"
 	"model/entity"
+
+	"common/config"
 )
 
 var (
@@ -63,10 +65,36 @@ type Service struct {
 	repo          Repository
 	push          PushNotifier // 可为 nil
 	inviteUserIDs []string
+	// demoMedia 与 short_video 同义：仅联调环境允许用内置样例 URL 冒充已上传媒体。
+	demoMedia bool
 }
 
-func NewService(repo Repository, push PushNotifier, inviteUserIDs []string) *Service {
-	return &Service{repo: repo, push: push, inviteUserIDs: inviteUserIDs}
+// NewService 创建。appEnv 只用于 IsLabAppEnv 判定是否允许演示媒体填充，
+// 正式环境（prod/production）缺真实 URL 一律拒绝（对象存储未接入）。
+func NewService(repo Repository, push PushNotifier, inviteUserIDs []string, appEnv string) *Service {
+	return &Service{
+		repo:          repo,
+		push:          push,
+		inviteUserIDs: inviteUserIDs,
+		demoMedia:     config.IsLabAppEnv(appEnv),
+	}
+}
+
+// requiresRealMedia 发帖声明了图片/视频却没给真实 URL —— 正式环境要拒绝，
+// 否则库里会留下 picsum/样例视频的假媒体。
+func requiresRealMedia(in CreatePostInput) bool {
+	switch strings.ToLower(strings.TrimSpace(in.MediaType)) {
+	case "image", "1":
+		return len(in.ImageURLs) == 0
+	case "video", "2":
+		return blankMediaURL(in.VideoURL) || blankMediaURL(in.VideoCoverURL)
+	default:
+		return false
+	}
+}
+
+func blankMediaURL(u *string) bool {
+	return u == nil || strings.TrimSpace(*u) == ""
 }
 
 func (u *Service) EnsureSeed(ctx context.Context) error {
@@ -317,6 +345,9 @@ func (u *Service) searchUsers(ctx context.Context, viewerID, q string, offset, l
 
 func (u *Service) CreatePost(ctx context.Context, userID string, in CreatePostInput) (*PostDTO, error) {
 	content := strings.TrimSpace(in.Content)
+	if !u.demoMedia && requiresRealMedia(in) {
+		return nil, fmt.Errorf("%w: 缺少真实图片/视频 URL，上传通道未接入（见 docs/placeholder-inventory.md）", ErrInvalid)
+	}
 	mt, images, videoURL, coverURL, err := normalizeMedia(in.MediaType, in.ImageURLs, in.VideoURL, in.VideoCoverURL)
 	if err != nil {
 		return nil, err

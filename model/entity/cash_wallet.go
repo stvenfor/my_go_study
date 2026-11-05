@@ -3,9 +3,9 @@ package entity
 import "time"
 
 const (
-	WysCashWalletTable     = "wys_cash_wallet"
-	WysCashLedgerTable     = "wys_cash_ledger"
-	WysBankCardTable       = "wys_bank_card"
+	WysCashWalletTable = "wys_cash_wallet"
+	WysCashLedgerTable = "wys_cash_ledger"
+	WysBankCardTable   = "wys_bank_card"
 
 	CashReasonRecharge      = "recharge"
 	CashReasonMallPay       = "mall_pay"
@@ -20,15 +20,15 @@ const (
 	// MallPayBalance 商城人民币余额支付渠道。
 	MallPayBalance int16 = 6
 
-	WalletRechargeMinFen int64 = 1      // 0.01 元
+	WalletRechargeMinFen int64 = 1       // 0.01 元
 	WalletRechargeMaxFen int64 = 5000000 // 50000.00 元
 )
 
 // WysCashWallet 账号全局人民币余额（分）。
 type WysCashWallet struct {
-	UserID    string    `json:"user_id" gorm:"primaryKey"`
-	BalanceFen int64    `json:"balance_fen" gorm:"column:balance_fen"`
-	UpdatedAt time.Time `json:"updated_at"`
+	UserID     string    `json:"user_id" gorm:"primaryKey"`
+	BalanceFen int64     `json:"balance_fen" gorm:"column:balance_fen"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func (WysCashWallet) TableName() string { return WysCashWalletTable }

@@ -1,0 +1,15 @@
+-- 回滚 20260923167500_align_gorm_only_schema：只删本文件建的 14 张表（索引随表删除）。
+DROP TABLE IF EXISTS wys_task_claims;
+DROP TABLE IF EXISTS wys_check_ins;
+DROP TABLE IF EXISTS wys_points_ledger;
+DROP TABLE IF EXISTS wys_points_wallet;
+DROP TABLE IF EXISTS wys_auto_finance_product;
+DROP TABLE IF EXISTS wys_user_follows;
+DROP TABLE IF EXISTS wys_post_likes;
+DROP TABLE IF EXISTS wys_post_comments;
+DROP TABLE IF EXISTS wys_posts;
+DROP TABLE IF EXISTS wys_topics;
+DROP TABLE IF EXISTS transaction_records;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS casbin_rule;
+DROP TABLE IF EXISTS auth_refresh_tokens;

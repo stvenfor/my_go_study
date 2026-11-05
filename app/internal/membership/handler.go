@@ -149,9 +149,14 @@ func (h *handler) VerifyApple(c *gin.Context) {
 	})
 }
 
-// HuaweiNotifications POST /api/v1/membership/huawei/notifications （stub）
+// HuaweiNotifications POST /api/v1/membership/huawei/notifications
+//
+// 华为 IAP 服务端回调尚未接入（无验签、无流水落库），因此不能再返回
+// accepted:true —— 那会让华为侧认为投递成功而不再重试，静默丢单。
+// 显式 501 保留「未接入」语义；接入见 parity-p0-2（登记 docs/placeholder-inventory.md）。
 func (h *handler) HuaweiNotifications(c *gin.Context) {
-	response.Success(c, gin.H{"accepted": true})
+	response.Error(c, http.StatusNotImplemented, response.CodeNotImplemented,
+		"华为 IAP 回调未接入：当前不会处理该通知，请勿按成功记账")
 }
 
 func writeError(c *gin.Context, err error) {

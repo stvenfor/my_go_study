@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	client, err := queue.NewClient(*cfg)
+	client, err := queue.NewClient(*cfg, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "连接 RabbitMQ 失败: %v\n", err)
 		os.Exit(1)

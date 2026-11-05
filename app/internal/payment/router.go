@@ -26,13 +26,25 @@ func NewRouter(svc *Service, sessionAuth, accountGate gin.HandlerFunc) *Router {
 }
 
 // Register 挂载 /api/v1/payments。
+//
+// notify 是公网渠道回调，**不进 SessionAuth 链**（渠道没有会话），
+// 唯一信任来源是报文验签；prepay 仍需登录。两者共用一组前缀但链不同。
 func (r *Router) Register(engine *gin.Engine) {
-	if r == nil || r.handler == nil || r.sessionAuth == nil {
+	if r == nil || r.handler == nil {
 		return
 	}
 	v1 := engine.Group("/api/v1")
-	chain := shared.SessionAuthChain(r.sessionAuth, r.accountGate)
 
+	if r.handler.svc != nil {
+		notify := v1.Group("/payments/notify")
+		notify.POST("/wechat", r.handler.WechatNotify)
+		notify.POST("/alipay", r.handler.AlipayNotify)
+	}
+
+	if r.sessionAuth == nil {
+		return
+	}
+	chain := shared.SessionAuthChain(r.sessionAuth, r.accountGate)
 	g := v1.Group("/payments", chain...)
 	g.POST("/prepay", r.handler.Prepay)
 }

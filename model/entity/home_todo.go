@@ -4,10 +4,10 @@ package entity
 import "time"
 
 const (
-	WysStoreJoinApplicationTable    = "wys_store_join_application"
-	WysStoreCustomerTable           = "wys_store_customer"
-	WysAfterSalesAppointmentTable   = "wys_after_sales_appointment"
-	WysStoreReviewOrderTable        = "wys_store_review_order"
+	WysStoreJoinApplicationTable  = "wys_store_join_application"
+	WysStoreCustomerTable         = "wys_store_customer"
+	WysAfterSalesAppointmentTable = "wys_after_sales_appointment"
+	WysStoreReviewOrderTable      = "wys_store_review_order"
 
 	JoinStatusPending  int16 = 0
 	JoinStatusApproved int16 = 1
@@ -20,10 +20,10 @@ const (
 	ReviewOrderStatusApproved int16 = 1
 	ReviewOrderStatusRejected int16 = 2
 
-	TodoTypePartnerPending         = "partner_pending"
-	TodoTypeFollowUpCustomer       = "follow_up_customer"
-	TodoTypeAfterSalesAppointment  = "after_sales_appointment"
-	TodoTypeOrderPendingReview     = "order_pending_review"
+	TodoTypePartnerPending        = "partner_pending"
+	TodoTypeFollowUpCustomer      = "follow_up_customer"
+	TodoTypeAfterSalesAppointment = "after_sales_appointment"
+	TodoTypeOrderPendingReview    = "order_pending_review"
 )
 
 // WysStoreJoinApplication 入店申请。

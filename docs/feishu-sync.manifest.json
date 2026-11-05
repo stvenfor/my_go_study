@@ -1,5 +1,5 @@
 {
-  "wiki_space_id": "7660742459801996254",
+  "wiki_space_id": "7660024466872765661",
   "wiki_space_name": "项目 docs",
   "project_folder_name": "my_go_study",
   "project_folder_node_token": "LRaqwulH6iVQobku51qcCzyZneq",
@@ -31,6 +31,11 @@
       "node_token": "Xwoow1FfBi3TM1kpYO9c0BbOnGe",
       "document_id": "CeZ5doSZ7oxkkpxHY5Fc4MQenff",
       "content_hash": "sha256:1958af70cdb8bda406bc31cec22963a1feddbe6e5a4453d5437f6a46160d69f5"
+    },
+    "docs/project-detail.md": {
+      "node_token": "GphIwL8cEiZg3fkVHwRcjywLn6b",
+      "document_id": "RD3odxUtKoehiWxBpZncaDbvnQd",
+      "content_hash": "sha256:189565b99c0793cc9f2e8dc7e7b8cfa5ee02f976cbdc10f84b3799a08c47187d"
     },
     "docs/realtime-beginner-walkthrough.md": {
       "node_token": "WvAtwY8mei6EO5kl2NZcsg5Gnpc",

@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/redis/go-redis/v9"
-	"model/entity"
 	"go.uber.org/zap"
+	"model/entity"
 )
 
 // FanoutMessage Pub/Sub 广播消息体。

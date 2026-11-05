@@ -16,9 +16,9 @@ const (
 	PermRoleAssignStore    = "role.assign_store"
 	PermRoleAssignPlatform = "role.assign_platform"
 	PermProfileRead        = "profile.read"
-	PermTxnReadOwn   = "transaction.read_own"
-	PermTxnWriteOwn  = "transaction.write_own"
-	PermTxnReadStore = "transaction.read_store"
+	PermTxnReadOwn         = "transaction.read_own"
+	PermTxnWriteOwn        = "transaction.write_own"
+	PermTxnReadStore       = "transaction.read_store"
 )
 
 const (

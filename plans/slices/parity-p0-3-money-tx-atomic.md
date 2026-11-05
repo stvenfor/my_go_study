@@ -1,0 +1,77 @@
+# Slice — parity-p0-3-money-tx-atomic
+
+## Slice Brief
+- SOURCE_MODULE: `app/internal/mall` 支付/取消编排
+- TARGET_MODULE: `app/internal/txdb`（最小 `WithTx`）+ 资金路径单事务
+- Source entry: `mall/service.go:520`（积分 Debit）、`:535`（钱包 Debit）、`:541`（`PayOrderLocal`）、`:548-553`（`restorePayDebits` 吞错）、`:579`、`:583`（取消退款吞错）
+- Target entry: 一个 `WithTx(ctx, fn)` 包住「扣积分 + 扣钱包 + 改单」；仓储层「context 有事务则用，无则用默认」
+- 本轮 ONLY:
+  - `app/internal/txdb/`：context key + `WithTx` + 仓储取用规范（**只做资金路径所需**）
+  - `mall` 支付与取消两条链路进单事务；`wallet`/`points` 仓储支持事务传递
+  - 删除 `_, _ =` 丢弃补偿错误；若保留跨服务补偿分支，失败必须落库 + error 日志 + 指标
+  - **真库回滚测试**（不等 P2-10）：testcontainers 或本机 `make deps-up` + build tag
+  - 并发幂等复核：同一 `Idempotency-Key` 不重复扣减（现机制 `mall_schema.up.sql:98`、`mall/service.go:271-275`）
+- 不做:
+  - 全域 `WithTx` 推广（P2-9）
+  - 支付回调与流水表（P0-2，本片为其提供事务入口）
+  - 不改价格/金额计算规则（`ParseYuanToFen` 沿用整数分）
+  - 不动库存扣减逻辑（`mall/repo_postgres.go:322` 的条件扣减是对的）
+- 验收: 见 Epic §P0-3 全部 8 条；硬门槛：**至少一条连真实 PG 的测试**，断言「改单失败 → 余额与积分回滚、订单状态未变」；`git grep "_ , _ = u\.\(points\|wallet\)Svc"` 为 0
+- 文件白名单:
+  - app/internal/txdb/
+  - app/internal/mall/
+  - app/internal/wallet/
+  - app/internal/points/
+  - migrations/
+  - configs/
+  - common/config/config.go
+  - docs/
+- 文件黑名单:
+  - app/cmd/api/main.go
+  - core/queue/
+  - app/internal/payment/（归 P0-2）
+  - model/entity/（除非仅加测试所需常量，需说明）
+- 验证命令:
+  - `go build all`
+  - `go -C app test ./internal/mall/... ./internal/wallet/... ./internal/points/...`
+  - `go -C app test -tags=integration ./internal/mall/...`（真库用例）
+  - `make deps-up` → `make run` → 下单/支付/取消冒烟（curl 或 `scripts/`）
+  - `make check-secrets`
+- 证据: docs/acceptance-records/2026-11-<date>-parity-p0-3-money-tx-atomic.md
+
+## Context Card — parity-p0-3-money-tx-atomic
+- 已完成:
+  - `app/internal/txdb/`：`Begin` / `With` / `DB(ctx, def)` 三个函数，context 携带 `*gorm.DB`；`txdb_test.go` 3 例全过（默认回退、嵌套取最内层、nil 忽略）。
+  - `mall` 支付 `PayOrder` 与取消 `CancelOrder`（已支付分支）各自进**单个** `WithTx`；`restorePayDebits` 已删除，取消退款错误必返回（新增 `ErrRefundUnavailable`）。
+  - `wallet` / `points` / `mall` 三个 `repo_postgres.go` 的 Credit/Debit/改单走 `txdb.DB(ctx, r.db)`，「context 有事务则用，无则用默认」。
+  - `WithTx` / `LockOrderForSettle` 挂在 `mall.Repository` 接口上（绕开黑名单里的 `cmd/api/main.go` 注入问题）。
+  - **真库用例**：`app/internal/mall/service_money_tx_integration_test.go`（`//go:build integration`）3 例全过 —— 回滚 / 并发只扣一次 / 取消退款原子。
+  - 顺带修掉两个原实现就存在的资金 bug：① 重复支付会**二次扣款**（现锁行后判 `alreadySettled`）；② 取消退款失败被 `_, _ =` 静默吞掉（现同事务回滚）。
+  - 验收记录：[`docs/acceptance-records/2026-11-04-parity-p0-3-money-tx-atomic.md`](../../docs/acceptance-records/2026-11-04-parity-p0-3-money-tx-atomic.md)（status=**Migrated**）。
+- 未做/Deferred:
+  - ~~`app/internal/membership/service.go:228`、`:233` 仍是 `_, _ = u.walletSvc.Credit(...)` 吞错补偿~~
+    —— **已解除**（Task #12 同日复用 txdb，见 `docs/acceptance-records/2026-11-04-membership-money-tx-followup.md`）。
+  - 「下单-支付-取消」HTTP curl 冒烟未跑（需业务库 seed 商品 + 登录态），与 P0-2 渠道支付改造一并补；Epic §P0-3 对应方框保持未勾。
+  - 全域 `WithTx` 推广（P2-9）；支付回调与流水表（P0-2，本片已提供事务入口）。
+- 关键文件:
+  - `app/internal/txdb/txdb.go`（新增）
+  - `app/internal/mall/service.go`（`PayOrder` tx 闭包、`CancelOrder` paid 分支）
+  - `app/internal/mall/repository.go`（`WithTx` / `LockOrderForSettle` / `ErrRefundUnavailable`）
+  - `app/internal/mall/repo_postgres.go:287,488,535,588`（`txdb.DB`）+ 新增两个方法
+  - `app/internal/{wallet,points}/repo_postgres.go:25/27,40/42,76/75`（`txdb.DB`）
+  - `app/internal/mall/service_money_tx_integration_test.go`（真库）
+  - `app/internal/mall/memwallet_test.go`、`service_balance_pay_test.go`（内存 fake 加 snapshot/restore 才能对齐回滚语义）
+- harness: post ok?（无机检目标，人工执行验证命令）
+  - `go -C app test ./internal/{mall,wallet,points,txdb}/... -count=1` 全 `ok`；`go -C app test ./... -count=1` 无 FAIL；`go build all` exit 0。
+  - 真库：`go -C app test -tags=integration ./internal/mall/... -run 'TestMoneyTx' -v`（连本机 `my_go_study_postgres`，scratch 库 `P03_PG_DBNAME` 默认 `p03_it`，`t.Cleanup` 逆序 DropTable，连不上 `t.Skipf`）。
+  - 新二进制 `./bin/api` 在 scratch 库启动：`/health` 200、schema 版本校验通过、DDL 关键词 0 命中。
+- 下一 Slice 建议: `parity-p0-2-payment-notify-ledger`
+- 已知坑:
+  - 现有 mall/wallet/points 测试**全是内存 fake**（`points/service_test.go:13`、`mall/memwallet_test.go:17`），改完看似通过不代表真库行为（Program R2）
+    → 本片 fake 仓储必须自己实现 `WithTx` 的「出错就 restore」，否则单测会假装通过。
+  - **GORM 嵌套 `Transaction()` 落 SAVEPOINT**：仓储内部本来就各开一个事务，被上层 `WithTx` 包住时自动降级为 `ROLLBACK TO SAVEPOINT sp…`，行为正确但 SQL 日志看起来像「回滚了两次」，别据此判断出 bug。
+  - **锁序必须「先订单行 `FOR UPDATE`，后钱包/积分」**：反过来会与 `CancelOrder` 形成 pay↔cancel 死锁；`LockOrderForSettle` 就是这个用途，资金动作前调用。
+  - 事务内**不得**放外部 HTTP/ES/MQ 调用；`Credit/Debit` 里若有外部副作用需先剥离。
+  - 不要把 `WithTx` 做成全局单例事务管理器（P2-9 再谈推广）。
+  - 模块边界：`model`/`common` 不得 import `app`（AGENTS.md 约束 10）。
+  - 集成测试必须 build tag 隔离，避免 `make test` 误连生产库；真库用例只允许操作 scratch 库，禁止对 dev 业务库 `my_go_study` 做 DDL。

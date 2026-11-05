@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,9 @@ var (
 	ErrAppleInvalid    = errors.New("苹果内购凭证无效")
 	ErrAppleMismatch   = errors.New("苹果商品与套餐不匹配")
 	ErrAppleNotConfig  = errors.New("苹果 IAP 未配置")
+	// ErrPaymentNotConfirmed 客户端说付完了，但渠道侧还没有已核销流水。
+	// 发权益必须以流水为准（P0-2），不能以回跳为准。
+	ErrPaymentNotConfirmed = errors.New("支付尚未确认，请稍后重试")
 )
 
 // MembershipMe 权益 + 目录。
@@ -193,9 +197,13 @@ func (u *Service) Buyout(ctx context.Context, userID, planID, channel string) (*
 		return nil, payment.ErrPayNotConfigured
 	}
 	prepay, err := u.pay.Prepay(ctx, payment.PrepayInput{
-		Channel:   channel,
-		AmountFen: plan.PriceFen,
-		Subject:   fmt.Sprintf("会员-%s-%s", plan.Tier, plan.Title),
+		Channel:    channel,
+		AmountFen:  plan.PriceFen,
+		Subject:    fmt.Sprintf("会员-%s-%s", plan.Tier, plan.Title),
+		UserID:     userID,
+		RefType:    entity.PaymentRefMembershipOrder,
+		RefID:      strconv.FormatInt(order.OrderID, 10),
+		OutTradeNo: order.OutTradeNo,
 	})
 	if err != nil {
 		return nil, err
@@ -220,17 +228,23 @@ func (u *Service) completeBalanceBuyout(
 		return nil, wallet.ErrCashInsufficient
 	}
 	ref := fmt.Sprintf("m%d", order.OrderID)
-	if _, err := u.walletSvc.Debit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref); err != nil {
-		return nil, err
-	}
 	now := time.Now()
-	if err := u.repo.MarkOrderPaid(ctx, order.OrderID, now); err != nil {
-		_, _ = u.walletSvc.Credit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref+":rollback")
-		return nil, err
-	}
-	ent, err := u.repo.ExtendEntitlement(ctx, userID, plan.Tier, entity.MembershipChannelBalance, plan.Months, now, "", "", "")
+	// 扣款、改单、发权益必须同一个事务：任一步失败就整体回滚。
+	// 旧写法是在失败后调 Credit 补偿，而补偿用 `_, _ =` 写 —— 补偿失败没人知道，
+	// 钱扣了、单没付、权益没发，账就少一笔（parity-p0-3 在 mall 域删掉的是同一段）。
+	var ent *entity.WysMembershipEntitlement
+	err := u.repo.Transaction(ctx, func(ctx context.Context) error {
+		if _, err := u.walletSvc.Debit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref); err != nil {
+			return err
+		}
+		if err := u.repo.MarkOrderPaid(ctx, order.OrderID, now); err != nil {
+			return err
+		}
+		var err error
+		ent, err = u.repo.ExtendEntitlement(ctx, userID, plan.Tier, entity.MembershipChannelBalance, plan.Months, now, "", "", "")
+		return err
+	})
 	if err != nil {
-		_, _ = u.walletSvc.Credit(ctx, userID, plan.PriceFen, entity.CashReasonMembershipPay, ref+":rollback")
 		return nil, err
 	}
 	return &MembershipBuyoutResult{
@@ -276,15 +290,43 @@ func (u *Service) ConfirmBuyout(ctx context.Context, userID string, orderID int6
 	if order.Channel != entity.MembershipChannelWeChat && order.Channel != entity.MembershipChannelAlipay {
 		return nil, ErrChannelInvalid
 	}
-	if err := u.repo.MarkOrderPaid(ctx, order.OrderID, now); err != nil {
-		if errors.Is(err, ErrOrderPaid) {
-			return u.ConfirmBuyout(ctx, userID, orderID)
+	// 渠道支付必须已有**已核销流水**才能发权益：客户端回跳不能当作收款成功。
+	// 回调常常晚于回跳，所以这里同步向渠道查一次单（ConfirmRefPaid）。
+	if u.pay == nil {
+		// 没装配 payment 域就等于无法证明渠道收过钱，不发权益。
+		return nil, ErrPaymentNotConfirmed
+	}
+	rec, err := u.pay.ConfirmRefPaid(ctx, entity.PaymentRefMembershipOrder, strconv.FormatInt(orderID, 10))
+	if err != nil {
+		if errors.Is(err, payment.ErrSettleNotCommitted) || errors.Is(err, payment.ErrRecordNotFound) {
+			return nil, ErrPaymentNotConfirmed
 		}
 		return nil, err
 	}
-	ent, err := u.repo.ExtendEntitlement(ctx, userID, plan.Tier, order.Channel, plan.Months, now, "", "", "")
+	tradeNo := ""
+	if rec.ChannelTradeNo != nil {
+		tradeNo = *rec.ChannelTradeNo
+	}
+	// 改单与发权益同事务：中途失败不能留下「单已付、权益没发」或反之。
+	var ent *entity.WysMembershipEntitlement
+	var alreadyPaid bool
+	err = u.repo.Transaction(ctx, func(ctx context.Context) error {
+		if err := u.repo.MarkOrderPaid(ctx, order.OrderID, now); err != nil {
+			if errors.Is(err, ErrOrderPaid) {
+				alreadyPaid = true
+				return nil
+			}
+			return err
+		}
+		var extendErr error
+		ent, extendErr = u.repo.ExtendEntitlement(ctx, userID, plan.Tier, order.Channel, plan.Months, now, tradeNo, "", "")
+		return extendErr
+	})
 	if err != nil {
 		return nil, err
+	}
+	if alreadyPaid {
+		return u.ConfirmBuyout(ctx, userID, orderID)
 	}
 	return &MembershipBuyoutResult{
 		OrderID:     order.OrderID,

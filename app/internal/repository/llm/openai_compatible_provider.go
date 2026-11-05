@@ -23,6 +23,9 @@ type OpenAICompatibleConfig struct {
 	APIKey  string
 	Model   string
 	Timeout time.Duration
+	// SystemPrompt 自定义系统提示词；为空则沿用默认「AI小石头」提示词。
+	// 客服 CsAgent 注入客服人设时使用。
+	SystemPrompt string
 }
 
 // OpenAICompatibleProvider OpenAI 兼容 SSE 上游。
@@ -71,9 +74,13 @@ func (p *OpenAICompatibleProvider) Stream(ctx context.Context, in provider.Compl
 	}
 
 	messages := make([]map[string]string, 0, len(in.Messages)+2)
+	systemPrompt := strings.TrimSpace(p.cfg.SystemPrompt)
+	if systemPrompt == "" {
+		systemPrompt = "你是 AI小石头，本 App / 4S 场景的业务向导。用简洁纯文本回答如何使用 App 功能，不要输出 Markdown。"
+	}
 	messages = append(messages, map[string]string{
 		"role":    "system",
-		"content": "你是 AI小石头，本 App / 4S 场景的业务向导。用简洁纯文本回答如何使用 App 功能，不要输出 Markdown。",
+		"content": systemPrompt,
 	})
 	for _, turn := range in.Messages {
 		role := turn.Role
