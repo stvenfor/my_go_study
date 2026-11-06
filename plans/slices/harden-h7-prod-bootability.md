@@ -1,0 +1,47 @@
+# Slice — harden-h7-prod-bootability
+
+## Slice Brief
+- SOURCE_MODULE: `configs/`、`docker/`、`common/config`、`app/internal/delivery/http/router`
+- TARGET_MODULE: 同上
+- Source entry:
+  - **实测更正**（原盘点「无 `config.production.yaml` 起不来」不准确）：`configs/config.prod.yaml` **存在**且内容正确（`auto_migrate: false`、`sslmode: require`、`mode: release`）；真正的坑是**命名口径不一致** —— `common/config/config.go:844-852` 按 `config.<APP_ENV>.yaml` 查找，找不到只 `log.Printf` 一句就**退回基础 `configs/config.yaml`**（`configs/config.yaml:5 mode: debug`、`:22 sslmode: disable`）。于是 `APP_ENV=production`（比 `prod` 更自然的写法）会**静默以 debug + 不加密连库**启动
+  - 代码里 `IsLabAppEnv`/`NoDDLAppEnv`（`common/config/config.go:342-361`）同时认 `prod` 和 `production` → 语义认两个名字，文件只认一个，不一致正来源于此
+  - `/metrics`：`router.go:65-66` 注释写「仅本机 / Docker 内网可达即可」，但 lan compose 把它暴露到局域网；`make check-secrets` 不覆盖这条
+- Target entry: 环境名与配置文件名一一对应（或显式归一化），**未知/缺失环境覆盖文件 = 拒绝启动**；`/metrics` 默认只在本机口
+- 本轮 ONLY: ①环境名解析收口（`production`→`prod` 归一化，或补齐文件并让缺失即失败）②`/metrics` 绑定收口 ③把「`APP_ENV=production`/`prod` 真能起、且不含 dev 兜底」做成可跑证明
+- 不做: 不做鉴权重构；不动业务 handler；不改 SessionAuth；不引入新观测组件
+- 验收:
+  - [ ] 负例证明：故意用 `APP_ENV=production`（无对应文件时）启动 → 要么**明确失败并说明缺哪个文件**，要么归一化后确实加载了 prod 覆盖；**不接受「Warn 后按 debug 配置继续跑」**
+  - [ ] 对照证明：`APP_ENV=prod ./scripts/load-env.sh go -C app run ./cmd/api` 起来后 `curl http://127.0.0.1:8081/health` 200，且启动日志中无「使用基础 configs/config.yaml」回退行；并核对运行时值（`server.mode=release`、`database.sslmode=require`、`database.auto_migrate=false`）
+  - [ ] `/metrics`：从局域网 IP 访问 `http://<本机LAN_IP>:8081/metrics` 被拒/不可达（人证 curl 输出）；从 `127.0.0.1` 仍可取（`make test-integration` 不需要它，但 `deploy/observability/alerts.yml` 的 4 条 payment 规则依赖 Prometheus 抓本机口 —— 收口后必须仍然抓得到）
+  - [ ] 现有单测不回归：`go -C app test ./internal/delivery/http/... -count=1`、`common` 配置测试
+  - [ ] `docs/observability-lan.md` 与 `docs/startup-guide.md` 同步更正（否则文档继续教人踩同一个坑）
+  - [ ] 状态词：若 `APP_ENV=production` 归一化后仍依赖人手工提供 env 文件，写 **Degraded** 并列残留，不许写 Migrated
+- 文件白名单:
+  - `configs/`
+  - `common/config/config.go`（仅环境名解析与缺失文件处理）
+  - `app/internal/delivery/http/router/router.go`（仅 `/metrics` 挂载段）
+  - `docker/docker-compose.lan.yml`、`docker/docker-compose.yml`、`Makefile` 中 `lan-up` 端口映射段
+  - `docs/observability-lan.md`、`docs/startup-guide.md`、`docs/lan-backend-host.md`
+  - `docs/placeholder-inventory.md`（追加式）
+  - `docs/acceptance-records/2026-11-05-harden-h7-prod-bootability.md`
+  - `plans/slices/harden-h7-prod-bootability.md`（仅 Context Card）
+- 文件黑名单:
+  - `app/internal/delivery/http/controller/**`（h4 独占）
+  - `app/internal/delivery/worker/**`、`app/internal/usecase/**`（h5 独占）
+  - `app/cmd/api/main.go`（h8 独占）
+  - `.env`、`.env.local`（改 `.env` 属破坏性动作，需先问人）
+- 验证命令:
+  - `APP_ENV=prod ./scripts/load-env.sh go -C app run ./cmd/api`（配合 8081；起前先确认端口未被占用）
+  - `APP_ENV=production ./scripts/load-env.sh go -C app run ./cmd/api`（应失败或明确加载 prod，不得静默 debug）
+  - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/metrics` → 200；`curl -s -o /dev/null -w '%{http_code}' http://<LAN_IP>:8081/metrics` → 非 200
+  - `go build all`
+- 证据: `docs/acceptance-records/2026-11-05-harden-h7-prod-bootability.md`
+
+## Context Card — harden-h7-prod-bootability
+- 已完成:
+- 未做/Deferred:
+- 关键文件:
+- harness: post ok?
+- 下一 Slice 建议:
+- 已知坑:
