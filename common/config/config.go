@@ -828,9 +828,36 @@ func (s SSEConfig) RequestTimeout() time.Duration {
 	return time.Duration(s.RequestTimeoutSeconds) * time.Second
 }
 
+// normalizeAppEnv 把 APP_ENV 收敛到覆盖文件名口径（小写 + 去空白）：
+//   - 别名 production -> prod（IsLabAppEnv/NoDDLAppEnv 同时认两个名字，文件只有 config.prod.yaml）；
+//   - 其余名字原样保留。
+//
+// 归一化后 cfg.AppEnv 与合并用的 config.<env>.yaml 一一对应，杜绝「语义认 production、
+// 文件只认 prod」导致的静默回退 debug 基础配置。
+func normalizeAppEnv(env string) string {
+	e := strings.ToLower(strings.TrimSpace(env))
+	if e == "production" {
+		return "prod"
+	}
+	return e
+}
+
+// knownLabAppEnv 无覆盖文件时仍允许回退基础配置的已知联调/开发环境（既有 P0-1 行为）。
+// 其余环境（正式环境、拼错的名字、未知名字）缺覆盖文件一律拒绝启动，
+// 绝不静默以 debug / sslmode=disable 的 configs/config.yaml 运行。
+func knownLabAppEnv(env string) bool {
+	switch env {
+	case "dev", "development", "lan", "local", "test", "staging":
+		return true
+	default:
+		return false
+	}
+}
+
 // Load 读取配置文件并解析为 Config。
 // configPath 传 configs 目录路径，env 传 dev/prod 等环境名。
 func Load(configPath, env string) (*Config, error) {
+	env = normalizeAppEnv(env)
 	v := viper.New()
 	v.AddConfigPath(configPath)
 	v.SetConfigName("config")
@@ -847,7 +874,10 @@ func Load(configPath, env string) (*Config, error) {
 			if !errors.As(err, &nfErr) {
 				return nil, fmt.Errorf("读取环境配置 config.%s.yaml 失败: %w", env, err)
 			}
-			// 没有环境覆盖文件时退回基础配置（production/staging 常如此）
+			if !knownLabAppEnv(env) {
+				return nil, fmt.Errorf("APP_ENV=%q 缺少环境覆盖文件 configs/config.%s.yaml：拒绝以基础 config.yaml（debug / sslmode=disable）启动", env, env)
+			}
+			// 已知联调环境无覆盖文件时回退基础配置（P0-1：staging 等曾因此起不来）。
 			log.Printf("[config] APP_ENV=%q 无 configs/config.%s.yaml，使用基础 configs/config.yaml", env, env)
 		}
 	}

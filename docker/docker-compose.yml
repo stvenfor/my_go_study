@@ -129,6 +129,10 @@ services:
       QUEUE_ENABLED: ${QUEUE_ENABLED:-true}
       GRPC_ENABLED: ${GRPC_ENABLED:-true}
       GRPC_PORT: ${GRPC_PORT:-9090}
+      # h7：/metrics 默认只本机(loopback)可达；这里只放行 Docker 内网容器网段，
+      # 使 prometheus.yml 的 app:8080/metrics 抓取仍可用。docker-proxy 网关
+      # （192.168.65.1 等，含局域网与宿主机端口映射访问）不在该网段 => 被拒。
+      METRICS_ALLOW_CIDRS: ${METRICS_ALLOW_CIDRS:-172.16.0.0/12,10.0.0.0/8}
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}

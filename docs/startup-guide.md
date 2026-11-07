@@ -73,14 +73,25 @@ cd /path/to/my_go_study   # 进入项目根目录
 ### 3.1 加载顺序
 
 1. 读取 `configs/config.yaml`
-2. 若设置 `APP_ENV=dev`，合并 `configs/config.dev.yaml`
+2. `APP_ENV` 归一化（小写 + 去空白；**`production` → `prod`**）后合并
+   `configs/config.<env>.yaml`（现有 `dev` / `lan` / `prod` 三份）
 3. 环境变量覆盖 YAML（见下表）
+
+> **缺失覆盖文件不再静默回退**（h7）：正式环境、未知或拼错的环境名找不到对应文件时
+> **拒绝启动**并点名缺失文件，绝不退回 `configs/config.yaml`（它是 `mode: debug` +
+> `sslmode: disable`）。已知联调环境（`dev` / `lan` / `staging` / `test` / `local` /
+> `development`）仍允许回退基础配置（P0-1 逃生门，如 `staging` 无同名文件）。
 
 ### 3.2 常用环境变量
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `APP_ENV` | `dev` | 配置环境：`dev` / `prod` |
+| `APP_ENV` | `dev` | 配置环境：`dev` / `lan` / `prod`；`production` 归一化到 `prod` |
+
+> **切环境别踩 `.env` 的坑**：`./scripts/load-env.sh` 会 source `.env`，其中 `APP_ENV=dev`
+> 会**覆盖**前置的 `APP_ENV=prod`（实测 `APP_ENV=prod ./scripts/load-env.sh env | grep APP_ENV`
+> 得到 `dev`）。要真正切环境，把赋值放到 loader 之后执行：
+> `./scripts/load-env.sh env APP_ENV=prod SERVER_PORT=8081 go -C app run ./cmd/api`。
 | `SERVER_PORT` | `8080` | HTTP 端口 |
 | `DATABASE_HOST` | `localhost` | PostgreSQL 主机 |
 | `DATABASE_PORT` | `5432` | PostgreSQL 端口 |
@@ -146,6 +157,10 @@ make docker-up
 | Prometheus | `my_go_study_prometheus` | `127.0.0.1:9091` | 抓取 app `/metrics` |
 | Alertmanager | `my_go_study_alertmanager` | `127.0.0.1:9093` | 飞书经 feishu-adapter |
 | Grafana | `my_go_study_grafana` | `127.0.0.1:3000` | 默认 admin/admin |
+
+> `/metrics` 自 h7 起默认**只本机可达**：`127.0.0.1` 可取指标，局域网 IP 返回 403；
+> Prometheus 经 Docker 内网 `app:8080/metrics` 抓取仍可用（compose 的
+> `METRICS_ALLOW_CIDRS` 放行 Docker 网段）。见 [observability-lan.md](./observability-lan.md)。
 
 观测细节 → [observability-lan.md](./observability-lan.md)；ES → [elasticsearch-transactions.md](./elasticsearch-transactions.md)。
 
@@ -651,9 +666,12 @@ make run
 
 ## 12. 生产部署提示
 
-1. 设置 `APP_ENV=prod`，使用 `configs/config.prod.yaml`
+1. 设置 `APP_ENV=prod`，或 `APP_ENV=production`（归一化到 `prod`），使用
+   `configs/config.prod.yaml`（`server.mode=release`、`database.sslmode=require`、
+   `database.auto_migrate=false`）。未知环境名 / 缺覆盖文件一律**拒绝启动**，不会退回
+   `config.yaml` 的 debug 配置
 2. **务必修改** `JWT_SECRET` 和数据库密码（见 §13，prod 由 `config.Load` 硬校验）
-3. 数据库 `sslmode` 建议设为 `require`
+3. 数据库 `sslmode` 由 `config.prod.yaml` 设为 `require`
 4. **发布流程先跑迁移，再滚更服务**：`make migrate-up`（K8s 用 Job / compose 用一次性 `migrate` 服务）。
    进程启动期不再建表（`APP_ENV=prod|lan` 代码强制 `database.auto_migrate=false`），
    库版本落后 / `dirty` / 空库一律**拒绝启动**——`/health` 连不上即是信号，见 §14

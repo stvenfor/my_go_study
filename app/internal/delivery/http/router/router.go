@@ -1,6 +1,11 @@
 package router
 
 import (
+	"net"
+	"net/http"
+	"os"
+	"strings"
+
 	"app/internal/delivery/http/controller"
 	"app/internal/delivery/http/handler"
 	"app/internal/delivery/http/middleware"
@@ -62,8 +67,10 @@ func Setup(opts Options) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
-	// /metrics 不经 SessionAuth；仅本机 / Docker 内网可达即可。
-	r.GET("/metrics", gin.WrapH(metrics.Handler()))
+	// /metrics 不经 SessionAuth；h7 收口为「默认只本机可达」，局域网 IP 取不到指标。
+	// Docker 内网 Prometheus 抓取（prometheus.yml 的 app:8080/metrics）由 compose 注入的
+	// METRICS_ALLOW_CIDRS 显式放行；loopback 始终放行，保住 Prometheus 抓本机口。
+	r.GET("/metrics", metricsAccessGuard(opts.Log), gin.WrapH(metrics.Handler()))
 
 	v1 := r.Group("/api/v1")
 
@@ -121,4 +128,61 @@ func Setup(opts Options) *gin.Engine {
 	}
 
 	return r
+}
+
+// metricsAccessGuard 把 /metrics 限定为本机可达（h7）：
+//   - 只认 TCP 对端 RemoteAddr，不信 X-Forwarded-For / c.ClientIP()（可伪造）；
+//   - loopback（127.0.0.0/8、::1）放行，保证 curl 127.0.0.1 与 Prometheus 抓本机口可用；
+//   - Docker 内网抓取（prometheus.yml 的 app:8080/metrics）由 METRICS_ALLOW_CIDRS
+//     显式放行（compose 注入 Docker 网段）；默认空 => 只本机口；
+//   - 其余一律 403，局域网 IP / 经 docker-proxy 转发的外部访问取不到指标。
+func metricsAccessGuard(log *zap.Logger) gin.HandlerFunc {
+	allow := parseMetricsAllowCIDRs(os.Getenv("METRICS_ALLOW_CIDRS"), log)
+	return func(c *gin.Context) {
+		if metricsPeerAllowed(c.Request.RemoteAddr, allow) {
+			c.Next()
+			return
+		}
+		c.AbortWithStatus(http.StatusForbidden)
+	}
+}
+
+func parseMetricsAllowCIDRs(raw string, log *zap.Logger) []*net.IPNet {
+	var out []*net.IPNet
+	for _, s := range strings.Split(raw, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		_, cidr, err := net.ParseCIDR(s)
+		if err != nil {
+			// 非法项忽略：配置写错不应把 /metrics 全开，但必须留痕便于排查抓取失败。
+			if log != nil {
+				log.Warn("METRICS_ALLOW_CIDRS 含非法 CIDR，已忽略", zap.String("entry", s))
+			}
+			continue
+		}
+		out = append(out, cidr)
+	}
+	return out
+}
+
+func metricsPeerAllowed(remoteAddr string, allow []*net.IPNet) bool {
+	host := remoteAddr
+	if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		host = h
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	for _, cidr := range allow {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }

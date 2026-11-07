@@ -111,6 +111,9 @@ curl -s http://<PINNED_LAN_IP>:8080/health
 - 启动：`make lan-up`（`./scripts/lan-compose.sh up -d --build`）
 - 停止：`make lan-down`
 - Postgres/Redis 在基础 compose 中绑定 **`127.0.0.1:5432/6379`**（本机可调、局域网不可达）；API `8080:8080` 对局域网开放。
+- **`/metrics` 不随 8080 暴露到局域网**（h7）：router 层只放行 loopback + Docker 内网抓取网段
+  （基础 compose 的 `METRICS_ALLOW_CIDRS`），经端口映射的局域网 / 宿主机访问返回 403。
+  Prometheus 仍由 `app:8080/metrics` 从 Docker 内网正常抓取；详见 [observability-lan.md](./observability-lan.md)。
 - 查库：`docker compose … exec postgres psql -U postgres -d my_go_study`
 
 ### 3.4 镜像与代码变更节奏
@@ -176,6 +179,7 @@ Realtime 以 ticket 的 `wsUrl` 为准（Go `REALTIME_PUBLIC_WS_HOST`）；若�
 | 5 | Realtime 连接 | ticket / 实际连接主机 = `PINNED_LAN_IP` |
 | 6 | 非白名单第二台 mobile 登录 | 仍符合单设备覆盖行为 |
 | 7 | `make check-secrets` | 无 service_role 入库 |
+| 8 | 局域网 IP 访问 `http://<IP>:8080/metrics` | 403 / 不可达；`127.0.0.1` 仍 200，Prometheus job=app UP |
 
 ---
 

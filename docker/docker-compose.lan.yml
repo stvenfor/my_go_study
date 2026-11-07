@@ -4,6 +4,8 @@
 #
 # 端口策略：基础 compose 将 Postgres/Redis 绑到 127.0.0.1（仅本机调试）；
 # 本 overlay 不向局域网额外暴露 DB/Redis；API 暴露 8080（HTTP/WS）+ 9090（gRPC）。
+# /metrics 不随 8080 暴露到局域网：router 层只放行 loopback + Docker 内网抓取网段
+# （见基础 compose 的 METRICS_ALLOW_CIDRS），经端口映射的局域网访问取不到指标。
 #
 # 默认 AUTH_PROVIDER=local。若要切回 Cloud Auth：在 .env.lan 设 AUTH_PROVIDER=supabase
 #（并保证 SUPABASE_* 已由 source-env / supabase.env 注入）。
