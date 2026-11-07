@@ -124,7 +124,10 @@ func (s *Service) RemoveMember(ctx context.Context, actorID string, storeID int,
 		return err
 	}
 	if s.storeGroupSync != nil {
-		_ = s.storeGroupSync.RemoveStoreMembership(ctx, strconv.Itoa(storeID), targetUserID)
+		// 成员已移除；踢群失败不回滚成员（保持降级），但必须打指标留痕。
+		if err := s.storeGroupSync.RemoveStoreMembership(ctx, strconv.Itoa(storeID), targetUserID); err != nil {
+			metrics.DegradedPathsTotal.WithLabelValues("access_store_group_removal_failed").Inc()
+		}
 	}
 	return nil
 }
