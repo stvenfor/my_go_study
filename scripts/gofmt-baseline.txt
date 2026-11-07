@@ -1,0 +1,21 @@
+# gofmt 欠账清单（harden-h3 / make lint 用）
+#
+# 这些 tracked .go 在本 Slice 落地前就未 gofmt（主要是 import 分组顺序）。
+# 业务 .go 在本 Slice 的文件黑名单里，不能顺手格式化，故门禁采用
+# 「不新增欠账」ratchet：既有项放行，只拦「新出现的」未格式化 .go。
+# 整条 CI 若用裸 `gofmt -l $(git ls-files '*.go')`，HEAD 一落地就会因这
+# 10 个文件恒红，无法「在 PR 上真跑」，也无法观察故意注入的失败。
+#
+# 清单用 1.26.x gofmt 生成（与作者机器 1.27.3 gofmt 输出逐行一致，见 acceptance-record）。
+# 修法（另开格式化 Slice）：对下列文件 `gofmt -w` 后，把对应行从本清单移除。
+# 每行一个路径，整行精确匹配；# 开头的注释行不参与匹配。
+app/cmd/api/main.go
+app/internal/rag/embedding_adapter.go
+app/internal/rag/es_vector_store.go
+app/internal/usecase/cs_agent_usecase.go
+common/auth/supabase.go
+common/jwt/jwt.go
+core/database/redis.go
+core/supabase/client.go
+model/repository/address_repository.go
+thunder/einos/components/document/parser/epub/epub.go

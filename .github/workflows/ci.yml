@@ -1,0 +1,102 @@
+name: CI
+
+# harden-h3：本仓首个 CI。落点 = GitHub Actions（决策门 2026-11-06 已批）。
+# 推不推、何时看真实绿灯由人决定；本文件只负责「PR 上真跑 + 拦住故意注入的失败」。
+on:
+  pull_request:
+  workflow_dispatch:
+
+# 工具链钉死：禁止靠 GOTOOLCHAIN=auto 漂到 1.27。
+# 实测 1.27.3 下 workspace MVS 选到 x/net v0.54.0，go build all 报
+# grpc v1.71.0/internal/transport/handler_server.go:271 undefined: http2.TrailerPrefix。
+# setup-go 显式装 1.26.x，并令 GOTOOLCHAIN=local 不允许自动升级。
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  build:
+    name: build / vet / lint / unit / hygiene / agent-pre（阻塞）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # check-tracked-imports.sh 用 git ls-files / cat-file，需完整检出
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'   # 必须钉死，勿改成 'stable' / '1.27'
+
+      - name: 打印工具链（证据：go version / go env GOTOOLCHAIN）
+        run: |
+          echo "== go version =="
+          go version
+          echo "== go env GOTOOLCHAIN =="
+          go env GOTOOLCHAIN
+
+      # ---- 阻塞项（决策门：go build all / go vet / lint / unit / check-tracked-imports）----
+      - name: go build all（阻塞）
+        run: go build all
+
+      - name: go vet（阻塞，逐模块等价：只查本模块代码）
+        run: make vet
+
+      - name: gofmt -l / lint（阻塞，不新增欠账口径）
+        run: make lint
+
+      - name: unit test（阻塞，不含 -tags=integration）
+        run: make test
+
+      # 预热说明：本脚本是 h1 的未入库产物，随 h1 一并入库后方在 CI 中存在。
+      # h3 依赖 h1（见 .harness/changes/current.md 的 Task DAG），故此处直接引用。
+      - name: scripts/check-tracked-imports.sh（阻塞；随 h1 入库）
+        run: ./scripts/check-tracked-imports.sh
+
+      - name: make agent-pre（阻塞；Slice 合同机检 check-brief）
+        run: make agent-pre
+
+  integration:
+    name: integration（-tags=integration，allow-fail 起步）
+    runs-on: ubuntu-latest
+    # 决策门：集成测试真库依赖会拖慢/变脆，先 allow-fail；转阻塞不在本 Slice。
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          # 容器内自建独立库，绝不连业务库 my_go_study
+          POSTGRES_DB: h3_it
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d h3_it"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+
+      - name: 打印工具链（证据：go version / go env GOTOOLCHAIN）
+        run: |
+          echo "== go version =="
+          go version
+          echo "== go env GOTOOLCHAIN =="
+          go env GOTOOLCHAIN
+
+      - name: integration tests（指向 service 内的独立 scratch 库）
+        env:
+          H3_IT_EXTERNAL_DB: '1'   # 用 service 容器，不另起本机一次性容器
+          DATABASE_HOST: 127.0.0.1
+          DATABASE_PORT: '5432'
+          DATABASE_USER: postgres
+          DATABASE_PASSWORD: postgres
+          P02_PG_DBNAME: h3_it
+          P03_PG_DBNAME: h3_it
+        run: make test-integration
