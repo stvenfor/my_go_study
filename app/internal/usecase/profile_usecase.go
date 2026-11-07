@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"app/internal/shared"
+	"common/metrics"
 	"model/entity"
 	"model/repository"
 )
@@ -77,9 +78,12 @@ func (u *ProfileUsecase) SwitchStore(ctx context.Context, userID string, storeID
 		}
 		return entity.ZeroUserStoreStats(), err
 	}
-	// 切换门店成功后幂等拉入该店群；失败不阻断切换。
+	// 切换门店成功后幂等拉入该店群；失败不阻断切换（保持降级），但打指标留痕，
+	// 否则「切店成功、拉群失败」数据不一致且无痕迹。
 	if u.storeGroupSync != nil {
-		_, _ = u.storeGroupSync.EnsureStoreMembership(ctx, strconv.Itoa(storeID), userID)
+		if _, err := u.storeGroupSync.EnsureStoreMembership(ctx, strconv.Itoa(storeID), userID); err != nil {
+			metrics.DegradedPathsTotal.WithLabelValues("profile_store_group_sync_failed").Inc()
+		}
 	}
 	return stats, nil
 }

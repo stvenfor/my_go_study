@@ -43,6 +43,11 @@
 | 19 | 对账只做「渠道查单」方向，`local_missing` 未实现 | Deferred | 待排（渠道账单文件下载） |
 | 20 | 商城 Apple/华为 IAP 渠道仍本地标记已付、无渠道流水 | Placeholder | 待排（IAP 专项） |
 | 21 | `unifiedorder` 响应未验签（只信回调报文） | Degraded | 待排（P2 支付加固） |
+| 22 | 定时广播删去重键失败（`_, _ = Del`） | Degraded（升级为硬失败 + 指标） | harden-h5 |
+| 23 | 离线推送失败静默（`realtime_push`） | Degraded（指标留痕） | harden-h5 |
+| 24 | 加成员后拉店群失败静默（`access`） | Degraded（指标留痕） | harden-h5 |
+| 25 | 切店后拉店群失败静默（`profile`） | Degraded（指标留痕） | harden-h5 |
+| 26 | 门店群 `CreateGroup` 失败被 `_ = err` 吞掉 | Degraded（指标留痕） | harden-h5 |
 
 关联但**由其它 Slice 收口**的假语义（此处只登记指向，避免双份真相）：
 支付 `prepay` 生成即丢 + 无 notify 回调（P0-2）、MQ 失败无限重投无 DLX（P0-6）、
@@ -349,3 +354,70 @@ APP_ENV=prod make run   # 再调 POST /api/v1/user/phone/otp/verify {13400000000
 - [x] P0-4 结果已登记（条目 14 `Removed` + 条目 15 `Deferred`），未声称机审完成。
 - [x] 未登记即宣称完成的路径：本次核对未发现新增项（Program 里 P0-1/P0-2/P0-3/P0-6/P0-7 均已在各自
       Epic/Slice 下跟踪，本文件只做指向）。
+
+---
+
+## 本轮新增条目（harden-h5 静默吞错留痕，2026-11-05）
+
+> 来源：Slice `harden-h5-silent-error-sweep`。这 5 条不是「假实现」，而是「静默吞掉的失败」：
+> 原代码用 `_, _ =` / `_ = err` 丢弃返回值，失败无痕迹。按 R4 口径 ——
+> **默认保持降级 + 打 `degraded_path_total{name=...}` 指标**，只有会丢数的那条升级为硬失败。
+> 下表 `name` 即代码里 `metrics.DegradedPathsTotal.WithLabelValues("<name>")` 的字面量，一一对应。
+
+| # | 文件:行（改前） | name | 处置 |
+|---|----------------|------|------|
+| 22 | `delivery/worker/handler.go:216` | `push_dedup_del_failed` | 删键失败**参与返回 error**（两个 `%w`，`errors.Is` 可命中）+ `h.log.Error` + 指标 |
+| 23 | `usecase/realtime_push_usecase.go:168` | `offline_push_failed` | 保持 WS 投递成功，指标留痕 |
+| 24 | `access/service.go:102` | `access_store_group_sync_failed` | 成员入库不回滚，指标留痕 |
+| 25 | `usecase/profile_usecase.go:82` | `profile_store_group_sync_failed` | 切店成功不回滚，指标留痕 |
+| 26 | `usecase/im_group_usecase.go:163` | `im_group_create_failed` | 继续 join + upsert，指标留痕 |
+
+### 22. 定时广播删去重键失败
+
+- 文件:行：`app/internal/delivery/worker/handler.go:216`（改后为 `cleanupDedupAfterEnqueueError`）
+- status：`Degraded`（升级为硬失败）· note：`SetNX` 抢占去重键后入队失败，原 `_, _ = Del` 试图回滚；
+  删键也失败则键残留 → 该用户该时段**永久跳过推送**（丢数）且无人知。现 Del 失败 `h.log.Error` +
+  `push_dedup_del_failed` +1，并把 enqueue/del 两个 error 一起返回，交既有重试/死信，不静默留坏键。
+- 影响面：改动前「入队失败 + 删键失败」静默丢一条定时推送；改后为可见失败与告警。
+- 解除条件：不需要（本条已收口为硬失败）；去重键自愈属 P0-6 重试/死信范畴。
+
+### 23. 离线推送失败静默
+
+- 文件:行：`app/internal/usecase/realtime_push_usecase.go:168` · status：`Degraded`
+- note：`DeliverPush` 写 Redis 事件并广播 WS 后，离线通道失败原本 `_, _ =` 丢弃。现 `if err != nil` 时
+  `offline_push_failed` +1，返回仍成功（WS 不受影响）。usecase 层无 zap logger、本轮不新增构造参数
+  （避免与 h8 改 `main.go` 冲突），留痕只走指标，日志留 Deferred。
+- 影响面：离线用户仍可能收不到，但 `/metrics` 可计数，不再是「无人知」。
+- 解除条件：接真实离线通道 + 重试（P2）；或注入 logger 补日志。
+
+### 24. 加成员后拉店群失败静默
+
+- 文件:行：`app/internal/access/service.go:102` · status：`Degraded`
+- note：`UpsertMember` 成员已入库后调 `EnsureStoreMembership` 拉群，失败原本 `_, _ =` 丢弃 → 数据不一致。
+  现 `if err != nil` 时 `access_store_group_sync_failed` +1；成员入库不回滚（保持降级）。
+- 影响面：成员在店内但可能不在店群，指标可见。· 解除条件：拉群改可靠异步补拉（P2-8 outbox，本轮不做）。
+
+### 25. 切店后拉店群失败静默
+
+- 文件:行：`app/internal/usecase/profile_usecase.go:82` · status：`Degraded`
+- note：与条目 24 同形状（切店成功、拉群失败），入口不同故 name 分开便于定位。现 `if err != nil` 时
+  `profile_store_group_sync_failed` +1，切店结果不回滚。· 影响面/解除条件：同条目 24。
+
+### 26. 门店群 `CreateGroup` 失败被 `_ = err` 吞掉
+
+- 文件:行：`app/internal/usecase/im_group_usecase.go:163` · status：`Degraded`
+- note：`EnsureStoreMembership` 建群时 `CreateGroup` 失败被 `_ = err` 吞掉，注释称「群可能已存在」，
+  但网络/凭据错误也走同一分支。现该分支 `im_group_create_failed` +1，仍继续 join + upsert（保持降级）。
+  **指标无法区分「已存在」与「真失败」**，这是刻意保留的降级口径。
+- 影响面：真失败时群未建成但本地已 upsert，靠 join 补救；指标可计数但不分类。
+- 解除条件：融云客户端按错误码区分「已存在」与其它错误再分别处置（P2）。
+
+## 本轮语义变更摘要（harden-h5 静默吞错）
+
+| 位置 | 改前 | 改后 |
+|------|------|------|
+| `delivery/worker/handler.go:216` | `_, _ = Del` 吞掉删键失败 | 抽 `cleanupDedupAfterEnqueueError`：Del 失败 → `h.log.Error` + `push_dedup_del_failed` +1 + 参与返回 error |
+| `usecase/realtime_push_usecase.go:168` | `_, _ = NotifyUser` | 降级 + `offline_push_failed` +1 |
+| `access/service.go:102` | `_, _ = EnsureStoreMembership` | 降级 + `access_store_group_sync_failed` +1 |
+| `usecase/profile_usecase.go:82` | `_, _ = EnsureStoreMembership` | 降级 + `profile_store_group_sync_failed` +1 |
+| `usecase/im_group_usecase.go:163` | `_ = err` | 降级 + `im_group_create_failed` +1 |

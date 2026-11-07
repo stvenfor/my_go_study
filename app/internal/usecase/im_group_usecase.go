@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"app/internal/shared"
+	"common/metrics"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/repository"
@@ -159,8 +160,9 @@ func (u *ImGroupUsecase) EnsureStoreMembership(ctx context.Context, storeID, use
 	} else {
 		name := "门店群-" + storeID
 		if err := u.rong.CreateGroup(ctx, groupID, name, []string{userID}); err != nil {
-			// 群可能已存在于融云；继续 join + upsert
-			_ = err
+			// 群可能已存在于融云；但网络/凭据错误也走同一分支。继续 join + upsert 降级，
+			// 同时打指标，避免「真失败」被当成「已存在」静默吞掉。
+			metrics.DegradedPathsTotal.WithLabelValues("im_group_create_failed").Inc()
 		}
 		now := time.Now().UTC()
 		if err := u.repo.UpsertStoreGroup(ctx, &entity.WysImStoreGroup{
