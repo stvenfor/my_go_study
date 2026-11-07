@@ -40,8 +40,26 @@
 
 ## Context Card — harden-h7-prod-bootability
 - 已完成:
+  - ① `common/config/config.go`：`production`→`prod` 归一化；正式/未知/拼错环境缺覆盖文件拒绝启动并点名文件；保留既有 lab 回退（P0-1 / `TestLoadSchemaGateDefaults`）
+  - ② `router.go` `/metrics` 守卫：loopback 放行、LAN 403、`METRICS_ALLOW_CIDRS` 放行 Docker 内网 Prometheus；compose 注入默认网段
+  - ③ 文档 4 份同步；证据 `docs/acceptance-records/2026-11-05-harden-h7-prod-bootability.md`；新增 2 份单测
+  - 机证：go1.26.4 `go build all` + 全量 test 全绿；真二进制负例（tempdir 缺 prod 覆盖）明确失败；`APP_ENV=prod|production` 真实启动 `/health` 200、无回退行、release 模式（`[GIN-debug]` 0 行）；`/metrics` 127.0.0.1=200 / LAN=403 人证
 - 未做/Deferred:
+  - 完整 `make lan-up` + Prometheus Targets=UP 端到端人证（同名容器在跑、缺 `.env.lan`，未授权不新建）→ 以网段实测 + 单测 + compose render 替代
+  - `main.go` 启动日志仍打印原始 `APP_ENV`（h8 白名单外，仅文案）
+  - 状态词 **Degraded**（按 coordinator：未做的端到端人证列残留，不写 Migrated）
 - 关键文件:
+  - `common/config/config.go`（`normalizeAppEnv` / `knownLabAppEnv` / `Load`）
+  - `app/internal/delivery/http/router/router.go`（`metricsAccessGuard` / `metricsPeerAllowed` / `parseMetricsAllowCIDRs`）
+  - `docker/docker-compose.yml` app 服务 `METRICS_ALLOW_CIDRS`
+  - `common/config/app_env_test.go`、`app/internal/delivery/http/router/metrics_access_test.go`
 - harness: post ok?
+  - `make agent-pre` 未落地；按 Brief 验证命令全跑：`go build all`(1.26.4) ✅、`go -C app test ./internal/delivery/http/... -count=1` ✅、`common` 配置测试 ✅、compose render ✅。未 commit/push。
 - 下一 Slice 建议:
+  - 若 Docker 网桥非默认网段，部署侧覆盖 `METRICS_ALLOW_CIDRS` 并补一次 lan-up Targets=UP 人证
+  - 若要连 lab 环境也收紧「缺失覆盖文件即拒绝」，另开 Slice（当前为保 P0-1 未做）
 - 已知坑:
+  - `APP_ENV=prod ./scripts/load-env.sh …` 会被 `.env` 的 `APP_ENV=dev` 覆盖；须写 `./scripts/load-env.sh env APP_ENV=prod …`
+  - `go -C app run` 的 cwd 是 `app/`，相对 `migrations` 目录找不到；本机人证需 `DATABASE_MIGRATIONS_DIR` 绝对路径或关 schema 校验
+  - 默认 go1.27.3 `go build all` 因 grpc v1.71.0 `http2.TrailerPrefix` 报红；用 1.26.4 / `GOTOOLCHAIN=local`
+  - Docker published-port 流量（含宿主机 127.0.0.1）源 IP 均为 192.168.65.1，与局域网无法区分；容器内 `docker exec curl 127.0.0.1` 才是真 loopback

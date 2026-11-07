@@ -446,11 +446,21 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/membership/huawei/notifications \
 go -C app test ./internal/usecase/... -run 'OTP'
 # 正式环境固定码不可登录（实机）
 APP_ENV=prod make run   # 再调 POST /api/v1/user/phone/otp/verify {13400000000,123456} → 400 短信登录暂未开放
-# 注意：`APP_ENV=production` 当前**无法启动** —— config.Load 要求 configs/config.production.yaml，
-# 仓库只有 config.{,dev,lan,prod}.yaml。守卫语义（IsLabAppEnv）对 prod/production 一致。
+# h7 更正（2026-11-07）：`APP_ENV=production` 现由 config.Load 归一化到 `prod`，
+# 自动加载 configs/config.prod.yaml（release / sslmode=require / auto_migrate=false），可以启动。
+# 未知环境名或缺失覆盖文件一律拒绝启动并点名文件，不再静默回退 config.yaml（debug）。
 
 # 清单抽查：本文件任取 3 条，按「文件:行」打开对照行为
 ```
+
+## h7 追加（2026-11-07）：环境名与 /metrics 收口
+
+| 位置 | 之前 | 现在 |
+|------|------|------|
+| `common/config/config.go` `Load` | `APP_ENV=production` 找不到 `config.production.yaml` 时 Warn 后按 `config.yaml`（debug / sslmode=disable）继续跑 | 归一化 `production`→`prod` 加载 `config.prod.yaml`；正式/未知/拼错环境缺覆盖文件即拒绝启动并点名文件 |
+| `app/internal/delivery/http/router/router.go` `/metrics` | 随 `8080:8080` 暴露到局域网 | 只放行 loopback + `METRICS_ALLOW_CIDRS`（Docker 内网抓取），局域网 IP 403 |
+
+证据：`docs/acceptance-records/2026-11-05-harden-h7-prod-bootability.md`。
 
 ## 与 Program checklist 的交叉核对
 
