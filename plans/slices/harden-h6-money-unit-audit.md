@@ -46,8 +46,49 @@
 
 ## Context Card — harden-h6-money-unit-audit
 - 已完成:
+  - `docs/money-unit-audit.md` 落盘：三套口径 44 条字段清单（mandated grep 38 条逐条 MONEY/NOT-MONEY 归类 + 排除法补 6 条盲区）
+  - **跨界换算点穷举**（§4，首要产出）：mall↔payment 1 处、membership↔payment **0 处（负结论）**、
+    wallet↔mall 2 处、points↔mall **无汇率（负结论）**、渠道边界 4 处、auto_finance 9 处，每条给 `file:line` + 谁做 Round + 丢精度方向
+  - §3 entity 声明 vs `migrations/*.sql` **最终有效列型** 分歧表（12 行）
+  - §5 精度事故核查 SQL 三组（float 侧 / numeric 侧 / 跨口径一致性 5 条）
+  - §6.2 五步迁移（加列→回填→双写→切读→删列）每步含 SQL 草案 + 回滚点 + 停机评估；§6.1 目标口径推荐及四条理由
+  - §7 Supabase 路径不可控 → 显式结论「该路径本轮不迁移」，登记 `Degraded`（inventory #23）
+  - §8 连带影响 7 行（PostgREST/RLS、ES reindex、Flutter `TransactionApi` + Flutter 三套口径并存、Realtime、`wys_mall_refund` 僵尸表）
+  - §9 h6b 输入契约 6 条（**含明确推荐：对外 JSON 不变**）
+  - `docs/placeholder-inventory.md` 追加条目 **#22 金额三套口径（Partial）/ #23 Supabase 不迁移（Degraded）/ #24 `normalizeMoney` 静默舍入（Degraded）**
+  - 零代码改动：`model/**`、`app/**`、`migrations/**`、`configs/**`、`*_test.go` 全部未动
 - 未做/Deferred:
+  - **§5 核查 SQL 全部未执行** → 「现有数据是否已失真」**无结论**（沙箱 PostgreSQL 未监听，`nc -z 127.0.0.1 5432` = closed）
+  - 验收第 1 条的「清单条数 = 38」**不成立** → mandated pattern 漏 6 条，需修订 pattern 才能当门禁
+  - Flutter 仅静态 `file:line` 取证，未跑 `dart analyze`
+  - 14 项残留逐条列表见 acceptance-record「残留」表（normalizeMoney 舍入、`payment/service.go:285` 出站 float、
+    `subsidy_value` 一列两义、可空性 vs 非指针、`wys_mall_refund` 僵尸表、Mixed 双计费、mall 金额双台账、遗留表等）
 - 关键文件:
-- harness: post ok?
+  - `docs/money-unit-audit.md`（主交付）
+  - `docs/acceptance-records/2026-11-06-harden-h6-money-unit-audit.md`（证据）
+  - `docs/placeholder-inventory.md` #22/#23/#24
+  - 换算门：`model/entity/cash_money.go:10-22`（`ParseYuanToFen` **拒绝式**）、`:25-37`（`FormatFenToYuan` 整数运算）
+  - 示范（严谨）：`app/internal/mall/service.go:303,342,346,347,364,380`（`big.Rat` 全程精确）
+  - 反例（脏值入口）：`app/internal/transaction/repo_postgres.go:90,124-125` → 裸 `numeric`
+  - 静默舍入（唯一）：`app/internal/mall/service.go:106` → `:816-827`
+- harness: post ok? **未运行** —— 本仓 `make agent-post` / `check-brief` 机检脚本尚未落地（`.harness/rules/slice-contract.md` 标注「若已落地」）；
+  本 Slice 依 `.harness/rules/no-silent-accept.md` 以「验证命令 + acceptance-record + Context Card」三项人工核对收口，状态只记 **Partial**。
+  另：`go build` / `go test` 在本沙箱**无法运行**（无网络，`proxy.golang.org` 全 timeout → 「updates to go.mod needed」）；
+  `go.work`/`go.mod`/`go.sum` 对 HEAD **零 diff**、代码目录零改动 → 编译不受影响，但**不得**称构建已验证为绿。
 - 下一 Slice 建议:
+  1. **先在 scratch/只读库跑 audit §5 的核查 SQL**（否则 h6b 的回填硬门槛无法判定），把「现网是否已失真」变成事实
+  2. 执行 `plans/slices/harden-h6b-transaction-money-unit.md`（其验收第 1-3 条直接引用本 Slice §6.2 与 §5.1）
+  3. 「`normalizeMoney` 舍入显式化」小 Slice（改动面最小、危害明确）
+  4. `auto_finance`（float 入参 Round + 月供 float 指数 + `subsidy_value` 一列两义）专项 Slice
 - 已知坑:
+  - **别信 mandated grep 的「完备」**：`float64|string.*numeric` 要求同行有 `numeric`，
+    故**无 tag 的 decimal-as-string 读模型全部漏**（6 条，含 Brief 自己引用的 `mall.go:346`）
+  - **别信 entity gorm tag 当列型**：`20260924110000_align_column_drift.up.sql:1-10` 的存在就是为此，
+    其头注自陈「34 列类型偏窄（double precision→numeric…）」
+  - **`transactions.amount` 是裸 `numeric`，不是 float 列** → DB 能存下 >2dp 脏值，别假设「PG 帮我截到 2 位」
+  - **别给积分补汇率**（§4.3 负结论查证过）；Mixed 模式是「现金 + 积分**双重计费**」不是抵扣，属产品口径
+  - **别顺手改 `membership`↔`payment`**：零换算，任何「统一」都是在制造风险
+  - 可空性坑：`wys_used_car_order.amount` / `wys_membership_order.amount_fen` 被 `align_column_drift:103,66` 放宽为 NULL，
+    Go 侧却是非指针 `float64`/`int64` → **NULL 与 0 不可区分**；且 `amount_fen` 的 `CHECK (>0)` 与可空性互相矛盾
+  - `wys_mall_refund` 表有列约束**但无 Go 实体、无写入方** → 去它那里查退款会得出「零退款」的错误结论
+  - 本 worktree 的 `../../my_ai_project` **不存在**；Flutter 实际在 `/Users/qpy/Desktop/github/my_ai_project`

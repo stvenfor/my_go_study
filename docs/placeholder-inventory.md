@@ -49,6 +49,11 @@
 | 25 | 加成员后拉店群失败静默（`access`） | Degraded（指标留痕） | harden-h5 |
 | 26 | 切店后拉店群失败静默（`profile`） | Degraded（指标留痕） | harden-h5 |
 | 27 | 门店群 `CreateGroup` 失败被 `_ = err` 吞掉 | Degraded（指标留痕） | harden-h5 |
+| 28 | **金额三套口径并存**（整数分 / decimal-as-string / float64） | Degraded | h6 审计交付；**h6b 已落 `transactions` 本地路径**（`amount_fen` 整数分 + 双写）；used_car / auto_finance / mall 仍是各自口径 |
+| 29 | `auth.provider=supabase` 时收支金额不迁移 → 双 provider 口径不一致 | Degraded | h6b 验收第 5 条留痕；解除需云端补列 |
+| 30 | mall 后台改价 `normalizeMoney` 静默四舍五入到 2 位 | Degraded | 待排（金额加固，h6 §4.6） |
+| 31 | 两种库形态的 `amount_fen` 形状不同（迁移=NOT NULL+CHECK，AutoMigrate=可空无约束） | Degraded | h6b 已知坑；读路径靠 `*int64` 回落旧列兜住，约束仍只在 `migrations/` |
+| 32 | 亚分金额（>2dp）被拒后返回 **502** 而不是 400 | Degraded | `app/internal/transaction/handler.go` 在 h6b 白名单外；需一条错误映射改动 |
 
 关联但**由其它 Slice 收口**的假语义（此处只登记指向，避免双份真相）：
 支付 `prepay` 生成即丢 + 无 notify 回调（P0-2）、MQ 失败无限重投无 DLX（P0-6）、
@@ -283,6 +288,106 @@ AutoMigrate/EnsureSchema 出启动流程（P0-1）、compose/配置的弱默认�
 - 影响面：不会造成资金误核销；最坏是下单链路被指到不可信端点后拿不到可用 `prepay_id`。
   `WECHAT_PAY_ENDPOINT` / `ALIPAY_GATEWAY` 只由运维配置注入，客户端不可控。
 - 解除条件：对 unifiedorder 响应同样调用 `wechatSign` 校验（P2 支付加固）。
+
+---
+
+## 28. 金额三套口径并存（整数分 / decimal-as-string / float64）
+
+- 文件:行（三种口径各自的代表，均为 2026-11-06 HEAD `e288553` 实测）：
+  - **A 整数分 `int64`**：`model/entity/payment.go:53,82,84`、`model/entity/membership.go:48,63`、
+    `model/entity/cash_wallet.go:30,40,41`、`model/entity/auto_finance.go:21,24`；
+    DB `bigint` + `CHECK`（`migrations/20261104160000_payment_ledger.up.sql:8,21`、
+    `migrations/20260923140000_membership_subscribe.up.sql:20`、`migrations/20260923095000_cash_wallet.up.sql:4`）
+  - **B decimal-as-string**：`model/entity/mall.go:210,255,278,281,308` + 无 tag 的读模型 `:179,190,346`、
+    `model/entity/membership.go:64`、`model/entity/cash_wallet.go:65,78`；DB `numeric(10,2)`
+    （`migrations/20260921180000_mall_schema.up.sql:51,101,132,134,161,191`）
+  - **C float64**：`model/entity/transaction.go:16,28,36`、`transaction_record.go:14`、
+    `used_car_order.go:138,180`；`auto_finance.go:37-45,52,60-70` 的 float64 **只在对外的元读模型，不落库**
+- status：`Partial`
+- note：口径本身**分三套是历史事实**，不是 bug；bug 在于 **C 侧全链路没有任何一处做精度收敛** ——
+  `grep -rnE 'Round|Trunc|decimal|ParseFloat' --include='*.go' app/internal/transaction/` → 0 命中，
+  而 `transactions.amount` 的实际列型是**裸 `numeric`（无精度无标度）**
+  （`migrations/20260923167500_align_gorm_only_schema.up.sql:40`，**不是** gorm tag 暗示的 float），
+  所以 DB 能原样收下 `0.30000000000000004` 这类 float 累加残值，Go 读回即失真。
+  A↔B 之间唯一的换算门 `entity.ParseYuanToFen`（`model/entity/cash_money.go:10-22`）
+  是**拒绝式**（非整分即报错，不四舍五入），因此 **A/B 之间的边界已查证为安全**；
+  `membership`↔`payment` **零换算**（`PriceFen` 直通 `AmountFen`）；`points` 与元之间**不存在任何汇率**
+  （积分是 SKU 上的平行价，`MallSKUPaymentMode` 派生三态）。
+  完整取证见 [`docs/money-unit-audit.md`](./money-unit-audit.md) §2/§3/§4（含 44 条字段清单与排除法残差 0 证明）。
+- 影响面：Flutter 已**同时承受三套口径**（`double`：`transaction_model.dart:39`、`used_car_order_models.dart:120`；
+  `String`：`mall_order.dart:79`、`wallet_api.dart:106`；`int` 分：`wallet_models.dart:21`、`membership_models.dart:40`）
+  → 服务端**单方**收敛会打破其中一侧；ES `amount` mapping 为 `double`（`app/internal/transaction/repo_es.go:48`）
+  → 改单位**必然 reindex**；`wys_used_car_order.amount` 与 `wys_membership_order.amount_fen` 被
+  `migrations/20260924110000_align_column_drift.up.sql:103,66` 放宽为可空，而 Go 侧是非指针类型 → **NULL 与 0 不可区分**。
+- 解除条件：`harden-h6b-transaction-money-unit` 完成 `transactions` 五步迁移（加列→回填→双写→切读→删列，
+  见 audit §6.2）；**回填前置硬门槛**是 `SELECT count(*) FROM transactions WHERE amount <> round(amount, 2)` 为 0 行
+  （audit §5.1：**worker 沙箱未跑**，2026-11-06 由 **coordinator** 只读补跑 = 0 行，仅覆盖本机 `my_go_study`；
+  **h6b 需自己重跑并留证据**，不得引用他人绿灯）。其余链路（used_car / auto_finance / mall 改价入口）
+  各自单独立 Slice。
+
+## 29. `provider=supabase` 路径金额口径不迁移（双 provider 不一致）
+
+- 文件:行：`app/internal/transaction/repo_supabase.go:137`（Create `payload["amount"] = input.Amount`）、
+  `:174`（Update）、`:128`/`:159`（`WithUserToken`）
+- status：`Degraded`
+- note：这两处把 float 金额直写**云端表**，本仓 `migrations/` 管不到它（`parity-p0-1` 定的 schema 单一真相只覆盖本地 PG）。
+  h6 审计给出的结论是**「该路径本轮不做迁移」作为一种合法结论被显式写出**，而不是留空：
+  云端加列需 Supabase 侧 migration（另一套发布流程与权限），且代码必须做到「本地路径生效、Supabase 路径行为不变」。
+  → 由此产生**已知不对称**：同一用户在 `provider=local` 下金额可精确到分，在 `provider=supabase` 下仍可存 >2dp 脏值。
+- 影响面：本仓默认 provider 现为 local，但 `docs/local-auth-postgres.md` 支持回切 supabase；
+  一旦回切，`amount_fen` 在云端不存在会**直接写失败**（不是降级，是 500）。
+  仍严格 `WithUserToken` 走 RLS，未用 service_role 绕过（`.harness/rules/auth-token-hygiene.md`）。
+- 解除条件：Supabase 云端表补 `amount_fen` 列 + RLS/PostgREST schema 缓存同步（`NOTIFY pgrst`）；
+  或代码显式禁止「本地已迁移 + provider=supabase」这一组合并给出可读错误。
+
+## 30. mall 后台改价 `normalizeMoney` 静默四舍五入
+
+- 文件:行：`app/internal/mall/service.go:106`（调用）→ `:816-824`（实现）→ `:825-827`（`formatMoney = r.FloatString(2)`）
+- status：`Degraded`
+- note：这是 h6 审计穷举跨界换算点后找到的**唯一一处「吃掉精度且无任何信号」**的资金写入点：
+  用 `big.Rat` 精确解析运营提交的 price 字符串，再 `FloatString(2)` **四舍五入**落库，
+  既不报错也不告警（对比：`ParseYuanToFen` 同场景是直接 `return err`）。
+  因此 `12.345` 会被静默改成 `12.35`，而订单侧走的是拒绝式 → 两侧行为不一致。
+  该函数**只影响 SKU 目录价**（`wys_mall_sku.price`），不影响已生成订单（下单聚合走 `big.Rat` 全程精确，
+  `mall/service.go:303,342,346,347`，落库才 `FloatString(2)`）。
+- 影响面：运营侧改价可能与实际展示价差 0.5 分级别；不造成用户端多扣款（订单金额由快照价算出）。
+  属「无信号的静默变更」，故登记 `Degraded` 而非忽略。
+- 解除条件：改为**拒绝式**（>2dp 返回错误）或显式记录一次 `Warn` + 审计日志；
+  h6 Brief「不做」明令禁止「顺手加个校验」→ **单独立 Slice**。
+
+## 31. 两种库形态的 `amount_fen` 形状不同（迁移 vs AutoMigrate）
+
+- 文件:行：`migrations/20261106170000_transaction_amount_fen.up.sql`（`ADD COLUMN … bigint` → `ALTER COLUMN … SET NOT NULL` →
+  `ADD CONSTRAINT transactions_amount_fen_nonneg CHECK (amount_fen >= 0)`）
+  vs `model/entity/transaction.go:25`（`AmountFen *int64` + `gorm:"column:amount_fen"`，GORM 只能建成**可空、无 CHECK**）
+  入口分叉在 `app/internal/schemaboot/boot.go:40`（`auto_migrate=true` → AutoMigrate）与 `:52,90`（false → 只校验迁移版本）。
+- status：`Degraded`
+- note：h6b 只把约束落在 `migrations/`（parity-p0-1 的单一真相），AutoMigrate 走的是 entity 形状，因此**同一段代码在两类库上
+  拿到的列定义不同**：迁移库 = `bigint NOT NULL` + `CHECK (amount_fen >= 0)`；AutoMigrate 库 = `bigint` 可空且无任何 CHECK
+  （实测 `\d transactions`：`amount_fen|bigint|YES`、约束列表为空、`schema_migrations` 关系不存在）。
+  这不会让读路径静默读成 0 元：`AmountFen` 是 `*int64`，`applyAmountFromFen`（`repo_postgres.go:30-31`）在 `nil` 时**直接返回**，
+  保留旧列 `amount` 的值（`money_fen_integration_test.go` 的 `TestMoneyUnitAutoMigrateShapeFallsBack` 断言读到 `88.50` 而非 `0`）。
+  真正的差额是**写入侧约束**：AutoMigrate 库上没有 NOT NULL、也没有非负 CHECK，脏值/负数只有 Go 侧的拒绝式换算拦着。
+- 影响面：`database.auto_migrate=true` 仅出现在 lab/dev 类环境（`config.NoDDLAppEnv` 对 `lan|prod` 强制 false），
+  正式环境不会落到无约束形态；但本地/试验库上「SQL 直写负数」不会被拒。
+- 解除条件：把 `amount_fen` 的 NOT NULL/CHECK 视为**迁移专属契约**并在启动日志上显式声明当前形态（例如 AutoMigrate 路径
+  打一条 `Warn(status=degraded)`），或为 AutoMigrate 补一条 post-migrate 的 DDL 后置钩子。两者都超出 h6b 白名单 → 单独立 Slice。
+
+## 32. 亚分金额（>2dp）被拒后返回 502 而不是 400
+
+- 文件:行：`app/internal/transaction/repo_postgres.go:17`（`ErrAmountPrecision`）→ `:21`/`:112`/`:157`（换算失败上抛）
+  → `app/internal/transaction/handler.go:176`（Create：`response.Error(c, http.StatusBadGateway, response.CodeInternalError, err.Error())`）
+  → `:202`（Update：`response.BackendError(c, http.StatusBadGateway, err.Error())`）
+- status：`Degraded`
+- note：h6b 把「>2 位小数」从**静默舍入**改成**拒绝式**，语义正确；但 handler 对仓储返回的错误**一律映射成 5xx**
+  （它原先要表达的是「后端 Supabase/PG 不可用」，没有按错误种类分流）。实测（`APP_ENV=dev` + `:8081` + `p06b_boot`）：
+  `POST /api/v1/transactions` `amount=1.005` → `http=502`、body `{"error":"金额最多两位小数: 1.005","code":50000}`。
+  客户端输入错误被报成服务端故障：Flutter 侧若按 5xx 做重试/降级提示，会对一个永远不可能成功的请求重试。
+  `app/internal/transaction/handler.go` 在 h6b **白名单外**（Brief 只允许 migrations / entity / repo_postgres / service / 测试 / schemaboot / 文档），
+  且 `transaction_request.go` 在**黑名单**内 → 本轮刻意不顺手改。
+- 影响面：不影响资金正确性（写入被拒、库内 0 脏值，漂移核对 0 行），只影响错误语义与客户端体验。
+- 解除条件：`errors.Is(err, transaction.ErrAmountPrecision)` → `400` + 参数错误码（一处 handler 错误映射改动），
+  或在 DTO 层用 `entity.ParseYuanToFen` 校验字符串后再进仓储。单独立 Slice。
 
 ---
 

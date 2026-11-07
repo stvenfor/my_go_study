@@ -12,6 +12,28 @@ import (
 	"model/entity"
 )
 
+// ErrAmountPrecision 金额超过两位小数（或为负），无法精确换成分。
+// 刻意复用「拒绝」而不是「四舍五入」：后者会把钱吃掉且无人知晓（见 docs/money-unit-audit.md §4.6）。
+var ErrAmountPrecision = errors.New("金额最多两位小数")
+
+// amountFenOrErr 入参元 → 分。
+func amountFenOrErr(yuan float64) (int64, error) {
+	fen, err := entity.AmountFenFromYuan(yuan)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrAmountPrecision, yuan)
+	}
+	return fen, nil
+}
+
+// applyAmountFromFen 读路径以 amount_fen 为准还原对外口径（元）。
+// amount_fen 为 NULL（库未迁移/未回填）时保留旧列 amount 的读值，不做任何换算。
+func applyAmountFromFen(t *entity.Transaction) {
+	if t == nil || t.AmountFen == nil {
+		return
+	}
+	t.Amount = entity.YuanFromAmountFen(*t.AmountFen)
+}
+
 type PostgresRepository struct {
 	db *gorm.DB
 }
@@ -56,6 +78,9 @@ func (r *PostgresRepository) ListPage(ctx context.Context, _, userID string, fil
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询 transactions 失败: %w", err)
 	}
+	for i := range items {
+		applyAmountFromFen(&items[i])
+	}
 	return items, total, nil
 }
 
@@ -73,6 +98,7 @@ func (r *PostgresRepository) GetByID(ctx context.Context, _, userID string, id i
 		}
 		return nil, fmt.Errorf("查询 transaction 失败: %w", err)
 	}
+	applyAmountFromFen(&item)
 	return &item, nil
 }
 
@@ -83,11 +109,17 @@ func (r *PostgresRepository) Create(ctx context.Context, _, userID string, input
 	}
 	now := time.Now().UTC()
 	uidCopy := uid
+	fen, err := amountFenOrErr(input.Amount)
+	if err != nil {
+		return nil, err
+	}
+	fenCopy := fen
 	item := entity.Transaction{
 		UserID:    &uidCopy,
 		Type:      input.Type,
 		Category:  input.Category,
-		Amount:    input.Amount,
+		Amount:    input.Amount, // 旧列，双写保留
+		AmountFen: &fenCopy,     // 存储口径
 		Date:      input.Date,
 		Note:      input.Note,
 		CreatedAt: &now,
@@ -122,7 +154,12 @@ func (r *PostgresRepository) Update(ctx context.Context, _, userID string, id in
 		updates["category"] = *input.Category
 	}
 	if input.Amount != nil {
-		updates["amount"] = *input.Amount
+		fen, err := amountFenOrErr(*input.Amount)
+		if err != nil {
+			return nil, err
+		}
+		updates["amount"] = *input.Amount // 旧列，双写保留
+		updates["amount_fen"] = fen       // 存储口径
 	}
 	if input.Date != nil {
 		updates["date"] = *input.Date
@@ -131,6 +168,7 @@ func (r *PostgresRepository) Update(ctx context.Context, _, userID string, id in
 		updates["note"] = *input.Note
 	}
 	if len(updates) == 0 {
+		applyAmountFromFen(&item)
 		return &item, nil
 	}
 	now := time.Now().UTC()
@@ -142,6 +180,7 @@ func (r *PostgresRepository) Update(ctx context.Context, _, userID string, id in
 	if err := r.db.WithContext(ctx).First(&item, item.ID).Error; err != nil {
 		return nil, fmt.Errorf("刷新 transaction 失败: %w", err)
 	}
+	applyAmountFromFen(&item)
 	return &item, nil
 }
 
