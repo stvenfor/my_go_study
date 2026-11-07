@@ -31,7 +31,22 @@
   - 本地等效 CI：`go build all && go -C app test ./... -count=1`
 - 证据: `docs/acceptance-records/2026-11-05-harden-h3-ci-and-test-entrypoints.md`
 
-## 决策门（人批后才动手）
+## 决策门（2026-11-06 已批）
+
+- **落点 = GitHub Actions**（新建 `.github/workflows/ci.yml`），不做本地 githooks 方案。
+- **门禁分层**：`go build all` / `go vet` / lint / 单元测试 / `scripts/check-tracked-imports.sh` = **阻塞项**；**集成测试（`-tags=integration`）先 `continue-on-error: true`（allow-fail）**，等它连续绿若干次再单独提一次改动转成阻塞 —— 转阻塞不在本 Slice。
+- **本仓无外网**（coordinator 实测 `curl https://github.com` 之外的 `proxy.golang.org` 返回 000）：worker 只能**写 workflow 文件 + 本地等价复现**（同一组命令在本机跑通/跑挂各一次），真实 Actions 绿灯需人 push 后回看，acceptance-record 里把这条写清为 Partial 的原因。
+
+### 新决策门（2026-11-06 18:0x，coordinator 实测后追加）：toolchain 必须先钉死，否则 `go build all` 阻塞项永远红
+
+- 实测：本机默认 **go1.27.3** 下，`go build all`（主仓、有 `go.work`）**exit 1**：
+  `grpc v1.71.0/internal/transport/handler_server.go:271 undefined: http2.TrailerPrefix`
+  —— workspace MVS 选到 `x/net v0.54.0`，该符号在 go1.27 下被构建标签编译掉。`GOTOOLCHAIN=local` + `/usr/local/go`(1.26.4) 时 **exit 0**。
+- 因此本 Slice 的 CI 必须显式钉 toolchain（建议 `setup-go` 的 `go-version: '1.26.x'`，并在 acceptance-record 写明「不是用作者机器的 1.27.3」）；**禁止**靠 `GOTOOLCHAIN=auto` 让 CI 漂到 1.27。
+- 另一种修法（升 grpc / 钉 `x/net` / `-tags http2legacy`）会碰 `**/go.mod` = 本 Slice 黑名单，故**不在本 Slice**；若人要选那条，另开依赖 Slice（h2 锁区）。
+- 验收补充：`go build all` 在本 Slice 的 CI 下必须绿，且 acceptance-record 必须贴 `go version` 与 `go env GOTOOLCHAIN`；只贴 exit 0 不贴版本视为证据不足。
+
+## 决策门（历史）（人批后才动手）
 - CI 跑在哪：GitHub Actions（需确认 remote 与 Actions 额度）/ 只做本地 `make` 门禁 + githooks（`scripts/install-githooks.sh` 已存在，可复用）。
 - 是否需要把 integration 用例设为**阻塞**门禁（真库依赖会让 CI 变慢变脆）还是 allow-fail 起步。
 
