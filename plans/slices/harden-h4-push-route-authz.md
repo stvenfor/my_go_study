@@ -38,9 +38,21 @@
 - 证据: `docs/acceptance-records/2026-11-05-harden-h4-push-route-authz.md`
 
 ## Context Card — harden-h4-push-route-authz
-- 已完成:
-- 未做/Deferred:
-- 关键文件:
-- harness: post ok?
-- 下一 Slice 建议:
-- 已知坑:
+- 已完成: 两处越权收敛（jpush Send / realtime Push）：他人 user_id → 403+warn；jpush 的
+  alias/registration_ids 一律忽略+warn、目标锁定会话用户；自身路径（留空/填自己）不回归。
+  7 例负例/对照单测（spy 断言 403 时 usecase 未被调用）；placeholder-inventory #22 登记 Deferred；
+  acceptance-record `docs/acceptance-records/2026-11-05-harden-h4-push-route-authz.md`。
+- 未做/Deferred: 跨用户群发（合法管理员路径）= Deferred，需 `access.Service` 注入 controller → 改
+  `main.go`（h8 独占，另立 Slice）；实机 HTTP 冒烟未跑（需 API+service role，单测已覆盖逻辑）；限流=P2。
+- 关键文件: `app/internal/delivery/http/controller/jpush_controller.go`、
+  `realtime_controller.go`、两个 `*_test.go`；`docs/placeholder-inventory.md`。
+- harness: post ok? 只改白名单、不改权限模型/main.go/Flutter；`go1.26.4` 下
+  `go -C app test ./internal/delivery/http/... -count=1`、定向 usecase 测试、`go build all` 全绿；
+  warn 实测输出；未 commit/push/rm -rf，DB 仅 scratch。
+- 下一 Slice 建议: 若需合法跨用户推送，另立 Slice 注入 `access.Service` 做角色鉴权（与 h8 协调 main.go），
+  并可选注入 `PushDeviceRepository` 放行「本人登记」的 registration_id/alias。
+- 已知坑: 默认 `go`(1.27.3)+x/net v0.54.0 下 `go build all` 红（grpc handler_server.go http2.TrailerPrefix），
+  非本片 bug；验收用 `/usr/local/go/bin/go`(1.26.4) 或 `GOTOOLCHAIN=local`。controller 持有具体 usecase
+  指针非接口，故用真实 usecase+可观测依赖（jpush recordingTransport / recordingEnqueuer）作 spy 断言
+  「未被调用」，未引入生产侧接口重构（避免 typed-nil 陷阱）。`push_notify_user.sh` 目标为他人 userId，
+  加固后正确返回 403（脚本 `set -e` 会以 HTTP 403 退出 1）。
