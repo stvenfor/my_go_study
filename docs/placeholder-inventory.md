@@ -349,3 +349,18 @@ APP_ENV=prod make run   # 再调 POST /api/v1/user/phone/otp/verify {13400000000
 - [x] P0-4 结果已登记（条目 14 `Removed` + 条目 15 `Deferred`），未声称机审完成。
 - [x] 未登记即宣称完成的路径：本次核对未发现新增项（Program 里 P0-1/P0-2/P0-3/P0-6/P0-7 均已在各自
       Epic/Slice 下跟踪，本文件只做指向）。
+
+---
+
+## 追加条目（harden-h10，2026-11-06）
+
+> 追加式登记，不改上方 1–21 条。来源 `plans/slices/harden-h10-unique-index-name-alignment.md`，
+> 详见 [`2026-11-06-harden-h10-unique-index-name-alignment.md`](./acceptance-records/2026-11-06-harden-h10-unique-index-name-alignment.md)。
+
+| # | 条目 | status | note | 影响面 | 解除条件 |
+|---|------|--------|------|--------|----------|
+| 22 | IM 两列唯一索引「两侧同名」未达（走 B 的取舍） | Deferred | 路线 (B) 已落地：`model/entity/im.go:67,77` `uniqueIndex`→`unique`，两种库形态 `auto_migrate=true` 启动 `grep -c 42704=0`、每列仅一条 `_key` 唯一对象。但原目标「两侧同名」未达：唯一对象仍是 DDL 内联 `UNIQUE` 的 `<table>_<column>_key`，未建立单一规范名 `uk_*`。达成需路线 (A) 的 `DROP CONSTRAINT`（破坏性 DDL），**人批未发生**、本 worker 无批准权、未执行 | 存量库唯一性约束命名不统一；`schemaboot.BestEffort` 仍只 Warn（42704 曾静默存在） | 人明确批「h10 允许对 IM 两列 `DROP CONSTRAINT`」后走 (A)：同改两份 DDL 真相源 + 新增迁移（`.down.sql` 真跑 down→up）+ entity 改 `uniqueIndex:uk_*`；否则维持 (B) 的「零 42704 + 零重复索引」口径 |
+
+- `auth_user.go:12` / `community.go:19` / `payment.go` 已证非缺陷或为模板，**未动**。
+- 路线 (C)（`RENAME CONSTRAINT → uni_*`）为陷阱，禁止采用（会静默删唯一性）。
+- 版本相关性仅按静态同源口径书写：两版相关源码逐字相同、未做运行时对照启动（行号见 acceptance-record）。
