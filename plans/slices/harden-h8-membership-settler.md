@@ -36,9 +36,9 @@
 - 证据: `docs/acceptance-records/2026-11-05-harden-h8-membership-settler.md`
 
 ## Context Card — harden-h8-membership-settler
-- 已完成:
-- 未做/Deferred:
-- 关键文件:
-- harness: post ok?
-- 下一 Slice 建议:
-- 已知坑:
+- 已完成: `membership.Service` 实现 `payment.Settler`（`SettleChannelPaid`）；`NewService` 内自注册 `PaymentRefMembershipOrder`（零 main.go 改动）；`var _ payment.Settler` 编译期断言；幂等 + 双链并发真库用例（`p08_it`）；单测 3 条 + integration 4 条全绿；`go build all`(go1.26.4)/vet 通过；文档（清单条目 18 / parity §七 F2 / 本片验收记录）已更新。证据：`docs/acceptance-records/2026-11-05-harden-h8-membership-settler.md`
+- 未做/Deferred: 8081+worker 人工端到端冒烟（Partial Deferred，沿上一轮人证口径）；F7 核销后通知；Flutter。
+- 关键文件: `app/internal/membership/service.go`（`NewService` 自注册 / `SettleChannelPaid`）；`app/internal/membership/service_test.go`；`app/internal/membership/settle_integration_test.go`（新）；`app/internal/payment/settle.go:103-116`（兜底分支保留）。
+- harness: post ok? 是 —— 单测 + integration（含 `-count=10` 并发）+ `go build all`(1.26.4) + vet 全绿；HEAD `e288553` / worktree `harden-h8` 自证通过；未 commit/push、未改 go.mod/go.sum、业务库只读。
+- 下一 Slice 建议: payment 侧刷新 `settled_no_settler` 分支陈旧注释（仍举 membership_order 为例、称其仓储不支持 txdb）；F7 事务提交后入队通知；8081+worker 端到端冒烟。
+- 已知坑: 默认 go1.27.3 `go build all` 红在 grpc v1.71.0 `handler_server.go:271 undefined http2.TrailerPrefix`（共同前提，非本片）；改用 `/usr/local/go/bin/go`(1.26.4)。`SettleChannelPaid` 内**不要**调 `u.repo.Transaction`（那会在 base db 另开事务、脱离 payment ctx），直接 `MarkOrderPaid`/`ExtendEntitlement` 经 `txdb.DB` 落同一事务。integration 用独立 scratch `p08_it` 避开 `p03_it` 建表冲突。

@@ -3,6 +3,7 @@ package membership
 import (
 	"context"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -389,5 +390,80 @@ func TestMembershipConfirmIdempotent(t *testing.T) {
 		if out.Status != "paid" {
 			t.Fatalf("第 %d 次确认 %+v", i+1, out)
 		}
+	}
+}
+
+// seedChannelOrder 造一条 wechat 待支付会员单，返回其 orderID 字符串。
+func seedChannelOrder(t *testing.T, repo *memMembershipRepo) string {
+	t.Helper()
+	order := &entity.WysMembershipOrder{
+		UserID: "u1", Tier: "svip", PlanID: "svip_1m", Channel: "wechat",
+		AmountFen: 3000, Status: entity.MembershipOrderPending, OutTradeNo: "ot-settle",
+		CreatedAt: time.Now(),
+	}
+	if err := repo.CreateOrder(context.Background(), order); err != nil {
+		t.Fatal(err)
+	}
+	return strconv.FormatInt(order.OrderID, 10)
+}
+
+func paidRec(userID string) *entity.WysPaymentRecord {
+	tn := "wx-txn-settle"
+	return &entity.WysPaymentRecord{
+		UserID: userID, Channel: "wechat", RefType: entity.PaymentRefMembershipOrder,
+		Status: entity.PaymentStatusPaid, ChannelTradeNo: &tn,
+	}
+}
+
+// 回调核销即主动发权益：不靠客户端回跳 ConfirmBuyout。
+func TestSettleChannelPaidGrantsEntitlement(t *testing.T) {
+	repo := newMemMembershipRepo()
+	uc := NewService(repo, nil, nil, nil, nil, "dev")
+	refID := seedChannelOrder(t, repo)
+
+	if err := uc.SettleChannelPaid(context.Background(), entity.PaymentRefMembershipOrder, refID, paidRec("u1")); err != nil {
+		t.Fatalf("SettleChannelPaid: %v", err)
+	}
+	ent, err := repo.GetEntitlement(context.Background(), "u1", "svip")
+	if err != nil || ent == nil || !ent.Active(time.Now()) {
+		t.Fatalf("核销后未发权益：ent=%+v err=%v", ent, err)
+	}
+}
+
+// 连投两次回调：MarkOrderPaid 的 ErrOrderPaid 守卫让第二次直接幂等返回，权益只延长一个周期。
+func TestSettleChannelPaidIdempotent(t *testing.T) {
+	repo := newMemMembershipRepo()
+	uc := NewService(repo, nil, nil, nil, nil, "dev")
+	refID := seedChannelOrder(t, repo)
+	ctx := context.Background()
+
+	if err := uc.SettleChannelPaid(ctx, entity.PaymentRefMembershipOrder, refID, paidRec("u1")); err != nil {
+		t.Fatal(err)
+	}
+	first, _ := repo.GetEntitlement(ctx, "u1", "svip")
+	if err := uc.SettleChannelPaid(ctx, entity.PaymentRefMembershipOrder, refID, paidRec("u1")); err != nil {
+		t.Fatalf("重复回调不应报错：%v", err)
+	}
+	second, _ := repo.GetEntitlement(ctx, "u1", "svip")
+	if !second.ExpiresAt.Equal(first.ExpiresAt) {
+		t.Fatalf("权益被叠加：first=%v second=%v，期望只加一个周期", first.ExpiresAt, second.ExpiresAt)
+	}
+}
+
+// refType 非法 / 流水归属不符必须拒绝，避免串单发权益。
+func TestSettleChannelPaidRejects(t *testing.T) {
+	repo := newMemMembershipRepo()
+	uc := NewService(repo, nil, nil, nil, nil, "dev")
+	refID := seedChannelOrder(t, repo)
+	ctx := context.Background()
+
+	if err := uc.SettleChannelPaid(ctx, entity.PaymentRefMallOrder, refID, paidRec("u1")); !errors.Is(err, ErrOrderNotFound) {
+		t.Fatalf("refType 非法应拒：%v", err)
+	}
+	if err := uc.SettleChannelPaid(ctx, entity.PaymentRefMembershipOrder, refID, paidRec("u2")); !errors.Is(err, ErrOrderOwner) {
+		t.Fatalf("流水归属不符应拒：%v", err)
+	}
+	if ent, _ := repo.GetEntitlement(ctx, "u1", "svip"); ent != nil {
+		t.Fatalf("被拒路径不应发权益：%+v", ent)
 	}
 }

@@ -95,6 +95,9 @@ type Service struct {
 	devMode   bool
 }
 
+// 编译期确认会员域已实现渠道核销器（F2：membership_order 不再走 settled_no_settler 分支）。
+var _ payment.Settler = (*Service)(nil)
+
 // HuaweiSubscriptionVerifier 验订阅；本地可注入 mock。
 type HuaweiSubscriptionVerifier interface {
 	Configured() bool
@@ -128,7 +131,7 @@ func NewService(
 	apple AppleReceiptVerifier,
 	appEnv string,
 ) *Service {
-	return &Service{
+	u := &Service{
 		repo:      repo,
 		walletSvc: walletSvc,
 		pay:       pay,
@@ -136,6 +139,12 @@ func NewService(
 		apple:     apple,
 		devMode:   config.IsLabAppEnv(appEnv),
 	}
+	// 照 mall/service.go 的 WithPayment 形态自注册：pay 已在 main 注入本构造器，
+	// 无需动 main.go。注册后回调核销 membership_order 直接发权益，不再靠回跳/查单。
+	if u.pay != nil {
+		u.pay.RegisterSettler(entity.PaymentRefMembershipOrder, u)
+	}
+	return u
 }
 
 func (u *Service) Me(ctx context.Context, userID string) (*MembershipMe, error) {
@@ -335,6 +344,51 @@ func (u *Service) ConfirmBuyout(ctx context.Context, userID string, orderID int6
 		Status:      "paid",
 		Entitlement: entitlementDTO(*ent, now),
 	}, nil
+}
+
+// SettleChannelPaid 实现 payment.Settler：渠道回调核销后主动发放会员权益。
+//
+// 与 payment.settleByFact 同处一个事务：ctx 已带核销事务句柄，这里**不另开事务**，
+// MarkOrderPaid / ExtendEntitlement 经 txdb.DB(ctx,..) 直接落进该事务；
+// 任一步失败连流水一起回滚，不会出现「流水 paid、权益没发」的半状态。
+// 体内零外部 HTTP/ES/MQ（沿用 P0-3 立的规矩）。
+//
+// 幂等 / 与 ConfirmBuyout 并发：两条链都以 MarkOrderPaid 的
+// `WHERE status=pending + RowsAffected==0 → ErrOrderPaid` 为原子守卫，
+// 只有先抢到的那条能走到 ExtendEntitlement，回调重投或双链并发都只加一个周期。
+func (u *Service) SettleChannelPaid(ctx context.Context, refType, refID string, rec *entity.WysPaymentRecord) error {
+	if refType != entity.PaymentRefMembershipOrder {
+		return ErrOrderNotFound
+	}
+	orderID, err := strconv.ParseInt(refID, 10, 64)
+	if err != nil || orderID <= 0 {
+		return ErrOrderNotFound
+	}
+	order, err := u.repo.GetOrder(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	plan, ok := entity.FindMembershipPlan(order.PlanID)
+	if !ok {
+		return ErrPlanInvalid
+	}
+	// 流水归属校验：防止拿别人的已核销流水去给本单发权益。
+	if rec != nil && rec.UserID != "" && rec.UserID != order.UserID {
+		return ErrOrderOwner
+	}
+	now := time.Now()
+	tradeNo := ""
+	if rec != nil && rec.ChannelTradeNo != nil {
+		tradeNo = *rec.ChannelTradeNo
+	}
+	if err := u.repo.MarkOrderPaid(ctx, orderID, now); err != nil {
+		if errors.Is(err, ErrOrderPaid) {
+			return nil // 已发放（回调重投 / 与 ConfirmBuyout 并发），幂等返回
+		}
+		return err
+	}
+	_, err = u.repo.ExtendEntitlement(ctx, order.UserID, order.Tier, order.Channel, plan.Months, now, tradeNo, "", "")
+	return err
 }
 
 // VerifyHuawei 验华为订阅并发放权益。
