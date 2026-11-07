@@ -349,3 +349,34 @@ APP_ENV=prod make run   # 再调 POST /api/v1/user/phone/otp/verify {13400000000
 - [x] P0-4 结果已登记（条目 14 `Removed` + 条目 15 `Deferred`），未声称机审完成。
 - [x] 未登记即宣称完成的路径：本次核对未发现新增项（Program 里 P0-1/P0-2/P0-3/P0-6/P0-7 均已在各自
       Epic/Slice 下跟踪，本文件只做指向）。
+
+---
+
+## 追加登记（2026-11-06 · H9 商城组合支付口径②）
+
+> 追加式：上文条目 1–21 与「状态速览」表**不改一行**，本节只新增条目 22。
+> 口径全文见 [`docs/mall-mixed-payment.md`](./mall-mixed-payment.md)；验证与残留见
+> [`docs/acceptance-records/2026-11-06-harden-h9-mall-mixed-payment-deduction.md`](./acceptance-records/2026-11-06-harden-h9-mall-mixed-payment-deduction.md)。
+
+| # | 条目 | status | note |
+|---|------|--------|------|
+| 22 | 商城组合支付「积分→现金」折算率与店员录入口径 | `Degraded` | 已补全仓唯一折算入口 `entity.MallPointsPerYuan=100` / `entity.PointsValueFen`（`model/entity/mall.go:54,119`）与口径文档，结算 / 退款主路径未改（口径②下现行写法正确）；**跨仓另一半（Flutter 展示原价 / 店员录入端语义校验）未做**，`sku_id=37` 存量价待人裁定、零迁移。详见 22.1。 |
+
+### 22.1 详情
+
+- 文件:行：`model/entity/mall.go:54`（兑换率常量）、`model/entity/mall.go:119`（`PointsValueFen` 唯一折算入口）、
+  `app/internal/mall/service.go:92`（`CreateSKUInput` 仅补口径注释）、
+  `app/internal/mall/service_mixed_payment_test.go`（不变量测试）、`docs/mall-mixed-payment.md`（权威口径）。
+- status：`Degraded`
+- note：
+  - 口径②：`price` = 抵扣后应付现金（**不是原价**），`price_points` = 抵扣所需积分；100 积分 = 1 元（1 积分 = 1 分）。
+    展示原价分 = `ParseYuanToFen(price) + PointsValueFen(price_points)`；`sku_id=37`：990 + 50 = 1040 分 = 10.40 元。
+  - 结算收「全额 `order.Amount` + 全额扣 `order.TotalPoints`」在口径②下正确，**未改动**；
+    改成「先算抵扣再收现金」= 二次打折 / 反向资损。真实风险是店员把原价填进 `price`（`CreateSKUInput` 零语义校验），
+    不是结算端。
+  - 本轮只补文档 + 代码注释 + 不变量测试；`CreateSKU` 未加语义校验（超出 ONLY）、改率未做、存量价未动。
+- 影响面：Flutter 商城页若按「原价 = price」展示会误导；店员误填会让该 SKU 双重计费；改 `MallPointsPerYuan`
+  不刷存量价会让全量展示原价与商家意图错配。
+- 解除条件：①人对 `sku_id=37` 与全部存量价裁定并重刷（另立数据变更 Slice，程序不代定）；
+  ②Flutter 侧展示与录入端口径校验落地（跨仓另一半）；③`CreateSKUInput` 补「原价 / 抵扣」语义校验；
+  ④`TestPointsValueFen` 的率守卫与不变量测试持续绿。

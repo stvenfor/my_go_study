@@ -81,6 +81,14 @@ func (u *Service) CreateProduct(ctx context.Context, actorID string, storeID int
 }
 
 // CreateSKUInput 创建 SKU 入参。
+//
+// 口径②（店员录入约定，见 docs/mall-mixed-payment.md）：
+//   - Price       = 抵扣后应付现金（元），不是原价；展示原价 = Price + entity.PointsValueFen(PricePoints)。
+//   - PricePoints = 获得该抵扣所需的积分数量，不是「可抵扣金额」。
+//
+// 例：原价 10.40、用 50 积分抵 0.50 元 → 应录 Price="9.90"、PricePoints=50；
+// 若把原价 10.40 填进 Price 又填 PricePoints=50，就变成现金按原价收、积分再扣一份价值的双重计费。
+// 录入自校：entity.ParseYuanToFen(Price) + entity.PointsValueFen(PricePoints) == 期望原价分。
 type CreateSKUInput struct {
 	ProductID   int64
 	SKUCode     string
@@ -339,6 +347,9 @@ func (u *Service) CreateOrder(ctx context.Context, buyerUserID string, in Create
 				return nil, ErrStockInsufficient
 			}
 		}
+		// 口径②：现金腿（Price×qty）与积分腿（PricePoints×qty）各自独立累加，
+		// 二者互不相减、互不折算。order.Amount 只来自 Price，order.TotalPoints 只来自 PricePoints。
+		// 禁止在此用 entity.PointsValueFen 去净额/抵扣 —— 那是二次打折（反向资损）。
 		unit, ok := new(big.Rat).SetString(sku.Price)
 		if !ok {
 			return nil, ErrInvalidPrice
@@ -669,6 +680,10 @@ func (u *Service) settleLocal(ctx context.Context, buyerUserID string, orderID i
 		}
 		return nil, ErrOrderPayExpired
 	}
+	// 口径②：混合单收「全额 order.Amount（现金）+ 全额 order.TotalPoints（积分）」就是正确写法。
+	// 两笔价值来自不同字段、互不覆盖；不得改成「先算抵扣再收现金」—— 那会把积分抵扣价值
+	// 重复用一次，形成二次打折 / 反向资损（少收 entity.PointsValueFen(TotalPoints)）。
+	// entity.PointsValueFen 只用于派生展示原价，绝不进入本结算扣减。
 	needsCNY := !entity.IsZeroMoney(order.Amount)
 	needsPoints := order.TotalPoints > 0
 	if needsCNY {
@@ -766,6 +781,8 @@ func (u *Service) CancelOrder(ctx context.Context, buyerUserID string, orderID i
 				}
 			}
 		}
+		// 退款对称：现金按 row.Amount 全额退、积分按 row.TotalPoints 全额退，
+		// 与实付现金 / 实扣积分一一对应；不做任何净额，也不调用 entity.PointsValueFen。
 		if row.TotalPoints > 0 {
 			if u.pointsSvc == nil {
 				return ErrRefundUnavailable
