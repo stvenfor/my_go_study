@@ -7,8 +7,10 @@ tmp/
 .env.*.local
 .env.lan
 
-# Logs
-logs/
+# Logs（运行日志产物；勿用裸 logs/ —— 它会命中任意深度名为 logs 的目录，
+#       曾把 Go 源码包 thunder/logs/logs.go 误排除在跟踪之外，见
+#       docs/acceptance-records/2026-11-05-harden-h1-repo-hygiene.md）
+/logs/
 *.log
 
 # 本地备份 / 补丁残留（勿入库）
@@ -29,9 +31,13 @@ logs/
 coverage.*
 *.out
 
-# Go workspace
-go.work
-go.work.sum
+# Go workspace：go.work / go.work.sum 已按人批 G-new-1 放行入库，勿再加回 ignore 规则
+
+# 本地编译产物（只 ignore，不删除；二进制绝不入库）
+# `go build -o ../bin/worker` 正常情况下落 bin/（已忽略）；
+# 但 `go -C app build ./cmd/worker` 等就地编译会在 app/ 下产出同名无扩展名可执行文件。
+# 只点名 app/worker，勿写 app/api —— 那是 proto/gen 源码目录，会被误忽略。
+app/worker
 
 # Python (feishu_doc_sync 等脚本)
 __pycache__/
