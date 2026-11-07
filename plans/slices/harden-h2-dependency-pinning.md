@@ -43,9 +43,9 @@
 - 仍待你上报再定：casbin + gorm-adapter 是否留在 `core`（`core/authz` 已 tracked；本 Slice 默认**保留**，只在兼容性取证失败时提出移除建议）。
 
 ## Context Card — harden-h2-dependency-pinning
-- 已完成:
-- 未做/Deferred:
-- 关键文件:
-- harness: post ok?
-- 下一 Slice 建议:
-- 已知坑:
+- 已完成: `app/go.mod` gorm `v1.25.12`→`v1.31.2`（Brief 决策门 3 人批，保留）+ `app/go.sum` 同步；**go 指令按 §1 三条理由保持 `1.24.6`、不动 go 指令行**（workspace 级下限已由 `go.work` 的 1.25.0 提供；最小改动；抬 toolchain 会放大不可重生成的 proto 漂移风险）；`go build all` / `-mod=readonly build ./...` / `go -C app test ./...`（30 ok 包）/ `go -C core test ./...` 全绿；integration 五例（`-p 1`，scratch 库 `p02_it`/`p03_it`）全 PASS；两种库形态启动冒烟 5 次 `/health` 全 ok，**`payment.EnsureSchema` 的 `uk_wys_payment_records_out_trade_no` 在「全新迁移库 / 迁移后再启动 / AutoMigrate 从零建 / 再启动」四种形态都不触发 42704（R2 证伪关键证据）**，Casbin Enforcer 均就绪；零 `.go` 改动
+- 未做/Deferred: 四模块 go 指令统一（本轮决定按 §1 三条理由保持现状，各模块维持 HEAD 值）；独立提交（由人执行）；融云 IM 表 `uni_wys_im_store_group_group_id` 同类 42704（**coordinator 决定：另开 Slice h10，待 Brief 落盘后派发**；本轮零 `.go` 改动、不落地；证据包见 acceptance-record §6.1）；IM 42704 在 `gorm v1.25.12` 下的对照实测**未做**（§6.1 已写明，勿当作「与 gorm 版本无关」的坐实）
+- 关键文件: `app/go.mod`、`app/go.sum`、`docs/acceptance-records/2026-11-05-harden-h2-dependency-pinning.md`
+- harness: post ok? 未跑 `make agent-post`（本仓 Makefile 无此目标）；以 acceptance-record 的实跑命令输出为准。总状态 **Degraded** + note（go 指令未统一 + IM 42704 残留 + 未提交，见 acceptance-record §6；`Partial` 非合法枚举，已改）。**本 worker 从未发 `ask`、无 IM 决定的人批记录**，先前「人已批」措辞已按 `no-silent-accept` 全部撤除
+- 下一 Slice 建议: ①**coordinator 决定另开 Slice h10**：修 IM entity 裸 `uniqueIndex`（`model/entity/im.go:67`、`:77`）与迁移列级 `UNIQUE`（`migrations/20260924100000_rongcloud_im.up.sql:41`、`:48`）命名不一致（同 payment 42704 根因，需改 `.go`，照 payment 的 `uk_` 修法）；②h1 处理 `go.work` 入库（改 `.gitignore:33`）并决定 `thunder/logs` 是否入库。go 指令统一按 §1 保持现状，不再列入
+- 已知坑: `go.work`/`go.work.sum`/`thunder/logs`/`bin/migrate` 被忽略或未入库，worktree 需从主检出复制才能跑 `go build all` 与迁移链（h1 会放行 `go.work`）；`make proto`（`Makefile:17-25`）需本机 `protoc` + 插件，本机无 `buf`、无网时不能重生成，且 `app/go.mod:19` protobuf `v1.36.6` 与 `analytics.pb.go:3` 生成器 `v1.35.2` 已漂移（§1 理由③）；冒烟只连 scratch 库 `p03_it`（`P03_PG_DBNAME`，端口 8081），绝不连 `my_go_study`；三包集成并行会抢同一库触发建表竞态（`42P01`/`23505`），需 `-p 1` + payment 单独 `p02_it`
