@@ -39,7 +39,7 @@
 | 15 | 机审 / 驳回态 / 批量审核 UI | Deferred | P2-2 |
 | 16 | `EnqueueSendSMS` 生产者无调用方 | Deferred | 待排（短信接入） |
 | 17 | 清单扫描自动化门禁（`TODO/stub/mock`） | Deferred | 待排 |
-| 18 | `membership_order` 无业务核销器（权益需回跳/查单触发；两次写已同事务） | Degraded | 待排（`RegisterSettler`） |
+| 18 | `membership_order` 业务核销器（回调即发权益） | Migrated（h8 已验收） | `harden-h8-membership-settler` |
 | 19 | 对账只做「渠道查单」方向，`local_missing` 未实现 | Deferred | 待排（渠道账单文件下载） |
 | 20 | 商城 Apple/华为 IAP 渠道仍本地标记已付、无渠道流水 | Placeholder | 待排（IAP 专项） |
 | 21 | `unifiedorder` 响应未验签（只信回调报文） | Degraded | 待排（P2 支付加固） |
@@ -244,19 +244,25 @@ AutoMigrate/EnsureSchema 出启动流程（P0-1）、compose/配置的弱默认�
 - 影响面：新增假实现可能漏登记。
 - 解除条件：约定注释标记（例如 `// placeholder:` 前缀）后，脚本只扫该标记即可低噪声落地。
 
-## 18. `membership_order` 没有业务核销器
+## 18. `membership_order` 没有业务核销器 → **已收口（h8）**
 
-- 文件:行：`app/internal/payment/settle.go:103-116`（`settled_no_settler` 分支）
-- status：`Degraded`
-- note：渠道回调只把流水置 paid 并打 Warn（`ref_type` 未登记核销器），权益由会员侧 `ConfirmRefPaid`
-  （回跳同步查单）或下一次查单任务补齐。指标上可观测，不是静默消失。
-  会员侧内部两次写（`MarkOrderPaid` → `ExtendEntitlement`）**已经**在同一 `txdb` 事务里
-  （`membership/repository.go:Transaction`，P0-3 同形态），所以「半状态」这条已不成立；
-  剩下的只是没注册 Settler —— 即**权益仍要客户端/查单来触发**，回调不会主动发。
-- 影响面：只走「客户端回跳 + 查单」这条链发权益；若用户回跳后再也不请求，权益延迟到下一次 pending 查单
-  （`scheduler.payment.query_interval_minutes`）。
-- 解除条件：`pay.RegisterSettler(entity.PaymentRefMembershipOrder, memSvc)`，让回调直接发权益
-  （仓储的 `Transaction` 已就绪，改法与 mall 的 `SettleChannelPaid` 同形）。
+- 文件:行：`app/internal/membership/service.go`（`SettleChannelPaid` + `NewService` 自注册）；
+  原缺口 `app/internal/payment/settle.go:103-116`（`settled_no_settler` 分支，现仅作未知 ref_type 兜底）
+- status：`Migrated`（`harden-h8-membership-settler` 已验收，证据见
+  [`2026-11-05-harden-h8-membership-settler.md`](./acceptance-records/2026-11-05-harden-h8-membership-settler.md)）
+- note：`membership.Service` 实现 `payment.Settler`，`NewService` 内 `pay.RegisterSettler(
+  PaymentRefMembershipOrder, u)` 自注册（照 mall `WithPayment` 形态，**零 main.go 改动**）。
+  回调核销 `membership_order` 即由 `SettleChannelPaid` 主动发权益，`settled_no_settler` 对该 ref_type 不再出现。
+  写全部落在 payment 传入的 ctx 事务里（`MarkOrderPaid` / `ExtendEntitlement` 经 `txdb.DB`），体内零外部 HTTP/ES/MQ。
+  幂等与「回调 vs `ConfirmBuyout` 双链并发」由 `MarkOrderPaid` 的 `WHERE status=pending + RowsAffected==0
+  → ErrOrderPaid` 原子守卫保证，只加一个权益周期（真库用例 + 并发 x10 已证）。
+- 影响面：回跳丢失 / 用户杀进程不再导致「付了钱没会员」；渠道收款与发货同事务，跨域「流水 paid、单未付、权益未发」
+  的窗口（见 [`2026-11-04-membership-money-tx-followup.md`](./acceptance-records/2026-11-04-membership-money-tx-followup.md)
+  §诚实口径 3）一并消失。
+- 解除条件：已满足。剩余已知项（**均不在 h8 白名单，显式登记不静默丢弃**）：
+  1. `payment/settle.go:105-108` 的注释仍把 `membership_order` 当「未登记」示例、且说「membership 仓储还不支持 txdb」
+     —— 事实已变（注释陈旧），但该分支逻辑作为未知 ref_type 兜底仍正确；不在 h8 白名单，留给 payment 侧清理。
+  2. F7「核销后通知用户」仍 `Deferred`，与本片无交集（h8 事务内零外部调用）。
 
 ## 19. 对账只覆盖「渠道查单」方向，`local_missing` 未实现
 
