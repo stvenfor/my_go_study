@@ -20,6 +20,7 @@ import (
 	"app/internal/payment"
 	"app/internal/usecase"
 	"common/config"
+	"common/metrics"
 	pkgqueue "core/queue"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -213,8 +214,7 @@ func (h *Handler) handleBroadcastNotify(ctx context.Context, payload []byte) err
 			Name:   input.Name,
 			Extra:  input.Extra,
 		}, taskID); err != nil {
-			_, _ = h.redis.Del(ctx, dedupKey).Result()
-			return fmt.Errorf("enqueue push for %s: %w", userID, err)
+			return h.cleanupDedupAfterEnqueueError(ctx, dedupKey, userID, err)
 		}
 		enqueued++
 	}
@@ -226,6 +226,22 @@ func (h *Handler) handleBroadcastNotify(ctx context.Context, payload []byte) err
 		zap.Int("skipped", skipped),
 	)
 	return nil
+}
+
+// cleanupDedupAfterEnqueueError 入队失败后回滚刚抢占的去重键，否则该用户该时段
+// 会被永久跳过推送（丢数）。删键失败必须参与返回 error：宁可整任务重投走既有
+// 重试/死信，也不要静默留下一个坏键；同时留痕 + 指标，便于告警侧发现。
+func (h *Handler) cleanupDedupAfterEnqueueError(ctx context.Context, dedupKey, userID string, enqueueErr error) error {
+	if _, delErr := h.redis.Del(ctx, dedupKey).Result(); delErr != nil {
+		metrics.DegradedPathsTotal.WithLabelValues("push_dedup_del_failed").Inc()
+		h.log.Error("cleanup dedup key failed after enqueue failure",
+			zap.String("dedup_key", dedupKey),
+			zap.String("user_id", userID),
+			zap.Error(delErr),
+		)
+		return fmt.Errorf("enqueue push for %s: %w; cleanup dedup key: %w", userID, enqueueErr, delErr)
+	}
+	return fmt.Errorf("enqueue push for %s: %w", userID, enqueueErr)
 }
 
 func (h *Handler) handleSendSMS(ctx context.Context, payload []byte) error {

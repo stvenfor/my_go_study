@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"common/config"
+	"common/metrics"
 	"github.com/google/uuid"
 	"model/entity"
 	"model/repository"
@@ -165,7 +166,11 @@ func (u *RealtimePushUsecase) DeliverPush(ctx context.Context, input RealtimePus
 				}
 			}
 		}
-		_, _ = u.offline.NotifyUser(ctx, input.UserID, input.Title, input.Body, deeplink, extras)
+		// 离线通道失败不阻断 WS 投递（保持原 best-effort 降级），但必须留痕 + 指标，
+		// 否则「用户收不到且无人知」。usecase 层无 zap logger，走 DegradedPathsTotal。
+		if _, err := u.offline.NotifyUser(ctx, input.UserID, input.Title, input.Body, deeplink, extras); err != nil {
+			metrics.DegradedPathsTotal.WithLabelValues("offline_push_failed").Inc()
+		}
 	}
 
 	return envelope, delivered, nil

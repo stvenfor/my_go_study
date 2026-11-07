@@ -48,9 +48,16 @@
 - 证据: `docs/acceptance-records/2026-11-05-harden-h5-silent-error-sweep.md`
 
 ## Context Card — harden-h5-silent-error-sweep
-- 已完成:
-- 未做/Deferred:
-- 关键文件:
-- harness: post ok?
-- 下一 Slice 建议:
-- 已知坑:
+- 已完成: 5 处静默吞错处置（第 1 条硬失败 + 单测，其余 4 条降级 + 指标）；5 个 name 追加登记 inventory 条目 23–27；
+  `/metrics` 8081 curl 人证 `offline_push_failed` 0→1→2；`go build all` + 三包 test 绿。详见
+  `docs/acceptance-records/2026-11-05-harden-h5-silent-error-sweep.md`。
+- 未做/Deferred: 4 条降级的日志（无 logger，不新增构造参数）；完整 `cmd/api` 端到端人证（本轮用同 Registry/Handler 探针）；
+  其余 4 处单测；按融云错误码分类 `CreateGroup` 失败；去重键自愈（P0-6）。
+- 关键文件: `app/internal/delivery/worker/handler.go`（`cleanupDedupAfterEnqueueError`）、
+  `app/internal/usecase/{realtime_push_usecase,profile_usecase,im_group_usecase}.go`、`app/internal/access/service.go`、
+  `common/metrics/metrics.go`（只读复用 `DegradedPathsTotal`）、`docs/placeholder-inventory.md`（条目 23–27）。
+- harness: post ok? `go version`=1.26.4（默认 1.27.3 编 grpc 会红，按共同前提用 `/usr/local/go/bin/go`）；
+  `go build all`=0；三包 test=ok；`git grep` 残留 3 条已逐条豁免登记；不 commit/push、不 `git add` 未跟踪构建前置。
+- 下一 Slice 建议: usecase 层注入 logger 补 4 条降级日志；`im_group` 按错误码分类；P0-6 去重键自愈/DLQ。
+- 已知坑: name 用字面量、靠 inventory 对齐（name 增多后应提常量）；`DegradedPathsTotal` 是进程级全局 CounterVec，
+  单测用 before/after 差值断言，勿重置全局。

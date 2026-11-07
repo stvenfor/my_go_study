@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"app/internal/shared"
+	"common/metrics"
 	"core/authz"
 	"model/entity"
 )
@@ -99,7 +100,10 @@ func (s *Service) UpsertMember(ctx context.Context, actorID string, storeID int,
 		return nil, err
 	}
 	if s.storeGroupSync != nil {
-		_, _ = s.storeGroupSync.EnsureStoreMembership(ctx, strconv.Itoa(storeID), targetUserID)
+		// 成员已入库；拉群失败不回滚成员（保持降级），但必须打指标留痕。
+		if _, err := s.storeGroupSync.EnsureStoreMembership(ctx, strconv.Itoa(storeID), targetUserID); err != nil {
+			metrics.DegradedPathsTotal.WithLabelValues("access_store_group_sync_failed").Inc()
+		}
 	}
 	return &member, nil
 }
