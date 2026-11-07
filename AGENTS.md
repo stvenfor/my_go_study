@@ -16,6 +16,7 @@ Go BFF 后端 Agent 指南，并包含与 Flutter **`my_ai_project`** 协作的�
 | 角色合同 | [`.harness/agents/`](./.harness/agents/)（conductor → planner → executor → reviewer） |
 | 当前指针 | [`.harness/changes/current.md`](./.harness/changes/current.md) |
 | 硬规则 | [`.harness/rules/`](./.harness/rules/) |
+| **大型任务三槽流程** | [`.harness/rules/three-slot-orchestration.md`](./.harness/rules/three-slot-orchestration.md)（≤3 agent / 2 实现 + 1 bug / 逐片验收 / 不换 agent / 不绕依赖） |
 | 文档索引 | [`.harness/wiki/README.md`](./.harness/wiki/README.md) |
 | **双仓编码 Playbook** | [`docs/coding-playbook-dual-repo.md`](./docs/coding-playbook-dual-repo.md)（8 步 / 提示词 / 坑） |
 
