@@ -3,11 +3,14 @@ package controller
 
 import (
 	"net/http"
+	"strings"
 
 	"app/internal/delivery/http/dto/request"
 	"app/internal/delivery/http/dto/response"
 	"app/internal/usecase"
+	"common/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // RealtimeController Realtime HTTP 控制器。
@@ -91,7 +94,7 @@ func (ctrl *RealtimeController) Sync(c *gin.Context) {
 	})
 }
 
-// Push 开发环境推送测试通知。
+// Push 开发环境推送测试通知（仅允许向会话用户本人下发）。
 // POST /api/v1/realtime/push
 func (ctrl *RealtimeController) Push(c *gin.Context) {
 	user, _, ok := supabaseAuthContext(c)
@@ -106,13 +109,18 @@ func (ctrl *RealtimeController) Push(c *gin.Context) {
 		return
 	}
 
-	targetUserID := req.UserID
-	if targetUserID == "" {
-		targetUserID = user.ID
+	// 越权防护：客户端只允许向本人下发。userId 留空/填自己 → 本人；填他人 → 403。
+	requestedUser := strings.TrimSpace(req.UserID)
+	if requestedUser != "" && requestedUser != user.ID {
+		logger.L().Warn("realtime/push 越权拦截: 拒绝跨用户下发",
+			zap.String("session_user", user.ID),
+			zap.String("requested_user", requestedUser))
+		response.BackendError(c, http.StatusForbidden, "只能向本人下发通知")
+		return
 	}
 
 	out, err := ctrl.pushUC.PushToUser(c.Request.Context(), usecase.RealtimePushInput{
-		UserID: targetUserID,
+		UserID: user.ID,
 		Topic:  req.Topic,
 		Title:  req.Title,
 		Body:   req.Body,

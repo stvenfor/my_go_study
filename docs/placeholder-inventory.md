@@ -43,6 +43,7 @@
 | 19 | 对账只做「渠道查单」方向，`local_missing` 未实现 | Deferred | 待排（渠道账单文件下载） |
 | 20 | 商城 Apple/华为 IAP 渠道仍本地标记已付、无渠道流水 | Placeholder | 待排（IAP 专项） |
 | 21 | `unifiedorder` 响应未验签（只信回调报文） | Degraded | 待排（P2 支付加固） |
+| 22 | 跨用户推送（`push/send`、`realtime/push` 群发他人） | Deferred | 另立 Slice（需 `access.Service` 注入 controller → 改 `main.go`，与 h8 冲突） |
 
 关联但**由其它 Slice 收口**的假语义（此处只登记指向，避免双份真相）：
 支付 `prepay` 生成即丢 + 无 notify 回调（P0-2）、MQ 失败无限重投无 DLX（P0-6）、

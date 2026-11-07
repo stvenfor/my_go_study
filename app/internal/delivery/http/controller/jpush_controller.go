@@ -7,7 +7,9 @@ import (
 	"app/internal/delivery/http/dto/response"
 	"app/internal/delivery/http/middleware"
 	"app/internal/usecase"
+	"common/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // JPushController 极光设备登记与调试下发。
@@ -63,7 +65,7 @@ func (ctrl *JPushController) RegisterDevice(c *gin.Context) {
 	response.Success(c, out)
 }
 
-// Send POST /api/v1/push/send（调试：给指定用户/别名发极光通知）
+// Send POST /api/v1/push/send（调试：仅允许向会话用户本人下发）
 func (ctrl *JPushController) Send(c *gin.Context) {
 	user, _, ok := supabaseAuthContext(c)
 	if !ok {
@@ -88,18 +90,29 @@ func (ctrl *JPushController) Send(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, response.CodeInvalidParams, "参数错误")
 		return
 	}
-	targetUser := strings.TrimSpace(body.UserID)
-	if targetUser == "" {
-		targetUser = user.ID
+	// 越权防护：客户端只允许向本人下发。user_id 留空/填自己 → 本人；填他人 → 403。
+	requestedUser := strings.TrimSpace(body.UserID)
+	if requestedUser != "" && requestedUser != user.ID {
+		logger.L().Warn("push/send 越权拦截: 拒绝跨用户下发",
+			zap.String("session_user", user.ID),
+			zap.String("requested_user", requestedUser))
+		response.Error(c, http.StatusForbidden, response.CodeForbidden, "只能向本人下发通知")
+		return
 	}
-	alias := strings.TrimSpace(body.Alias)
-	if alias == "" {
-		alias = targetUser
+	// 忽略客户端指定的 alias / registration_ids：调试端点不得成为任意目标下发通道。
+	// 不解析「是否本人登记」需注入 device repo（要改 main.go，列为 Deferred），
+	// 故一律丢弃并留 warn，目标锁定会话用户。
+	if strings.TrimSpace(body.Alias) != "" || len(body.RegistrationIDs) > 0 {
+		logger.L().Warn("push/send 忽略客户端指定的 alias/registration_ids，强制以会话用户为目标",
+			zap.String("session_user", user.ID),
+			zap.String("ignored_alias", body.Alias),
+			zap.Int("ignored_registration_ids", len(body.RegistrationIDs)))
 	}
+	// 目标锁定会话用户：alias 取 user.ID（与 RegisterDevice 默认一致），不下发 registration_ids。
 	out, err := ctrl.uc.Send(c.Request.Context(), usecase.SendInput{
-		UserID:          targetUser,
-		Alias:           alias,
-		RegistrationIDs: body.RegistrationIDs,
+		UserID:          user.ID,
+		Alias:           user.ID,
+		RegistrationIDs: nil,
 		Title:           body.Title,
 		Body:            body.Body,
 		Deeplink:        body.Deeplink,
