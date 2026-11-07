@@ -16,14 +16,14 @@ func TestMetricsPeerAllowed(t *testing.T) {
 		remote string
 		want   bool
 	}{
-		{"127.0.0.1:50000", true},   // 本机 IPv4
-		{"[::1]:50000", true},       // 本机 IPv6
+		{"127.0.0.1:50000", true},     // 本机 IPv4
+		{"[::1]:50000", true},         // 本机 IPv6
 		{"192.168.2.56:50000", false}, // 局域网 IP
 		{"192.168.65.1:50000", false}, // docker-proxy 网关：经端口映射的外部访问
-		{"172.18.0.5:50000", true},  // Docker 内网 Prometheus（显式放行）
-		{"10.1.2.3:50000", true},    // 自定义 Docker 网段（显式放行）
-		{"8.8.8.8:50000", false},    // 公网
-		{"", false},                 // 拿不到对端地址不放行
+		{"172.18.0.5:50000", true},    // Docker 内网 Prometheus（显式放行）
+		{"10.1.2.3:50000", true},      // 自定义 Docker 网段（显式放行）
+		{"8.8.8.8:50000", false},      // 公网
+		{"", false},                   // 拿不到对端地址不放行
 		{"not-an-ip:50000", false},
 	}
 	for _, tc := range cases {

@@ -126,9 +126,9 @@ func TestPointsValueFen(t *testing.T) {
 		want   int64 // 分
 	}{
 		{0, 0},
-		{-50, 0},       // 非正积分防御性收口
-		{1, 1},         // 1 积分 = 1 分
-		{50, 50},       // sku_id=37 的 50 积分 = 0.50 元
+		{-50, 0}, // 非正积分防御性收口
+		{1, 1},   // 1 积分 = 1 分
+		{50, 50}, // sku_id=37 的 50 积分 = 0.50 元
 		{99, 99},
 		{100, 100},     // 100 积分 = 1 元 = 100 分
 		{1040, 1040},   // 10.40 元
@@ -180,9 +180,9 @@ func TestMixedPaymentDeductionInvariants(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	priceFen := mustFen(t, sku.Price)                                         // 990
-	wantCashFen := priceFen * int64(qty)                                       // 2970
-	wantPoints := sku.PricePoints * int64(qty)                                 // 150
+	priceFen := mustFen(t, sku.Price)                                                    // 990
+	wantCashFen := priceFen * int64(qty)                                                 // 2970
+	wantPoints := sku.PricePoints * int64(qty)                                           // 150
 	wantListPriceFen := (priceFen + entity.PointsValueFen(sku.PricePoints)) * int64(qty) // 1040*3 = 3120
 
 	// 实付现金额 == price 分数 × qty（结算据此收现金，不含任何积分折算项）。
@@ -222,10 +222,10 @@ func TestMixedPaymentDeductionInvariants(t *testing.T) {
 
 func TestMixedPaymentRefundSymmetry(t *testing.T) {
 	const qty = 3
-	priceFen := mustFen(t, "9.90")              // 990
-	cashFen := priceFen * int64(qty)             // 实付现金 2970 分 = 29.70 元
-	pts := int64(50) * int64(qty)               // 实扣积分 150
-	amount := entity.FormatFenToYuan(cashFen)   // "29.70"
+	priceFen := mustFen(t, "9.90")            // 990
+	cashFen := priceFen * int64(qty)          // 实付现金 2970 分 = 29.70 元
+	pts := int64(50) * int64(qty)             // 实扣积分 150
+	amount := entity.FormatFenToYuan(cashFen) // "29.70"
 
 	ctx := context.Background()
 	uid := "buyer-mixed"
@@ -244,7 +244,7 @@ func TestMixedPaymentRefundSymmetry(t *testing.T) {
 	repo := &payOrderRepo{cash: memCash, order: order}
 	uc := NewService(repo, nil, ptsSvc, cash)
 
-	startCash, _ := cash.GetBalanceFen(ctx, uid) // 10000
+	startCash, _ := cash.GetBalanceFen(ctx, uid)  // 10000
 	startPoints, _ := ptsSvc.GetBalance(ctx, uid) // 1000
 
 	if _, err := uc.PayOrder(ctx, uid, 37, entity.MallPayBalance); err != nil {
@@ -290,9 +290,9 @@ func TestMixedPaymentRefundSymmetry(t *testing.T) {
 // ---- 4. 证明不存在「同一路径既收现金又扣同一份价值」 ----
 
 func TestMixedPaymentDeductionNoDoubleCount(t *testing.T) {
-	priceFen := mustFen(t, "9.90")           // 990 分：现金腿 = 抵扣后应付现金
-	pointsFen := entity.PointsValueFen(50)    // 50 分：积分腿的现金等价值
-	listPriceFen := priceFen + pointsFen      // 1040 分 = 10.40 元：展示原价
+	priceFen := mustFen(t, "9.90")         // 990 分：现金腿 = 抵扣后应付现金
+	pointsFen := entity.PointsValueFen(50) // 50 分：积分腿的现金等价值
+	listPriceFen := priceFen + pointsFen   // 1040 分 = 10.40 元：展示原价
 
 	// (1) 两腿恰好把展示原价切一次：和为原价，无遗漏、无重复。
 	if priceFen+pointsFen != listPriceFen {
