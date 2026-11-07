@@ -47,6 +47,12 @@ const (
 	MallPaymentSuccess int16 = 1
 	MallPaymentFailed  int16 = 2
 
+	// MallPointsPerYuan 商城积分兑换率：多少积分折 1 元现金（口径②）。
+	// 默认 100 即 100 积分 = 1 元 = 100 分，故 1 积分 = 1 分，整除无余数。
+	// 它是全仓积分→现金折算的唯一口径来源；改它会改变所有「展示原价」的派生值，
+	// 必须同步重刷存量 wys_mall_sku 的 price / price_points，见 docs/mall-mixed-payment.md。
+	MallPointsPerYuan int64 = 100
+
 	PermMallCatalogWrite = "mall.catalog.write"
 )
 
@@ -98,6 +104,25 @@ func MallSKUPaymentMode(priceCNY string, pricePoints int64) int16 {
 	default:
 		return MallPayModeCNY
 	}
+}
+
+// PointsValueFen 把积分折算成其对应的现金价值（单位：分）——全仓唯一积分→现金折算入口。
+//
+// 取整方向：整数除法向零截断（正数即向下取整），只保留整分。
+// 余数归属：不足 1 分的亚分价值直接丢弃，归平台/商家，不找零、不累计、也不折算进应付现金；
+// 应付现金只由 WysMallSKU.Price 决定，本函数只用于派生「展示原价」。
+// 默认率（100 积分 = 1 元）下 1 积分恰为 1 分，永不产生余数；截断语义仅在改率后生效。
+// 拆成「整元 + 余数积分」两段计算，避免 points*100 溢出；非正积分返回 0。
+//
+// 严禁用于结算：结算收全额现金 + 扣全额积分是口径②的正确写法，
+// 不得用本函数去净额抵扣（那是二次打折 / 反向资损）。
+func PointsValueFen(points int64) int64 {
+	if points <= 0 {
+		return 0
+	}
+	yuan := points / MallPointsPerYuan
+	rem := points % MallPointsPerYuan
+	return yuan*100 + rem*100/MallPointsPerYuan
 }
 
 // IsZeroMoney 判断金额字符串是否为零。
