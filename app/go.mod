@@ -17,7 +17,7 @@ require (
 	golang.org/x/crypto v0.42.0
 	google.golang.org/grpc v1.71.0
 	google.golang.org/protobuf v1.36.6
-	gorm.io/gorm v1.25.12
+	gorm.io/gorm v1.31.2
 )
 
 replace github.com/mszlu521/thunder => ../thunder
