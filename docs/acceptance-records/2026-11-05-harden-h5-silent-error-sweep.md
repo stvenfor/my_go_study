@@ -63,14 +63,21 @@ note：5 处静默吞错全部改为「可观测」——第 1 条（会丢数�
 /usr/local/go/bin/go build all                                  # BUILD_EXIT=0
 /usr/local/go/bin/go -C app test ./internal/delivery/worker/ ./internal/usecase/ ./internal/access/ -count=1
 #   ok app/internal/delivery/worker / usecase / access
-git grep -nE '_, _ = |^\s*_ = err' -- app/internal | grep -v _test
+# \s 在 POSIX ERE 下不是标准转义（git grep -E 不识别），第二个分支恒不命中；改用 ^[[:space:]]*_ = ：
+git grep -nE '_, _ = |^[[:space:]]*_ = ' -- app/internal | grep -v _test
 ```
 
 （删探针前后各跑过一轮全工作区 `go build all` + 三包单测，均绿；grep 结果一致。）
 
 ## `git grep` 残留 —— 逐条豁免登记
 
-改完 5 处后，验收 grep 仅剩 3 条（非 `_test`），均为**良性丢弃**且不在本 Slice 白名单，逐条登记：
+验收 grep 原写作 `git grep -nE '_, _ = |^\s*_ = err' -- app/internal | grep -v _test`。
+**`\s` 在 POSIX ERE 下不是标准转义**（`git grep -E` 不识别），第二个分支恒不命中，
+因此 `_ = <fn>()` 形状（正是 `access/service.go` 离店踢群那一处）从未被验收扫到 ——
+这就是「验收 grep 失效」的根因。harden-fix-1 把它改为 `^[[:space:]]*_ = `（见「验证」）。
+
+改完 5 处后，原（失效）grep 仅剩 3 条（非 `_test`），均为**良性丢弃**且不在本 Slice 白名单，
+显式登记为豁免清单：
 
 | 文件:行 | 代码 | 豁免理由 |
 |---------|------|----------|
@@ -78,8 +85,25 @@ git grep -nE '_, _ = |^\s*_ = err' -- app/internal | grep -v _test
 | `app/internal/delivery/http/controller/sse_controller.go:94` | 同上 | 同上 |
 | `app/internal/payment/service.go:444` | `_, _ = rand.Read(b)`（`crypto/rand`） | Go 1.24+ `crypto/rand.Read` 保证填满 `b` 且 err 恒 nil，丢弃返回值不影响结果；且 `payment/**` 在**黑名单** |
 
-- 另：`app/internal/access/service.go:123` 的 `_ = s.storeGroupSync.RemoveStoreMembership(...)` 是同类形状，
-  但**不匹配**验收 grep 模式（`_, _ =` / 行首 `_ = err`），且 Slice 只点名 102，未纳入本轮（见 Deferred）。
+> 口径补记：这 3 条是 `_, _ = ` 形状，**不匹配**修正后的 `^[[:space:]]*_ = `。
+> 修正后的模式会额外命中仓内其它文件里既有的 `_ = <fn>()`（共 42 行，
+> `json.Unmarshal` / `ShouldBindJSON` / `conn.Close` / `_ = ctx` 等，分布在
+> `new_car_follow` / `deal_invoice` / `delivery` / `ws` / `mall` / `community` /
+> `usecase` / `membership` 等包），全部在 h5 白名单之外、非本轮引入，
+> 属同类「良性丢弃」，不是 h5 回归；按「不在白名单、不擅自改」维持现状。
+
+## 第 6 处修复（harden-fix-1，2026-11-07）
+
+- 位置：`app/internal/access/service.go:129`（改前 `_ =` 在 `:127`）。
+- 指标 name：`access_store_group_removal_failed`
+  （`metrics.DegradedPathsTotal.WithLabelValues("access_store_group_removal_failed").Inc()`）。
+- 改动：`RemoveMember` 内 `if s.storeGroupSync != nil` 分支由
+  `_ = s.storeGroupSync.RemoveStoreMembership(...)` 改为
+  `if err := ...; err != nil { 打指标 }`；**不回滚成员删除、非致命、返回语义不变**
+  （与条目 25 `UpsertMember` 同形降级，方向相反）。
+- 登记：`docs/placeholder-inventory.md` 条目 35（status `Degraded`）。
+- 验收：`grep -rnE '^[[:space:]]*_ = ' app/internal --include='*.go' | grep -v _test`
+  不再命中 `app/internal/access/service.go`；`go -C app test ./internal/access/... -count=1` 通过。
 
 ## 诚实口径 / 未验证项 / 风险
 

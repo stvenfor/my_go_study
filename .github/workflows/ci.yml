@@ -90,6 +90,21 @@ jobs:
           echo "== go env GOTOOLCHAIN =="
           go env GOTOOLCHAIN
 
+      # 幂等建库：service 只自建 h3_it，另外 3 个 scratch 库在此补齐；
+      # 连不上 / 建不了都让 psql 以 ON_ERROR_STOP 失败，不静默跳过。
+      - name: 幂等建库（p06b_it / p06b_am / p08_it；绝不连业务库 my_go_study）
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for db in p06b_it p06b_am p08_it; do
+            exists="$(psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d postgres \
+              -Atqc "SELECT 1 FROM pg_database WHERE datname = '$db'")"
+            if [ "$exists" != "1" ]; then
+              echo "CREATE DATABASE $db"
+              psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d postgres -c "CREATE DATABASE $db"
+            fi
+          done
+
       - name: integration tests（指向 service 内的独立 scratch 库）
         env:
           H3_IT_EXTERNAL_DB: '1'   # 用 service 容器，不另起本机一次性容器
@@ -99,4 +114,7 @@ jobs:
           DATABASE_PASSWORD: postgres
           P02_PG_DBNAME: h3_it
           P03_PG_DBNAME: h3_it
+          P06B_PG_DBNAME: p06b_it
+          P06B_AM_DBNAME: p06b_am
+          P08_PG_DBNAME: p08_it
         run: make test-integration

@@ -583,3 +583,24 @@ APP_ENV=prod make run   # 再调 POST /api/v1/user/phone/otp/verify {13400000000
 - `auth_user.go:12` / `community.go:19` / `payment.go` 已证非缺陷或为模板，**未动**。
 - 路线 (C)（`RENAME CONSTRAINT → uni_*`）为陷阱，禁止采用（会静默删唯一性）。
 - 版本相关性仅按静态同源口径书写：两版相关源码逐字相同、未做运行时对照启动（行号见 acceptance-record）。
+
+## 追加条目（harden-fix-1，2026-11-07 · P1 漏网静默吞错）
+
+> 追加式登记，不改上方既有条目。来源：只读审计 P1；验收 grep 修正与「第 6 处」修复见
+> [`2026-11-05-harden-h5-silent-error-sweep.md`](./acceptance-records/2026-11-05-harden-h5-silent-error-sweep.md)。
+
+| # | 文件:行 | name | 处置 |
+|---|--------|------|------|
+| 35 | `app/internal/access/service.go:129` | `access_store_group_removal_failed` | `RemoveMember` 离店后踢群失败原被 `_ =` 静默吞掉；现 `if err != nil` 打 `degraded_path_total` +1，**不回滚成员删除**（保持降级、非致命、返回语义不变） |
+
+### 35. 离店后踢店群失败静默
+
+- 文件:行：`app/internal/access/service.go:129`（改前 `_ =` 在 `:127`；修后第 129 行即
+  `WithLabelValues("access_store_group_removal_failed").Inc()`）。
+- status：`Degraded`
+- note：`RemoveMember` 先 `repo.RemoveMember` 删除成员，再调 `RemoveStoreMembership` 踢 IM 店群；
+  后者失败原被 `_ =` 丢弃 → 用户已不在门店却仍在店群，无痕。h5 只点名 `UpsertMember` 的
+  `EnsureStoreMembership`（条目 25），这条离店反向路径漏网；且 `_ = <fn>()` 形状不匹配 h5 的
+  验收 grep（`_, _ =` / `^\s*_ = err`，`\s` 在 POSIX ERE 下无效）。本轮按同口径降级留痕，不改控制流。
+- 影响面：用户已离店但仍能收到该店群消息；改动前无人知，改动后 `/metrics` 可计数（同条目 25，日志留 Deferred）。
+- 解除条件：踢群改可靠异步补拉/重试（P2-8 outbox，本轮不做）；补日志同 h5 其余 4 条（Deferred）。
