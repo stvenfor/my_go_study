@@ -6,4 +6,4 @@
 审计类（ONLY 含只读/audit/不改代码/差距表）：白名单/验证命令可放宽
 
 子列表项必须缩进。模板：`plans/slices/_template.md`（可参考 `~/.cursor/skills/migration-os-harness/templates.md`）  
-机检：`make agent-pre` → `check-brief`（若已落地）
+机检：`make agent-pre` → `scripts/check-brief.sh`（harden-h3 已落地）：校验六节字面齐全 + ## Slice Brief 区子列表缩进；`--self-test` 自证能拦能放。

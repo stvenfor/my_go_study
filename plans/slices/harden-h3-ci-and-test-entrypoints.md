@@ -52,8 +52,24 @@
 
 ## Context Card — harden-h3-ci-and-test-entrypoints
 - 已完成:
+  - Makefile 四入口：`test-integration` / `lint` / `vet` / `agent-pre`（沿用 `for m in $(MODULES)` 风格）
+  - `.github/workflows/ci.yml`：build 阻塞 job（钉 `go-version: '1.26.x'` + `GOTOOLCHAIN: local`）+ integration allow-fail job（PG16 service、独立库 `h3_it`）
+  - `scripts/gofmt-check.sh` + `gofmt-baseline.txt`（不新增欠账 ratchet）、`scripts/test-integration.sh`（一次性容器 / 外部库双模式）、`scripts/check-brief.sh`（六节 + 缩进 + `--self-test`）
+  - `.harness/rules/slice-contract.md` 机检落地说明；acceptance-record 已写
+  - 本机等价复现全绿（1.26.4）：`go build all` / vet / lint / unit / agent-pre / integration 全 exit 0；lint/unit/integration 各注入一次失败并全部还原
 - 未做/Deferred:
+  - 真实 GitHub Actions 绿灯（无外网、推不推由人；需人 push 后回看）→ record 记 Partial
+  - integration 转阻塞（决策门：allow-fail 起步，另开 Slice）
+  - 格式化 10 个既有未 gofmt 文件并清空 baseline（业务 .go 黑名单，另开 Slice）
 - 关键文件:
+  - `Makefile:60-87`（四 target）、`.github/workflows/ci.yml`、`scripts/{gofmt-check,gofmt-baseline,test-integration,check-brief}.*`
+  - `docs/acceptance-records/2026-11-05-harden-h3-ci-and-test-entrypoints.md`
 - harness: post ok?
+  - `make agent-pre`（check-brief）对全部 27 个 slice 零误报；`--self-test` PASS；未跑 `agent-post`（本仓未落地，见 unit-test-ci skill）
 - 下一 Slice 建议:
+  - h1/h2 合并后按 Task DAG 顺序回看 Actions；h1 的 `check-tracked-imports.sh` 入库后该阻塞项转绿
+  - integration 连续绿若干次后单独提「转阻塞」；格式化欠账文件收紧 gofmt 门禁
 - 已知坑:
+  - 默认 `go`=1.27.3 会触发 grpc/x-net `http2.TrailerPrefix` 漂移；本地必须 `PATH=/usr/local/go/bin:$PATH GOTOOLCHAIN=local`
+  - workspace `go vet all` 含依赖预存告警，故 `make vet` 用逐模块等价
+  - 一次性 PG 容器就绪有竞态（已硬化探活）；bash 3.2 `"${s}"` 定界；zsh 无词分割 / `PIPESTATUS` 差异

@@ -12,7 +12,7 @@ BIN_DIR := bin
 # 飞书富文本页推送：lark-cli 路径 + 目标文档 obj_token
 LARK_CLI ?= lark-cli
 FEISHU_AUTH_DOC ?= KIsUdqqRfocxiYxuzhHcUKFYnlh
-.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down migrate-status migrate-baseline migrate-force docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth
+.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down migrate-status migrate-baseline migrate-force docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth test-integration lint vet agent-pre
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
@@ -56,6 +56,35 @@ test:
 		echo ">>> go test ./... in $$m"; \
 		( cd $$m && go test ./... -count=1 ) || exit 1; \
 	done
+
+# ---- CI / 本地门禁入口（harden-h3）--------------------------------------
+# 工具链：CI 由 setup-go 钉 '1.26.x' + GOTOOLCHAIN=local。本机默认 go 若是
+# 1.27.3，go build all / go test 会因 grpc v1.71.0 + x/net v0.54.0 的
+# http2.TrailerPrefix 漂移而红（环境事实，非本 Slice 缺陷）。本地等价复现请用：
+#   PATH=/usr/local/go/bin:$$PATH GOTOOLCHAIN=local make <target>
+
+# vet：逐模块等价（go vet ./... 只查本模块代码）。
+# `go vet all` 会把 protobuf/gorm 等依赖模块的预存告警一起报出来，故不用。
+vet:
+	@for m in $(MODULES); do \
+		echo ">>> go vet ./... in $$m"; \
+		( cd $$m && go vet ./... ) || exit 1; \
+	done
+
+# lint：只用现成依赖（gofmt + go vet）。gofmt 采用「不新增欠账」ratchet，
+# 既有未格式化文件登记在 scripts/gofmt-baseline.txt（业务 .go 属黑名单不改）。
+lint:
+	@./scripts/gofmt-check.sh
+	@$(MAKE) --no-print-directory vet
+
+# test-integration：一次性 PG16 容器 + 独立 scratch 库跑 -tags=integration，
+# 绝不连业务库 my_go_study；CI 用 H3_IT_EXTERNAL_DB=1 指向 service 容器。
+test-integration:
+	@./scripts/test-integration.sh
+
+# agent-pre：Slice 合同机检（六节齐全 + 子列表缩进），见 .harness/rules/slice-contract.md
+agent-pre:
+	@./scripts/check-brief.sh
 
 # 注意：逐模块 go mod tidy 在**缺依赖**时会去拉最新版。
 # 若发现依赖被意外升级，先把该模块 go.mod 的版本改回 pinned 值再 tidy。
