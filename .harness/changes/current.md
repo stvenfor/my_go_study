@@ -2,7 +2,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| Active | **backend-hardening H1–H10 全部收口（11/11）**：h3/h4/h5/h7/h8 已交付并由 coordinator 复跑验收（h3 Degraded、h4 Migrated、h5 Degraded、h7 Degraded、h8 Migrated）；余下仅人侧 git add / 合并 / push 看 Actions |
+| Active | **backend-hardening H1–H10 收口 + harden-fix-1 审计修复（已合并）**：11/11 切片 + 3 槽只读审计发现的 2×P1 / 10×P2 已修并复跑验收，见 [`2026-11-07-harden-fix-1-audit-findings.md`](../../docs/acceptance-records/2026-11-07-harden-fix-1-audit-findings.md)；余下仅 push 看 Actions |
 | Program | `plans/2026-11-05-backend-hardening-program.md` |
 | Epic | `plans/epics/backend-hardening.md` |
 | Slices | h1…h8 + h6b + **h9（组合支付抵扣，口径②已批）** + **h10（唯一索引两侧同名）** = 共 **11** 份 Brief |
