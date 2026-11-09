@@ -96,6 +96,7 @@ gorm@v1.31.2/migrator/migrator.go:599-612  func (m Migrator) MigrateColumnUnique
   - 启动日志计数：`(cd app && go run ./cmd/api) 2>&1 | grep -c 42704` → 期望 0（端口 **8081**，不得与主仓实例抢 :8080）
   - 唯一对象计数：`docker exec my_go_study_postgres psql -U postgres -d <scratch> -Atc "select indexname from pg_indexes where tablename in ('wys_im_store_group','wys_im_message_backup') order by 1;"`
   - 只读复核业务库（**不许改**）：`… -d my_go_study -Atc "select conname from pg_constraint where conrelid::regclass::text in ('wys_im_store_group','wys_im_message_backup');"`
+- 证据: `docs/acceptance-records/2026-11-06-harden-h10-unique-index-name-alignment.md`
 
 ## 交给本 Slice 的他人踩坑（coordinator 转交，别重复交学费）
 
