@@ -102,11 +102,11 @@ func (u *Service) settleByFact(ctx context.Context, channel string, fact *notify
 		}
 		settler, ok := u.settlers[settled.RefType]
 		if !ok {
-			// 没有登记业务核销器的 ref_type（当前是 membership_order）：
-			// 流水照实置 paid，业务侧由 ConfirmRefPaid/查单收敛；
-			// membership 的仓储还不支持 txdb，把它塞进本事务会造成
-			// 「权益已发、事务回滚」的半状态，所以宁可显式留痕不做。
-			u.log.Warn("渠道已收款但该 ref_type 未登记业务核销器",
+			// 兜底：该 ref_type 没有可用业务核销器时，流水照实置 paid 并留痕，
+			// 业务侧由 ConfirmRefPaid/查单收敛，不把未知 ref_type 塞进本事务。
+			// membership_order 已由 membership 的 Settler 自注册、仓储也已支持
+			// txdb，正常路径走下面的 settler 分支；这里只兜「真未知」的 ref_type。
+			u.log.Warn("渠道已收款但该 ref_type 无可用业务核销器（兜底留痕）",
 				zap.String("ref_type", settled.RefType),
 				zap.String("ref_id", settled.RefID),
 				zap.String("out_trade_no", settled.OutTradeNo))

@@ -542,7 +542,7 @@ func run() error {
 	}
 
 	go func() {
-		log.Info("HTTP 服务启动", zap.Int("port", cfg.Server.Port), zap.String("env", env))
+		log.Info("HTTP 服务启动", zap.Int("port", cfg.Server.Port), zap.String("env", cfg.AppEnv))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal("HTTP 服务异常退出", zap.Error(err))
 		}

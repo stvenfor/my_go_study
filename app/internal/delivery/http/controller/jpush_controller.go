@@ -50,12 +50,13 @@ func (ctrl *JPushController) RegisterDevice(c *gin.Context) {
 	if deviceID == "" {
 		deviceID = "default"
 	}
+	// 越权防护：忽略客户端 alias，强制绑定会话用户（h4 验收口径）。
 	out, err := ctrl.uc.RegisterDevice(c.Request.Context(), usecase.RegisterDeviceInput{
 		UserID:         user.ID,
 		DeviceID:       deviceID,
 		Platform:       body.Platform,
 		RegistrationID: body.RegistrationID,
-		Alias:          body.Alias,
+		Alias:          user.ID,
 		Mock:           body.Mock,
 	})
 	if err != nil {
@@ -108,7 +109,7 @@ func (ctrl *JPushController) Send(c *gin.Context) {
 			zap.String("ignored_alias", body.Alias),
 			zap.Int("ignored_registration_ids", len(body.RegistrationIDs)))
 	}
-	// 目标锁定会话用户：alias 取 user.ID（与 RegisterDevice 默认一致），不下发 registration_ids。
+	// 目标锁定会话用户：alias 取 user.ID（与 RegisterDevice 一致），不下发 registration_ids。
 	out, err := ctrl.uc.Send(c.Request.Context(), usecase.SendInput{
 		UserID:          user.ID,
 		Alias:           user.ID,

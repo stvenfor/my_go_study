@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"app/internal/usecase"
 	"core/jpush"
 	"github.com/gin-gonic/gin"
+	"model/entity"
 )
 
 // jpushRecordingTransport 是 JPushUsecase.Send → jpush.Client.Send 的唯一外部副作用。
@@ -150,4 +152,57 @@ func TestJPushController_Send_IgnoresAliasAndRegistrationIDs(t *testing.T) {
 	}
 	// 关键断言：极光受众里既无他人 alias，也无客户端传入的 registration_ids。
 	assertSelfAudience(t, rt)
+}
+
+// jpushCapturingRepo 捕获 RegisterDevice 落库实体，用于断言 alias 被强制为会话用户。
+type jpushCapturingRepo struct {
+	got entity.WysPushDevice
+}
+
+func (r *jpushCapturingRepo) Upsert(_ context.Context, device entity.WysPushDevice) (*entity.WysPushDevice, error) {
+	r.got = device
+	return &device, nil
+}
+
+func jpushRegisterRouter(ctrl *JPushController) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/push/devices", withSupabaseContext("user-1", "token-1"), ctrl.RegisterDevice)
+	return r
+}
+
+// 客户端传他人 alias → 落库/入参 alias 仍为会话 user.ID（h4）；不传 alias 也一致。
+func TestJPushController_RegisterDevice_ForcesSessionAlias(t *testing.T) {
+	for _, payload := range []string{
+		`{"device_id":"d1","platform":"ios","registration_id":"rid-1","alias":"other-user-alias"}`,
+		`{"device_id":"d1","platform":"ios","registration_id":"rid-1"}`,
+	} {
+		repo := &jpushCapturingRepo{}
+		ctrl := NewJPushController(usecase.NewJPushUsecase(repo, nil))
+		req := httptest.NewRequest(http.MethodPost, "/push/devices", strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		jpushRegisterRouter(ctrl).ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("payload=%s status = %d, body = %s", payload, w.Code, w.Body.String())
+		}
+		if repo.got.Alias != "user-1" {
+			t.Fatalf("payload=%s 落库 alias = %q, want 会话用户 user-1", payload, repo.got.Alias)
+		}
+		if repo.got.UserID != "user-1" || repo.got.RegistrationID != "rid-1" {
+			t.Fatalf("payload=%s 其它字段被改：%+v", payload, repo.got)
+		}
+		var got struct {
+			Data struct {
+				Alias string `json:"alias"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatalf("payload=%s 响应解析失败: %v", payload, err)
+		}
+		if got.Data.Alias != "user-1" {
+			t.Fatalf("payload=%s 响应 alias = %q, want user-1", payload, got.Data.Alias)
+		}
+	}
 }
