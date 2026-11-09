@@ -18,7 +18,8 @@
 - 只认 TCP 对端 `RemoteAddr`，**不信** `X-Forwarded-For` / `ClientIP()`（防伪造）；
 - loopback（`127.0.0.1` / `::1`）放行 —— `curl http://127.0.0.1:8080/metrics`、
   Prometheus 抓本机口均可用；
-- 局域网 IP（含经 docker-proxy 端口映射进来的 `192.168.65.1` 等网关）一律 **403**；
+- 局域网 IP 一律 **403**（macOS Docker Desktop 下经 docker-proxy 端口映射进来的
+  `192.168.65.1` 等网关也不放行；Linux userland-proxy 的差异见下）；
 - Docker 内网抓取（`prometheus.yml` 的 `app:8080/metrics`）由 compose 注入的
   `METRICS_ALLOW_CIDRS` 显式放行，默认 `172.16.0.0/12,10.0.0.0/8`（覆盖 compose
   网桥网段，如本机 `docker_default` = `172.18.0.0/16`）。自定义 Docker 网段需自行覆盖该变量。
@@ -28,8 +29,13 @@
 - `deploy/observability/alerts.yml` 的 4 条 payment 规则（依赖 `up{job="app"}`、
   `payment_*` 指标）仍由 Prometheus 从 Docker 内网正常抓取，收口未掐断监控；
 - 局域网设备取不到指标；
-- **Docker 部署下从宿主机 `curl 127.0.0.1:8080/metrics` 也会 403**（对端是 docker-proxy
-  网关，不是 loopback），请改用 `docker exec my_go_study_app curl -s http://127.0.0.1:8080/metrics`
+- **Docker 部署下从宿主机 `curl 127.0.0.1:8080/metrics` 是否 403 取决于平台与网络栈，
+  不是「端口映射必 403」**：端口映射的对端不是 loopback；
+  - **Linux + Docker userland-proxy**：容器内 `RemoteAddr` 常是网桥网关（如 `172.17.0.1`），
+    会命中默认 `METRICS_ALLOW_CIDRS` 的 `172.16.0.0/12` 而被**放行**（不是 403）。
+    若不想放行，收紧 `METRICS_ALLOW_CIDRS` 到只覆盖 Prometheus 所在网段，或一律走容器内抓取；
+  - **macOS Docker Desktop 实测**：对端为 `192.168.65.1`，不在放行网段，故 **403**。
+  稳妥取法一律用 `docker exec my_go_study_app curl -s http://127.0.0.1:8080/metrics`
   或经 `127.0.0.1` 的容器内抓取；本机 `make run` 进程不受影响。
 
 ## 飞书告警

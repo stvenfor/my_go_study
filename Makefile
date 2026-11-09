@@ -12,7 +12,7 @@ BIN_DIR := bin
 # 飞书富文本页推送：lark-cli 路径 + 目标文档 obj_token
 LARK_CLI ?= lark-cli
 FEISHU_AUTH_DOC ?= KIsUdqqRfocxiYxuzhHcUKFYnlh
-.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down migrate-status migrate-baseline migrate-force docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth test-integration lint vet agent-pre
+.PHONY: run run-worker build build-worker build-all test test-all tidy air migrate-up migrate-down migrate-status migrate-baseline migrate-force docker-up docker-down docker-build lan-up lan-down lan-run lan-run-worker sync-lan-ip import-supabase seed-analytics clean deps-up test-transactions check-rls check-secrets test-realtime test-single-device-login test-phone-otp-login test-queue-push trigger-hourly-notify test-scheduled-notify push-notify-user test-auth-refresh-logout proto feishu-push-auth test-integration lint vet agent-pre check-go
 
 proto:
 	@command -v protoc >/dev/null 2>&1 || { echo "需要 protoc: brew install protobuf"; exit 1; }
@@ -39,8 +39,18 @@ build-worker:
 	@mkdir -p $(BIN_DIR)
 	go -C $(APP_DIR) build -o ../$(BIN_DIR)/worker $(WORKER_PATH)
 
+# 工具链守卫（P2）：本机默认 go 若是 1.27.x，workspace MVS 选到 x/net v0.54.0
+# 会让 grpc v1.71.0 的 http2.TrailerPrefix 漂移而红；CI 钉 1.26.x + GOTOOLCHAIN=local。
+# 仅靠注释提示不够，故在 5 个门禁入口前强制校验 GOVERSION。
+check-go:
+	@got="$$(go env GOVERSION)"; \
+	case "$${got}" in \
+	  go1.26.*) ;; \
+	  *) printf '需要 Go 1.26.x（当前 %s）。请用 PATH=/usr/local/go/bin:$$PATH GOTOOLCHAIN=local make <target>\n' "$${got}" >&2; exit 1 ;; \
+	esac
+
 # 整个工作区（4 个模块）编译；替代已失效的 `go build ./...`
-build-all:
+build-all: check-go
 	go build all
 
 # 整个工作区编译并跑全部测试
@@ -51,7 +61,7 @@ test-all:
 		( cd $$m && go test ./... -count=1 ) || exit 1; \
 	done
 
-test:
+test: check-go
 	@for m in $(MODULES); do \
 		echo ">>> go test ./... in $$m"; \
 		( cd $$m && go test ./... -count=1 ) || exit 1; \
@@ -65,7 +75,7 @@ test:
 
 # vet：逐模块等价（go vet ./... 只查本模块代码）。
 # `go vet all` 会把 protobuf/gorm 等依赖模块的预存告警一起报出来，故不用。
-vet:
+vet: check-go
 	@for m in $(MODULES); do \
 		echo ">>> go vet ./... in $$m"; \
 		( cd $$m && go vet ./... ) || exit 1; \
@@ -73,13 +83,13 @@ vet:
 
 # lint：只用现成依赖（gofmt + go vet）。gofmt 采用「不新增欠账」ratchet，
 # 既有未格式化文件登记在 scripts/gofmt-baseline.txt（业务 .go 属黑名单不改）。
-lint:
+lint: check-go
 	@./scripts/gofmt-check.sh
 	@$(MAKE) --no-print-directory vet
 
 # test-integration：一次性 PG16 容器 + 独立 scratch 库跑 -tags=integration，
 # 绝不连业务库 my_go_study；CI 用 H3_IT_EXTERNAL_DB=1 指向 service 容器。
-test-integration:
+test-integration: check-go
 	@./scripts/test-integration.sh
 
 # agent-pre：Slice 合同机检（六节齐全 + 子列表缩进），见 .harness/rules/slice-contract.md

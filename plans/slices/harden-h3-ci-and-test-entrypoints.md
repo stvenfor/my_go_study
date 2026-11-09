@@ -5,6 +5,7 @@
 - TARGET_MODULE: 同源的 CI 门禁 + 本地入口
 - Source entry: `Makefile:46-56`（`test`/`test-all` 只跑 `go test ./...`，**不含 `-tags=integration`**）；`grep -rn 'tags=integration' Makefile scripts/` → 0 命中；`.github/` 目录**不存在**；`grep -n 'agent-pre\|agent-post\|check-brief' Makefile` → 0 命中（`.harness/rules/slice-contract.md` 承诺的机检从未落地）
 - Target entry: `make test-integration` / `make lint` / `make vet` / `make agent-pre` 四条可跑；CI 在 PR 上真跑并拦住过故意制造的失败
+- 本轮 ONLY: 落点 GitHub Actions（新建 `.github/workflows/ci.yml`）+ 四条本地门禁入口 `make test-integration` / `make lint` / `make vet` / `make agent-pre`；阻塞项 = `go build all` / `go vet` / lint / 单元测试 / `scripts/check-tracked-imports.sh`，集成测试 `continue-on-error: true` allow-fail 起步。
 - 验收:
   - [ ] `make test-integration`：用 `docker run` 起一次性 PG16（或复用 `my_go_study_postgres` 上的独立 scratch 库，**绝不连业务库 `my_go_study`**），跑现有 5 条 integration 用例，全绿
   - [ ] `make vet`：`go vet all` 或逐模块等价，当前必须 0 错（有错则先记录、不顺手改业务代码）
