@@ -8,6 +8,7 @@
 #   * 外部库 / CI：H3_IT_EXTERNAL_DB=1 时直接用 DATABASE_* 指向已有 PG service
 #     （GitHub Actions 的 integration job 用此模式；service 自建 h3_it，ci.yml 的
 #      幂等建库步补齐另外三个，本脚本再兜底一次，缺库即显式报错退出）。
+#     用 pg_isready -h/-p 探活，未就绪 exit 1，不允许静默跳过。
 #
 # 用例读的 env（见 app/internal/*/*_integration_test.go 的 openXxxDB）：
 #   DATABASE_HOST / DATABASE_PORT / DATABASE_USER / DATABASE_PASSWORD
@@ -16,6 +17,14 @@
 # 全链，金额分用例断言 amount_fen 是 bigint NOT NULL + CHECK；p06b_am / p08_it 是
 # 独立空库（用例自己 AutoMigrate），绝不与跑过迁移的库共用，否则形状断言失效。
 # 配合 -p 1 串行跑各包测试，避免并行包在同一库上 DDL 竞态（各用例 t.Cleanup 会 DropTable）。
+#
+# 门禁防「空绿 / 跳过失败」：-v 输出统计 --- PASS: / --- FAIL: / --- SKIP:，
+# go test 退出码（PIPESTATUS[0]）非 0、任一 FAIL/SKIP、或 PASS 数低于 integration
+# 测试函数总数，都 exit 1；杜绝「用例被 t.Skipf 跳过仍报绿」。
+# -run 只跑 *_integration_test.go 里的 21 个用例：`./...` 还会编译/执行若干
+# 「需要活 WS 服务」的非集成 live 用例（如 ws/handler_test.go、ws/integration_test.go，
+# 无 //go:build integration），它们在无 :8080 服务时必然 t.Skip；这些文件不在本轮
+# 白名单，故用 -run 把门禁收口到集成用例集合本身，而不是放宽 SKIP 判定。
 #
 # 工具链由调用方钉死：CI = setup-go 1.26.x + GOTOOLCHAIN=local；
 # 本机 = PATH=/usr/local/go/bin:$PATH GOTOOLCHAIN=local make test-integration。
@@ -34,9 +43,13 @@ MIGRATED_DB="$P06B_PG_DBNAME"
 PLAIN_DBS=("$P06B_AM_DBNAME" "$P08_PG_DBNAME")
 
 CONTAINER=""
+IT_LOG=""
 cleanup() {
   if [ -n "$CONTAINER" ]; then
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$IT_LOG" ]; then
+    rm -f "$IT_LOG" || true
   fi
 }
 trap cleanup EXIT
@@ -90,11 +103,25 @@ apply_migrations() {
 if [ "${H3_IT_EXTERNAL_DB:-}" = "1" ]; then
   echo "[test-integration] 外部库模式（CI service）：${DATABASE_HOST}:${DATABASE_PORT} db=${DB_NAME}"
   command -v psql >/dev/null 2>&1 || { echo "[test-integration] 外部库模式需要 psql" >&2; exit 1; }
+  command -v pg_isready >/dev/null 2>&1 || { echo "[test-integration] 外部库模式需要 pg_isready" >&2; exit 1; }
   for v in DATABASE_HOST DATABASE_PORT DATABASE_USER DATABASE_PASSWORD; do
     if [ -z "${!v:-}" ]; then
       echo "[test-integration] 外部库模式缺少环境变量 $v" >&2; exit 1
     fi
   done
+  ready=0
+  for _ in $(seq 1 60); do
+    if PGPASSWORD="$DATABASE_PASSWORD" pg_isready \
+        -h "$DATABASE_HOST" -p "$DATABASE_PORT" -U "$DATABASE_USER" -d "$DB_NAME" >/dev/null 2>&1; then
+      ready=1; break
+    fi
+    sleep 1
+  done
+  if [ "$ready" -ne 1 ]; then
+    echo "[test-integration] 外部库 PG 未就绪（${DATABASE_HOST}:${DATABASE_PORT} db=${DB_NAME}），不允许跳过" >&2
+    exit 1
+  fi
+  echo "[test-integration] 外部库 PG 就绪于 ${DATABASE_HOST}:${DATABASE_PORT}"
 else
   command -v docker >/dev/null 2>&1 || { echo "需要 docker（本机一次性 PG16）" >&2; exit 1; }
   CONTAINER="h3-it-pg-$$"
@@ -127,5 +154,40 @@ create_db_if_missing "$MIGRATED_DB"
 for db in "${PLAIN_DBS[@]}"; do create_db_if_missing "$db"; done
 apply_migrations "$MIGRATED_DB"
 
-echo "[test-integration] go -C app test -tags=integration -p 1 ./... -count=1（P02=${P02_PG_DBNAME} P03=${P03_PG_DBNAME} P06B=${P06B_PG_DBNAME} P06B_AM=${P06B_AM_DBNAME} P08=${P08_PG_DBNAME}）"
-go -C app test -tags=integration -p 1 ./... -count=1
+# 期望 PASS 数 = 所有 *_integration_test.go 用例里的顶层 Test 函数个数（当前 21）。
+IT_TEST_NAMES="$(grep -rh '^func Test' app/internal --include='*_integration_test.go' \
+  | sed -E 's/^func (Test[A-Za-z0-9_]+).*/\1/' | sort -u)"
+EXPECTED_PASS="$(printf '%s\n' "$IT_TEST_NAMES" | grep -c .)"
+RUN_RE="$(printf '%s\n' "$IT_TEST_NAMES" | paste -sd '|' -)"
+IT_LOG="$(mktemp)"
+echo "[test-integration] go -C app test -tags=integration -p 1 ./... -count=1 -v -run <${EXPECTED_PASS} 个集成用例>（PASS 期望 ≥ ${EXPECTED_PASS}；FAIL/SKIP 必须为 0）"
+set -o pipefail
+set +e
+go -C app test -tags=integration -p 1 ./... -count=1 -v -run "^(${RUN_RE})$" 2>&1 | tee "$IT_LOG"
+go_status=${PIPESTATUS[0]}
+set -e
+
+n_pass="$(grep -c -- '--- PASS:' "$IT_LOG" || true)"
+n_fail="$(grep -c -- '--- FAIL:' "$IT_LOG" || true)"
+n_skip="$(grep -c -- '--- SKIP:' "$IT_LOG" || true)"
+echo "[test-integration] 结果：go_exit=${go_status} PASS=${n_pass}（期望 ≥ ${EXPECTED_PASS}） FAIL=${n_fail} SKIP=${n_skip}"
+
+if [ "$go_status" -ne 0 ]; then
+  echo "FAIL: go test 退出码 ${go_status}（不允许跳过失败）" >&2
+  exit 1
+fi
+if [ "$n_fail" -gt 0 ]; then
+  echo "FAIL: 出现 ${n_fail} 个 --- FAIL:" >&2
+  grep -n -- '--- FAIL:' "$IT_LOG" >&2 || true
+  exit 1
+fi
+if [ "$n_skip" -gt 0 ]; then
+  echo "FAIL: 出现 ${n_skip} 个 --- SKIP:（不允许跳过失败 / 空跑）" >&2
+  grep -n -- '--- SKIP:' "$IT_LOG" >&2 || true
+  exit 1
+fi
+if [ "$n_pass" -lt "$EXPECTED_PASS" ]; then
+  echo "FAIL: PASS 数 ${n_pass} < 期望 ${EXPECTED_PASS}（可能有用例未执行 / 空跑）" >&2
+  exit 1
+fi
+echo "OK: integration 门禁通过（PASS=${n_pass} ≥ ${EXPECTED_PASS}，FAIL=0，SKIP=0）"
